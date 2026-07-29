@@ -122,6 +122,11 @@ private:
 public:
     std::unordered_map<uint32_t, std::shared_ptr<TextureObject>> textures;
     std::unordered_map<SC, SkinInfo> skin_config;
+    // Same entries as skin_config, keyed by the raw JSON key. Lua and other
+    // runtime consumers read skin_config.json keys the skinner just wrote,
+    // which may not exist in the generated SC enum until the next rebuild —
+    // this map lets them work without one.
+    std::unordered_map<std::string, SkinInfo> skin_config_by_name;
     std::unordered_map<SCO, bool> options;
     fs::path font_path;
     int screen_width;

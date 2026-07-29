@@ -322,8 +322,8 @@ void ScriptManager::register_lua_bindings() {
     });
 
     tex.set_function("get_skin_config", [](const std::string& config_key) -> sol::optional<sol::table> {
-        auto config_it = script_manager.tex.skin_config.find(skin_config_map.at(config_key));
-        if (config_it == script_manager.tex.skin_config.end()) {
+        auto config_it = script_manager.tex.skin_config_by_name.find(config_key);
+        if (config_it == script_manager.tex.skin_config_by_name.end()) {
             return sol::nullopt;
         }
 
@@ -467,8 +467,8 @@ void ScriptManager::register_lua_bindings() {
     sol::table text = lua.create_table();
     text.set_function("create_text", [](const std::string& skin_config_key, std::array<int, 4> color,
         std::array<int, 4> outline_color, bool is_vertical, int outline_thickness, float spacing) -> std::unique_ptr<OutlinedText> {
-            auto config_it = script_manager.tex.skin_config.find(skin_config_map.at(skin_config_key));
-            if (config_it == script_manager.tex.skin_config.end()) {
+            auto config_it = script_manager.tex.skin_config_by_name.find(skin_config_key);
+            if (config_it == script_manager.tex.skin_config_by_name.end()) {
                 spdlog::error("Skin config key not found: {}", skin_config_key);
                 return nullptr;
             }

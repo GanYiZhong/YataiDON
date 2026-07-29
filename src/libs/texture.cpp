@@ -23,44 +23,16 @@ void TextureWrapper::init(const fs::path& skin_path) {
         screen_scale  = w / 1280.0f;
     }
 
-    // Load parent skin_config first so child values override.
-    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
-        std::string parent = skin_config_file["screen"]["parent"].GetString();
-        parent_graphics_path = fs::path("Skins") / parent / "Graphics";
-
-        auto parent_config = read_json_file(parent_graphics_path / "skin_config.json");
-
-        for (auto& m : parent_config.GetObject()) {
-            SC key = skin_config_map.at(m.name.GetString());
-            const Value& v = m.value;
-
-            float x = (v.HasMember("x") ? v["x"].GetFloat() : 0) * screen_scale;
-            float y = (v.HasMember("y") ? v["y"].GetFloat() : 0) * screen_scale;
-            int font_size = static_cast<int>((v.HasMember("font_size") ? v["font_size"].GetInt() : 0) * screen_scale);
-            float width = (v.HasMember("width") ? v["width"].GetFloat() : 0) * screen_scale;
-            float height = (v.HasMember("height") ? v["height"].GetFloat() : 0) * screen_scale;
-
-            std::map<std::string, std::string> text_map;
-            if (v.HasMember("text") && v["text"].IsObject()) {
-                for (auto& t : v["text"].GetObject()) {
-                    text_map[t.name.GetString()] = t.value.GetString();
-                }
-            }
-
-            skin_config[key] = SkinInfo(x, y, font_size, width, height, text_map);
-        }
-    }
-
-    // Load child skin_config — overrides parent defaults.
-    for (auto& m : skin_config_file.GetObject()) {
-        SC key = skin_config_map.at(m.name.GetString());
-        const Value& v = m.value;
-
-        float x = v.HasMember("x") ? v["x"].GetFloat() : 0;
-        float y = v.HasMember("y") ? v["y"].GetFloat() : 0;
-        int font_size = v.HasMember("font_size") ? v["font_size"].GetInt() : 0;
-        float width = v.HasMember("width") ? v["width"].GetFloat() : 0;
-        float height = v.HasMember("height") ? v["height"].GetFloat() : 0;
+    // Parses one skin_config.json entry into a SkinInfo, storing it under its
+    // string key so Lua/runtime consumers can see keys the generated SC enum
+    // doesn't know about yet, and additionally under the SC enum when the key
+    // is recognized (used by hardcoded C++ reads via skin_config[SC::...]).
+    auto load_entry = [this](const std::string& name, const Value& v, float scale) {
+        float x = (v.HasMember("x") ? v["x"].GetFloat() : 0) * scale;
+        float y = (v.HasMember("y") ? v["y"].GetFloat() : 0) * scale;
+        int font_size = static_cast<int>((v.HasMember("font_size") ? v["font_size"].GetInt() : 0) * scale);
+        float width = (v.HasMember("width") ? v["width"].GetFloat() : 0) * scale;
+        float height = (v.HasMember("height") ? v["height"].GetFloat() : 0) * scale;
 
         std::map<std::string, std::string> text_map;
         if (v.HasMember("text") && v["text"].IsObject()) {
@@ -69,7 +41,31 @@ void TextureWrapper::init(const fs::path& skin_path) {
             }
         }
 
-        skin_config[key] = SkinInfo(x, y, font_size, width, height, text_map);
+        SkinInfo info(x, y, font_size, width, height, text_map);
+
+        skin_config_by_name[name] = info;
+
+        auto sc_it = skin_config_map.find(name);
+        if (sc_it != skin_config_map.end()) {
+            skin_config[sc_it->second] = std::move(info);
+        }
+    };
+
+    // Load parent skin_config first so child values override.
+    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
+        std::string parent = skin_config_file["screen"]["parent"].GetString();
+        parent_graphics_path = fs::path("Skins") / parent / "Graphics";
+
+        auto parent_config = read_json_file(parent_graphics_path / "skin_config.json");
+
+        for (auto& m : parent_config.GetObject()) {
+            load_entry(m.name.GetString(), m.value, screen_scale);
+        }
+    }
+
+    // Load child skin_config — overrides parent defaults.
+    for (auto& m : skin_config_file.GetObject()) {
+        load_entry(m.name.GetString(), m.value, 1.0f);
     }
 
     if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("options")) {
