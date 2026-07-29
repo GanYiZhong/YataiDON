@@ -2,17 +2,9 @@
 
 #include "config.h"
 #include "ray.h"
+#include "parsers/tja.h"
 
 namespace fs = std::filesystem;
-
-enum class PlayerNum {
-    ALL = 0,
-    P1 = 1,
-    P2 = 2,
-    TWO_PLAYER = 3,
-    DAN = 4,
-    AI = 5
-};
 
 namespace ScoreMethod {
     const std::string GEN3 = "gen3";
@@ -49,15 +41,6 @@ enum class Rank {
     _PINK = 5,
     _PURPLE = 6,
     _RAINBOW = 7
-};
-
-struct Modifiers {
-    bool auto_play = false;
-    int speed = 10;
-    bool display = false;
-    bool inverse = false;
-    int random = 0;
-    int subdiff = 0;
 };
 
 struct Exam {

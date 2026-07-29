@@ -2,6 +2,7 @@
 
 #include "../../libs/animation.h"
 #include "../../libs/parsers/tja.h"
+#include "../../libs/ray.h"
 
 class GaugeHitEffect {
 private:

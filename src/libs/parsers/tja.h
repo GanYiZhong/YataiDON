@@ -1,11 +1,36 @@
 #pragma once
 
-#include "../global_data.h"
+#include <spdlog/spdlog.h>
+#include <cstddef>
 #include <deque>
+#include <filesystem>
 #include <functional>
+#include <map>
+#include <optional>
 #include <regex>
+#include <string>
+#include <tuple>
+#include <vector>
 
 namespace fs = std::filesystem;
+
+enum class PlayerNum {
+    ALL = 0,
+    P1 = 1,
+    P2 = 2,
+    TWO_PLAYER = 3,
+    DAN = 4,
+    AI = 5
+};
+
+struct Modifiers {
+    bool auto_play = false;
+    int speed = 10;
+    bool display = false;
+    bool inverse = false;
+    int random = 0;
+    int subdiff = 0;
+};
 
 enum class NoteType : int {
     BARLINE = 0,
