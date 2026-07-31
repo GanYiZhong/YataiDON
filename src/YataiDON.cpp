@@ -25,6 +25,7 @@
 #include "scenes/game_dan.h"
 #include "scenes/game_practice.h"
 #include "scenes/input_cali.h"
+#include "scenes/input_test.h"
 #include "scenes/loading.h"
 #include "scenes/result.h"
 #include "scenes/result_2p.h"
@@ -346,6 +347,7 @@ int main(int argc, char* argv[]) {
     L.screens[Screens::SKIN_VIEWER]     = std::make_unique<SkinViewerScreen>();
     L.screens[Screens::SANDBOX]         = std::make_unique<SandboxScreen>();
     L.screens[Screens::GAME_OVER]       = std::make_unique<GameOverScreen>();
+    L.screens[Screens::INPUT_TEST]      = std::make_unique<InputTestScreen>();
 
     L.camera = compute_camera2d(L.screen_width, L.screen_height);
 
