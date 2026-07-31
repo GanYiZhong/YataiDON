@@ -13,8 +13,6 @@ Box::Box(const std::string& text_str, int font_size, Screens location) : locatio
     moving_down = false;
     y_pos = 0;
     static_y = 0;
-    if (!load("EntryBox", "box", text_str, font_size)) return;
-    fn_draw = lua_object["draw"];
 }
 
 void Box::set_positions(float x, float y) {
@@ -86,6 +84,4 @@ void Box::move_down() {
     moving_down = true;
 }
 
-void Box::draw(float fade) {
-    call(fn_draw, "EntryBox:draw", x, left_x, right_x, is_selected, move->is_finished, (float)open->attribute, fade, y_pos);
-}
+void Box::draw(float fade) {}

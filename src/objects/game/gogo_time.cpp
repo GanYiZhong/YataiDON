@@ -15,11 +15,4 @@ void GogoTime::update(double current_ms) {
 }
 
 void GogoTime::draw(float judge_x, float judge_y) {
-    tex.draw_texture(GOGO_TIME::FIRE, {
-        .frame = (int)fire_change->attribute,
-        .scale = (float)(fire_resize->attribute),
-        .center = true,
-        .x = judge_x,
-        .y = judge_y,
-        .fade = 0.5f});
 }

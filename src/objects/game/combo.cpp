@@ -55,38 +55,4 @@ void Combo::update(double current_ms, int curr_combo) {
 }
 
 void Combo::draw(float y) {
-    if (combo < 3) return;
-
-    std::string counter = std::to_string(combo);
-    float margin;
-    float total_width;
-    if (combo < 100) {
-        margin = tex.skin_config[SC::COMBO_MARGIN].x;
-        total_width = counter.length() * margin;
-        tex.draw_texture(tex.get_enum("combo/combo_" + global_data.config->general.language), {.y=y});
-        for (int i = 0; i < counter.size(); i++) {
-            char digit = counter[i];
-            tex.draw_texture(COMBO::COUNTER, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
-        }
-
-    } else {
-        margin = tex.skin_config[SC::COMBO_MARGIN].y;
-        total_width = counter.length() * margin;
-        tex.draw_texture(tex.get_enum("combo/combo_100_" + global_data.config->general.language), {.y=y});
-        for (int i = 0; i < counter.size(); i++) {
-            char digit = counter[i];
-            tex.draw_texture(COMBO::COUNTER_100, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
-        }
-        std::vector<std::pair<float, float>> glimmer_positions = {
-            {tex.skin_config[SC::COMBO_GLIMMER_1].x, tex.skin_config[SC::COMBO_GLIMMER_1].y},
-            {tex.skin_config[SC::COMBO_GLIMMER_2].x, tex.skin_config[SC::COMBO_GLIMMER_2].y},
-            {tex.skin_config[SC::COMBO_GLIMMER_3].x, tex.skin_config[SC::COMBO_GLIMMER_3].y}
-        };
-        for (size_t j = 0; j < glimmer_positions.size(); j++) {
-            auto [x, y_pos] = glimmer_positions[j];
-            for (int i = 0; i < 3; i++) {
-                tex.draw_texture(COMBO::GLEAM, {.color=color[j], .x=x+(i*tex.skin_config[SC::COMBO_MARGIN].x), .y=y+y_pos+glimmer_map[j]});
-            }
-        }
-    }
 }

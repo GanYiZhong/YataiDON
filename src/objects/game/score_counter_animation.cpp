@@ -49,32 +49,6 @@ void ScoreCounterAnimation::update(double current_ms) {
 }
 
 void ScoreCounterAnimation::draw(float y) {
-    float x = move_animation_1->is_finished ? move_animation_2->attribute : move_animation_1->attribute;
-    if (x == 0) {
-        return;
-    }
-
-    float start_x = x - total_width;
-
-    for (int i = 0; i < counter_str.length(); i++) {
-        float y_pos;
-        if (move_animation_3->is_finished) {
-            y_pos = y_pos_list[i];
-        } else if (move_animation_2->is_finished) {
-            y_pos = move_animation_3->attribute;
-        } else {
-            y_pos = tex.skin_config[SC::SCORE_COUNTER_ANIMATION_START_Y].y;
-        }
-
-        float y_offset = (y_pos * direction) + y + (tex.skin_config[SC::SCORE_COUNTER_ANIMATION_P2_OFFSET].y * (direction == -1));
-
-        tex.draw_texture(LANE::SCORE_NUMBER, {
-            .color = color,
-            .frame = counter_str[i] - '0',
-            .x = start_x + (i * margin),
-            .y = y_offset
-        });
-    }
 }
 
 bool ScoreCounterAnimation::is_finished() const {

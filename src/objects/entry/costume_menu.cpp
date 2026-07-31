@@ -10,10 +10,6 @@ CostumeMenu::CostumeMenu(PlayerNum player_num) : player_num(player_num), is_2p(p
     float title_x = info.x;
     float title_y = info.y;
 
-    if (!load("CostumeMenu", "costume_menu", is_2p, text_str, title_x, title_y)) return;
-    fn_update  = lua_object["update"];
-    fn_draw_bg = lua_object["draw_bg"];
-    fn_draw_fg = lua_object["draw_fg"];
 }
 
 CostumeMenu::~CostumeMenu() {
@@ -42,9 +38,7 @@ void CostumeMenu::load_costume_icons() {
     }
 }
 
-void CostumeMenu::update(double current_time_ms) {
-    call(fn_update, "CostumeMenu:update", current_time_ms);
-}
+void CostumeMenu::update(double current_time_ms) {}
 
 std::optional<int> CostumeMenu::get_index() {
     if (!costume_select_mode) return std::nullopt;
@@ -91,28 +85,4 @@ void CostumeMenu::handle_input() {
     }
 }
 
-void CostumeMenu::draw(float x, float y) {
-    call(fn_draw_bg, "CostumeMenu:draw_bg", x, y, selected_index, costume_select_mode);
-
-    if (costume_select_mode && !costume_icons.empty()) {
-        auto& ib    = tex.textures[COSTUME_SELECT::ITEM_BOX_1P];
-        float base_x = ib->x[0] + x;
-        float base_y = ib->y[0] + y;
-        constexpr float ITEM_W = 80.0f;
-        int n = (int)costume_icons.size();
-        for (int i = 0; i < 5; i++) {
-            int idx = ((costume_icon_index - 2 + i) % n + n) % n;
-            auto& icon = costume_icons[idx];
-            float scale = std::min(ITEM_W / icon.width, ITEM_W / icon.height);
-            float dw = icon.width * scale, dh = icon.height * scale;
-            float ix = tex.draw_offset_x + base_x + i * ITEM_W + (ITEM_W - dw) / 2.0f;
-            float iy = tex.draw_offset_y + base_y + (ITEM_W - dh) / 2.0f;
-            float offset = (icon.width - ib->width) / 2.0f;
-            ray::DrawTexturePro(icon,
-                {0, 0, (float)icon.width, (float)icon.height},
-                {ix + offset, iy + offset, dw, dh}, {0, 0}, 0, ray::WHITE);
-        }
-    }
-
-    call(fn_draw_fg, "CostumeMenu:draw_fg", x, y);
-}
+void CostumeMenu::draw(float x, float y) {}

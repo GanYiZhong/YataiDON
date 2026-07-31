@@ -1080,46 +1080,11 @@ float Navigator::get_diff_fade_in() {
     return current_item->diff_fade_in->attribute;
 }
 
-void Navigator::draw_background() {
-    int width = tex.textures[BOX::BACKGROUND]->width;
+void Navigator::draw_background() {}
 
-    for (int i = 0; i < width * 4; i += width) {
-        tex.draw_texture(BOX::BACKGROUND, {.frame=(int)last_bg_genre_index, .x=(float)(i - background_move->attribute)});
-        tex.draw_texture(BOX::BACKGROUND, {.frame=(int)bg_genre_index,  .x=(float)(i - background_move->attribute), .fade=1.0f - background_fade_change->attribute});
-    }
-}
+void Navigator::draw() {}
 
-void Navigator::draw() {
-    if (!vertical_gallery && genre_bg.has_value()) {
-        float start_pos;
-        float end_pos;
-
-        if ((!items.empty() && (is_processing || !items[open_index]->fade->is_finished)) &&
-            pending_inline_folder != nullptr && genre_bg_end_pos.has_value()) {
-            start_pos = pending_inline_folder->left_bound;
-            end_pos = genre_bg_end_pos.value();  // approximation while loading
-        } else {
-            start_pos = items[genre_bg_start]->left_bound;
-            end_pos = items[genre_bg_end]->right_bound;  // safe, loading done
-        }
-
-        FolderBox* folder = pending_inline_folder;
-        genre_bg->draw(start_pos, end_pos, folder);
-    }
-    for (auto& box : items) {
-        bool on_screen = vertical_gallery
-            ? (box->position > -100 && box->position < tex.screen_height + 100)
-            : (box->position > -100 && box->position < tex.screen_width  + 100);
-        if (on_screen) {
-            box->draw();
-        }
-    }
-}
-
-void Navigator::draw_score_history() {
-    if (open_index < items.size() && dynamic_cast<SongBox*>(items[open_index].get()) != nullptr)
-        items[open_index]->draw_score_history();
-}
+void Navigator::draw_score_history() {}
 
 Statistics Navigator::get_statistics(const fs::path& path) {
     Statistics stats;

@@ -25,22 +25,7 @@ BaseOptionBox::BaseOptionBox(const std::string& name,
     , is_highlighted(false)
 {}
 
-void BaseOptionBox::draw_base() const {
-    tex.draw_texture(BACKGROUND::OVERLAY, {.scale=0.70f});
-    if (is_highlighted) {
-        tex.draw_texture(BACKGROUND::TITLE_HIGHLIGHT);
-    } else {
-        tex.draw_texture(BACKGROUND::TITLE);
-    }
-    auto& title_obj = tex.textures[BACKGROUND::TITLE];
-    float text_x = title_obj->x[0] + (title_obj->width  / 2.0f) - (name_text->width  / 2.0f);
-    float text_y = title_obj->y[0] + (title_obj->height / 8.0f);
-    name_text->draw({.x=text_x, .y=text_y});
-
-    ray::Font font = font_manager.get_font(description_text, (int)DESC_FONT_SIZE);
-    ray::DrawTextEx(font, description_text.c_str(),
-                    {DESC_X, DESC_Y}, DESC_FONT_SIZE, 1, ray::BLACK);
-}
+void BaseOptionBox::draw_base() const {}
 
 BoolOptionBox::BoolOptionBox(const std::string& name,
                              const std::string& description,
@@ -60,29 +45,7 @@ void BoolOptionBox::confirm() {
 void BoolOptionBox::move_left()  { value = false; }
 void BoolOptionBox::move_right() { value = true;  }
 
-void BoolOptionBox::draw() {
-    draw_base();
-
-    auto& btn = tex.textures[OPTION::BUTTON_ON];
-
-    if (!value) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.index=0});
-    } else {
-        tex.draw_texture(OPTION::BUTTON_OFF, {.index=0});
-    }
-    float ox = btn->x[0] + (btn->width / 2.0f) - (off_text->width  / 2.0f);
-    float oy = btn->y[0] + (btn->height / 2.0f) - (off_text->height / 2.0f);
-    off_text->draw({.x=ox, .y=oy});
-
-    if (value) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.index=1});
-    } else {
-        tex.draw_texture(OPTION::BUTTON_OFF, {.index=1});
-    }
-    float nx = btn->x[1] + (btn->width / 2.0f) - (on_text->width  / 2.0f);
-    float ny = btn->y[1] + (btn->height / 2.0f) - (on_text->height / 2.0f);
-    on_text->draw({.x=nx, .y=ny});
-}
+void BoolOptionBox::draw() {}
 
 static std::string int_display(int v) { return std::to_string(v); }
 
@@ -150,18 +113,7 @@ void IntOptionBox::move_right() {
     rebuild_text();
 }
 
-void IntOptionBox::draw() {
-    draw_base();
-
-    tex.draw_texture(OPTION::BUTTON_OFF, {.index=2});
-    if (is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=2});
-    }
-    auto& btn = tex.textures[OPTION::BUTTON_ON];
-    float tx = btn->x[2] + (btn->width  / 2.0f) - (value_text->width  / 2.0f);
-    float ty = btn->y[2] + (btn->height / 2.0f) - (value_text->height / 2.0f);
-    value_text->draw({.x=tx, .y=ty});
-}
+void IntOptionBox::draw() {}
 
 StrOptionBox::StrOptionBox(const std::string& name,
                            const std::string& description,
@@ -254,18 +206,7 @@ void StrOptionBox::move_right() {
     }
 }
 
-void StrOptionBox::draw() {
-    draw_base();
-
-    tex.draw_texture(OPTION::BUTTON_OFF, {.index=2});
-    if (is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=2});
-    }
-    auto& btn = tex.textures[OPTION::BUTTON_ON];
-    float tx = btn->x[2] + (btn->width  / 2.0f) - (value_text->width  / 2.0f);
-    float ty = btn->y[2] + (btn->height / 2.0f) - (value_text->height / 2.0f);
-    value_text->draw({.x=tx, .y=ty});
-}
+void StrOptionBox::draw() {}
 
 KeybindOptionBox::KeybindOptionBox(const std::string& name,
                                    const std::string& description,
@@ -315,18 +256,7 @@ void KeybindOptionBox::update(double current_time) {
     }
 }
 
-void KeybindOptionBox::draw() {
-    draw_base();
-
-    tex.draw_texture(OPTION::BUTTON_OFF, {.index=2});
-    if (is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=2});
-    }
-    auto& btn = tex.textures[OPTION::BUTTON_ON];
-    float tx = btn->x[2] + (btn->width  / 2.0f) - (value_text->width  / 2.0f);
-    float ty = btn->y[2] + (btn->height / 2.0f) - (value_text->height / 2.0f);
-    value_text->draw({.x=tx, .y=ty});
-}
+void KeybindOptionBox::draw() {}
 
 KeyBindControllerOptionBox::KeyBindControllerOptionBox(const std::string& name,
                                                         const std::string& description,
@@ -375,18 +305,7 @@ void KeyBindControllerOptionBox::update(double current_time) {
     }
 }
 
-void KeyBindControllerOptionBox::draw() {
-    draw_base();
-
-    tex.draw_texture(OPTION::BUTTON_OFF, {.index=2});
-    if (is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=2});
-    }
-    auto& b = tex.textures[OPTION::BUTTON_ON];
-    float tx = b->x[2] + (b->width  / 2.0f) - (value_text->width  / 2.0f);
-    float ty = b->y[2] + (b->height / 2.0f) - (value_text->height / 2.0f);
-    value_text->draw({.x=tx, .y=ty});
-}
+void KeyBindControllerOptionBox::draw() {}
 
 FloatOptionBox::FloatOptionBox(const std::string& name,
                                const std::string& description,
@@ -422,18 +341,7 @@ void FloatOptionBox::move_right() {
     rebuild_text();
 }
 
-void FloatOptionBox::draw() {
-    draw_base();
-
-    tex.draw_texture(OPTION::BUTTON_OFF, {.index=2});
-    if (is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=2});
-    }
-    auto& btn = tex.textures[OPTION::BUTTON_ON];
-    float tx = btn->x[2] + (btn->width  / 2.0f) - (value_text->width  / 2.0f);
-    float ty = btn->y[2] + (btn->height / 2.0f) - (value_text->height / 2.0f);
-    value_text->draw({.x=tx, .y=ty});
-}
+void FloatOptionBox::draw() {}
 
 AudioOffsetOptionBox::AudioOffsetOptionBox(const std::string& name,
                                            const std::string& description,
@@ -485,32 +393,4 @@ void AudioOffsetOptionBox::update(double current_time) {
     flicker_fade->update(current_time);
 }
 
-void AudioOffsetOptionBox::draw() {
-    draw_base();
-
-    // Offset value button (index 0)
-    if (offset_highlighted && is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=0});
-    } else {
-        tex.draw_texture(OPTION::BUTTON_OFF, {.index=0});
-    }
-    {
-        auto& btn = tex.textures[OPTION::BUTTON_ON];
-        float tx = btn->x[0] + (btn->width  / 2.0f) - (value_text->width  / 2.0f);
-        float ty = btn->y[0] + (btn->height / 2.0f) - (value_text->height / 2.0f);
-        value_text->draw({.x=tx, .y=ty});
-    }
-
-    // Calibrate button (index 1)
-    if (!offset_highlighted && is_highlighted) {
-        tex.draw_texture(OPTION::BUTTON_ON,  {.fade=flicker_fade->attribute, .index=1});
-    } else {
-        tex.draw_texture(OPTION::BUTTON_OFF, {.index=1});
-    }
-    {
-        auto& btn = tex.textures[OPTION::BUTTON_ON];
-        float tx = btn->x[1] + (btn->width  / 2.0f) - (calibrate_text->width  / 2.0f);
-        float ty = btn->y[1] + (btn->height / 2.0f) - (calibrate_text->height / 2.0f);
-        calibrate_text->draw({.x=tx, .y=ty});
-    }
-}
+void AudioOffsetOptionBox::draw() {}

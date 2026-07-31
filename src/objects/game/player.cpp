@@ -384,82 +384,9 @@ void Player::update(double ms_from_start, double current_ms, std::optional<Backg
 }
 
 void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shader) {
-    tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
-    if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
-    if (branch_indicator.has_value()) {
-        branch_indicator->draw(y);
-    }
-    if (gauge.has_value()) {
-        if (is_2p) {
-            gauge->draw(y + tex.skin_config[SC::GAUGE_2P_OFFSET].y);
-        } else {
-            gauge->draw(y);
-        }
-    }
-    if (lane_hit_effect.has_value()) {
-        lane_hit_effect->draw(y);
-    }
-    tex.draw_texture(LANE::LANE_HIT_CIRCLE, {.x = judge_x, .y = y + judge_y});
-
-    if (gogo_time.has_value()) {
-        gogo_time->draw(judge_x, y + judge_y);
-    }
-    if (fireworks.has_value()) {
-        fireworks->draw();
-    }
-    draw_lane_cover(y);
-
-    for (Judgment& anim : draw_judge_list) {
-        anim.draw(judge_x, y + judge_y);
-    }
-
-    {
-        int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
-        int win_w = ray::GetScreenWidth();
-        ray::BeginScissorMode(scissor_x, 0, win_w - scissor_x, ray::GetScreenHeight());
-        draw_notes(ms_from_start, y);
-        ray::EndScissorMode();
-    }
-
-    draw_overlays(y, mask_shader);
-
-    if (global_data.config->general.song_timer) {
-        draw_song_timer(ms_from_start, y);
-    }
 }
 
 void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& mask_shader, bool draw_notes_on) {
-    tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
-    if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
-    if (branch_indicator.has_value()) {
-        branch_indicator->draw(y);
-    }
-    if (lane_hit_effect.has_value()) {
-        lane_hit_effect->draw(y);
-    }
-    tex.draw_texture(LANE::LANE_HIT_CIRCLE, {.x = judge_x, .y = y + judge_y});
-
-    if (gogo_time.has_value()) {
-        gogo_time->draw(judge_x, y + judge_y);
-    }
-    if (fireworks.has_value()) {
-        fireworks->draw();
-    }
-    draw_lane_cover(y);
-
-    for (Judgment& anim : draw_judge_list) {
-        anim.draw(judge_x, y + judge_y);
-    }
-
-    if (draw_notes_on) {
-        int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
-        int win_w = ray::GetScreenWidth();
-        ray::BeginScissorMode(scissor_x, 0, win_w - scissor_x, ray::GetScreenHeight());
-        draw_notes(ms_from_start, y);
-        ray::EndScissorMode();
-    }
-
-    draw_overlays(y, mask_shader);
 }
 
 void Player::get_load_time(Note& note) {
@@ -1225,284 +1152,28 @@ void Player::handle_input(double ms_from_start, double current_ms, std::optional
 }
 
 void Player::draw_bar(double current_ms, float y, const Note& bar) {
-    if (!bar.display) return;
-    float x_position = get_position_x(bar, current_ms) + judge_x;
-    float y_position = get_position_y(bar, current_ms) + judge_y + y;
-    float angle;
-    if (y_position != 0) {
-        angle = std::atan2(bar.scroll_y, bar.scroll_x) * 180.0 / PI;
-    } else {
-        angle = 0;
-    }
-    tex.draw_texture(NOTES::_0, {.frame=bar.is_branch_start, .x=x_position+tex.skin_config[SC::MOJI_DRUMROLL].x - (tex.textures[NOTES::_9]->width/2.0f), .y=y_position+tex.skin_config[SC::MOJI_DRUMROLL].y, .rotation=angle});
 }
 
 void Player::draw_drumroll(double current_ms, float y, const Note& head, int current_eighth, bool moji_pass) {
-    if (head.sudden_appear_ms.has_value() && head.sudden_moving_ms.has_value()) {
-        double appear_ms = head.hit_ms - head.sudden_appear_ms.value();
-        double moving_start_ms = head.hit_ms - head.sudden_moving_ms.value();
-        if (current_ms < appear_ms) return;
-        if (current_ms < moving_start_ms) {
-            current_ms = moving_start_ms;
-        }
-    }
-    float start_position = get_position_x(head, current_ms);
-    auto it = std::lower_bound(draw_note_buffer.begin(), draw_note_buffer.end(),
-                               head.index + 1, [](const Note& n, int idx) { return n.index < idx; });
-    while (it != draw_note_buffer.end() && it->type != NoteType::TAIL) ++it;
-
-    auto& tail = (it != draw_note_buffer.end()) ? *it : draw_note_buffer[1];
-    bool is_big = head.type == NoteType::ROLL_HEAD_L;
-    float end_position = get_position_x(tail, current_ms);
-    float length = end_position - start_position;
-    ray::Color color = ray::Color{255, (unsigned char)head.color.value(), (unsigned char)head.color.value(), 255};
-    float y_pos = y + tex.skin_config[SC::NOTES].y + get_position_y(head, current_ms) + judge_y;
-    start_position += judge_x;
-    end_position += judge_x;
-    float moji_y = y + tex.skin_config[SC::MOJI].y;
-    if (moji_pass) {
-        tex.draw_texture(NOTES::MOJI_DRUMROLL_MID, {.x=start_position, .y=moji_y+judge_y, .x2=length});
-        tex.draw_texture(NOTES::MOJI, {.frame=head.moji, .x=start_position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y+judge_y});
-        tex.draw_texture(NOTES::MOJI, {.frame=tail.moji, .x=end_position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y+judge_y});
-        return;
-    }
-
-    if (head.display) {
-        tex.draw_texture(NOTES::_8, {.color=color, .frame=is_big, .x=start_position, .y=y_pos, .x2=length+tex.skin_config[SC::DRUMROLL_WIDTH_OFFSET].width});
-        if (is_big) {
-            tex.draw_texture(NOTES::DRUMROLL_BIG_TAIL, {.color=color, .x=end_position, .y=y_pos});
-        } else {
-            tex.draw_texture(NOTES::DRUMROLL_TAIL, {.color=color, .x=end_position, .y=y_pos});
-        }
-        tex.draw_texture(note_tex_ids[(int)head.type], {.color=color, .frame=current_eighth % 2, .x=start_position - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos+judge_y});
-    }
 }
 
 void Player::draw_balloon(double current_ms, float y, const Note& head, int current_eighth, bool moji_pass) {
-    float offset = tex.skin_config[SC::BALLOON_OFFSET].x;
-    if (head.sudden_appear_ms.has_value() && head.sudden_moving_ms.has_value()) {
-        double appear_ms = head.hit_ms - head.sudden_appear_ms.value();
-        double moving_start_ms = head.hit_ms - head.sudden_moving_ms.value();
-        if (current_ms < appear_ms) return;
-        if (current_ms < moving_start_ms) {
-            current_ms = moving_start_ms;
-        }
-    }
-    float start_position = get_position_x(head, current_ms);
-    auto it = std::lower_bound(draw_note_buffer.begin(), draw_note_buffer.end(),
-                               head.index + 1, [](const Note& n, int idx) { return n.index < idx; });
-    while (it != draw_note_buffer.end() && it->type != NoteType::TAIL) ++it;
-
-    auto& tail = (it != draw_note_buffer.end()) ? *it : draw_note_buffer[1];
-    float end_position = get_position_x(tail, current_ms);
-    float pause_position = JudgePos::X + judge_x;
-    float y_pos = y + tex.skin_config[SC::NOTES].y + get_position_y(head, current_ms) + judge_y;
-    float moji_y = y + tex.skin_config[SC::MOJI].y + get_position_y(head, current_ms) + judge_y;
-    start_position += judge_x;
-    end_position += judge_x;
-    float position;
-    if (current_ms >= tail.hit_ms) {
-        position = end_position;
-    } else if (current_ms >= head.hit_ms) {
-        position = pause_position;
-    } else {
-        position = start_position;
-    }
-    if (moji_pass) {
-        tex.draw_texture(NOTES::MOJI, {.frame=head.moji, .x=position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y});
-        return;
-    }
-    if (head.display) {
-        tex.draw_texture(note_tex_ids[(int)head.type], {.frame=current_eighth % 2, .x=position-offset - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos});
-        tex.draw_texture(NOTES::_10, {.frame=current_eighth % 2, .x=position-offset+tex.textures[NOTES::_10]->width - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos});
-    }
 }
 
 void Player::draw_notes(double current_ms, float y) {
-    for (auto it = barlines.rbegin(); it != barlines.rend(); ++it) {
-        draw_bar(current_ms, y, *it);
-    }
-
-    if (draw_note_buffer.empty()) return;
-
-    double eighth_in_ms = (bpm == 0) ? 0 : (60000.0 * 4.0 / bpm) / 8.0;
-    int current_eighth = 0;
-    if (combo >= 50 && eighth_in_ms != 0) {
-        current_eighth = static_cast<int>(current_ms / eighth_in_ms);
-    }
-
-    auto skip_note = [&](const Note& note) {
-        if (balloon_counter.has_value() && note.type == NoteType::BALLOON_HEAD && !other_notes.empty() && note.index == other_notes[0].index) {
-            return true;
-        }
-        if (kusudama_counter.has_value() && note.type == NoteType::KUSUDAMA && !other_notes.empty() && note.index == other_notes[0].index) {
-            return true;
-        }
-        return note.type == NoteType::TAIL;
-    };
-
-    // nullopt = note not visible yet (sudden command); otherwise screen position
-    auto note_position = [&](const Note& note) -> std::optional<std::pair<float, float>> {
-        float x_position, y_position;
-        if (note.sudden_appear_ms.has_value() && note.sudden_moving_ms.has_value()) {
-            double appear_ms = note.hit_ms - note.sudden_appear_ms.value();
-            double moving_start_ms = note.hit_ms - note.sudden_moving_ms.value();
-
-            if (current_ms < appear_ms) {
-                return std::nullopt;
-            }
-
-            double effective_ms = (current_ms < moving_start_ms) ? moving_start_ms : current_ms;
-
-            x_position = get_position_x(note, effective_ms);
-            y_position = get_position_y(note, current_ms);
-        } else {
-            x_position = get_position_x(note, current_ms);
-            y_position = get_position_y(note, current_ms);
-        }
-        return std::make_pair(x_position + judge_x, y_position + judge_y + y);
-    };
-
-    // Two passes: all note bodies, then all moji. Alternating between note
-    // and moji textures per note flushes the sprite batch on every switch;
-    // grouped by texture the whole lane draws in a few batches
-    for (auto it = draw_note_buffer.rbegin(); it != draw_note_buffer.rend(); ++it) {
-        auto& note = *it;
-        if (skip_note(note)) continue;
-        auto pos = note_position(note);
-        if (!pos) continue;
-
-        if (note.color.has_value()) {
-            draw_drumroll(current_ms, y, note, current_eighth, false);
-        } else if (note.type == NoteType::BALLOON_HEAD) {
-            draw_balloon(current_ms, y, note, current_eighth, false);
-        } else if (note.display) {
-            tex.draw_texture(note_tex_ids[(int)note.type], {.frame=current_eighth % 2, .center=true, .x=pos->first - (tex.textures[NOTES::_9]->width/2.0f), .y=pos->second+tex.skin_config[SC::NOTES].y});
-        }
-    }
-
-    for (auto it = draw_note_buffer.rbegin(); it != draw_note_buffer.rend(); ++it) {
-        auto& note = *it;
-        if (skip_note(note)) continue;
-        auto pos = note_position(note);
-        if (!pos) continue;
-
-        if (note.color.has_value()) {
-            draw_drumroll(current_ms, y, note, current_eighth, true);
-        } else if (note.type == NoteType::BALLOON_HEAD) {
-            draw_balloon(current_ms, y, note, current_eighth, true);
-        } else {
-            tex.draw_texture(NOTES::MOJI, {.frame=note.moji, .x=pos->first - (tex.textures[NOTES::MOJI]->width/2.0f), .y=tex.skin_config[SC::MOJI].y + pos->second});
-        }
-    }
 }
 
 void Player::draw_song_timer(double current_ms, float y) {
-    float progress = current_ms / end_time;
-    float width = tex.skin_config[SC::SONG_TIMER].width * std::max(std::min(progress, 1.0f), 0.0f);
-    ray::DrawRectangle(tex.skin_config[SC::SONG_TIMER].x, y + tex.skin_config[SC::SONG_TIMER].y, width, tex.skin_config[SC::SONG_TIMER].height, ray::Color(0, 255, 158, 255));
-    tex.draw_texture(LANE::TIMER, {.y=y});
 }
 
 void Player::draw_modifiers(float y) {
-
-    if (score_method == ScoreMethod::SHINUCHI) {
-        tex.draw_texture(LANE::MOD_SHINUCHI, {.y=y});
-    }
-
-    if (modifiers.speed >= 40) {
-        tex.draw_texture(LANE::MOD_YONBAI, {.y=y});
-    } else if (modifiers.speed >= 30) {
-        tex.draw_texture(LANE::MOD_SANBAI, {.y=y});
-    } else if (modifiers.speed > 10) {
-        tex.draw_texture(LANE::MOD_BAISAKU, {.y=y});
-    }
-
-    if (modifiers.display) {
-        tex.draw_texture(LANE::MOD_DORON, {.y=y});
-    }
-    if (modifiers.inverse) {
-        tex.draw_texture(LANE::MOD_ABEKOBE, {.y=y});
-    }
-    if (modifiers.random == 2) {
-        tex.draw_texture(LANE::MOD_DETARAME, {.y=y});
-    } else if (modifiers.random == 1) {
-        tex.draw_texture(LANE::MOD_KIMAGURE, {.y=y});
-    }
 }
 
 void Player::draw_lane_cover(float y) {
-    tex.draw_texture(lane_cover_tex_id, {.y=y});
-    if (is_dan) tex.draw_texture(LANE::DAN_LANE_COVER, {.y=y});
 }
 
 
 void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
-    tex.draw_texture(LANE::DRUM, {.y=y});
-    if (ending_anim.has_value()) {
-        std::visit([](auto& anim) { anim.draw(); }, ending_anim.value());
-    }
-
-    for (auto& anim : draw_drum_hit_list) {
-        anim->draw(y);
-    }
-    for (NoteArc& anim : draw_arc_list) {
-        anim.draw(y, mask_shader);
-    }
-    for (GaugeHitEffect& anim : gauge_hit_effect) {
-        anim.draw(y);
-    }
-    draw_modifiers(y);
-
-    combo_display.draw(y);
-    if (combo_announce.has_value()) {
-        combo_announce->draw(y + (tex.skin_config[SC::COMBO_ANNOUNCE_P2_Y_OFFSET].y * is_2p));
-    }
-    tex.draw_texture(lane_icon_tex_id, {.y=y, .index=is_2p});
-    if (is_dan) {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=6, .y=y});
-    } else {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=difficulty, .y=y, .index=is_2p});
-    }
-    if (judge_counter.has_value()) {
-        judge_counter->draw();
-    }
-
-    if (modifiers.auto_play) {
-        tex.draw_texture(tex.get_enum("lane/auto_icon_" + global_data.config->general.language), {.y=y, .index=is_2p});
-    } else {
-        if (is_2p) {
-            nameplate.draw(tex.skin_config[SC::GAME_NAMEPLATE_2P].x, y + tex.skin_config[SC::GAME_NAMEPLATE_2P].y);
-        } else {
-            nameplate.draw(tex.skin_config[SC::GAME_NAMEPLATE_1P].x, y + tex.skin_config[SC::GAME_NAMEPLATE_1P].y);
-        }
-    }
-    if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
-    } else {
-        if (is_2p) {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
-        } else {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P1].x, y + tex.skin_config[SC::GAME_CHARA_P1].y);
-        }
-    }
-
-    if (drumroll_counter.has_value()) {
-        drumroll_counter->draw(y + (tex.skin_config[SC::COMBO_ANNOUNCE_P2_Y_OFFSET].y * is_2p));
-    }
-    if (balloon_counter.has_value()) {
-        balloon_counter->draw(y);
-    }
-    if (kusudama_counter.has_value()) {
-        kusudama_counter->draw();
-    }
-    score_counter.draw(y);
-    for (ScoreCounterAnimation& anim : base_score_list) {
-        anim.draw(y);
-    }
-    if (current_lyric.has_value()) {
-        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5))});
-    }
 }
 
 void Player::seek_to(double resume_time) {

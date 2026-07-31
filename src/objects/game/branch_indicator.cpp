@@ -42,17 +42,4 @@ void BranchIndicator::level_down(BranchDifficulty difficulty) {
 }
 
 void BranchIndicator::draw(float y) {
-    if (difficulty == BranchDifficulty::EXPERT) {
-        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
-    }
-    if (difficulty == BranchDifficulty::MASTER) {
-        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
-    }
-
-    std::string level_texture = direction == -1 ? "level_down" : "level_up";
-    tex.draw_texture(tex.get_enum("branch/" + (level_texture)), {.scale = (float)level_scale->attribute, .center = true, .y=y, .fade = level_fade->attribute});
-
-    tex.draw_texture(tex.get_enum("branch/" + (branch_diff_to_string(diff_2))), {.y = y + (float)(diff_down->attribute - diff_up->attribute) * direction, .fade = diff_fade->attribute});
-
-    tex.draw_texture(tex.get_enum("branch/" + (branch_diff_to_string(difficulty))), {.y = y + (float)(diff_up->attribute * (direction * -1)) - (tex.skin_config[SC::BRANCH_INDICATOR_Y_OFFSET].y * direction * -1), .fade = 1 - diff_fade->attribute});
 }

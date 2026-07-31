@@ -5,10 +5,8 @@
 #include "../enums.h"
 #include "result_crown.h"
 #include "score_animator.h"
-#include "../../libs/script.h"
 
-class ResultPlayer : public LuaScript {
-    sol::protected_function fn_update, fn_draw, fn_draw_gauge;
+class ResultPlayer {
     PlayerNum player_num;
     bool has_2p = false;
     bool is_2p  = false;

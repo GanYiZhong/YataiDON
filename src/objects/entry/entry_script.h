@@ -1,18 +1,7 @@
 #pragma once
 #include "../../libs/script.h"
 
-class EntryScript : public LuaScript {
-private:
-    sol::protected_function fn_update;
-    sol::protected_function fn_start_side_select;
-    sol::protected_function fn_restart_side_select;
-    sol::protected_function fn_get_side_select_fade;
-    sol::protected_function fn_draw_background;
-    sol::protected_function fn_draw_side_select;
-    sol::protected_function fn_draw_side_select_buttons;
-    sol::protected_function fn_draw_footer;
-    sol::protected_function fn_draw_player_entry;
-
+class EntryScript {
 public:
     EntryScript();
     void update(double current_ms);

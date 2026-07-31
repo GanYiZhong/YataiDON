@@ -78,41 +78,6 @@ void NoteArc::update(double current_ms) {
 }
 
 void NoteArc::draw(float y, ray::Shader mask_shader) {
-    if (is_balloon) {
-        std::shared_ptr<TextureObject> rainbow = tex.textures[BALLOON::RAINBOW];
-        float rainbow_height;
-        if (player_num == PlayerNum::P2) {
-            rainbow_height = -rainbow->height;
-        } else {
-            rainbow_height = rainbow->height;
-        }
-        float trail_length_ratio = 0.5f;
-        float trail_start_progress = std::max(0.0f, current_progress - trail_length_ratio);
-        float trail_end_progress = current_progress;
-
-        if (trail_end_progress > trail_start_progress) {
-            float crop_start_x = int(trail_start_progress * rainbow->width);
-            float crop_end_x = int(trail_end_progress * rainbow->width);
-            float crop_width = crop_end_x - crop_start_x;
-
-            if (crop_width > 0) {
-                ray::Rectangle src = {crop_start_x, 0, crop_width, rainbow_height};
-                Mirror mirror;
-                float y_pos;
-                if (player_num == PlayerNum::P2) {
-                    mirror = Mirror::VERTICAL;
-                    y_pos = tex.skin_config[SC::NOTE_ARC_BALLOON_P2_Y].y;
-                } else {
-                    mirror = Mirror::NONE;
-                    y_pos = 0;
-                }
-                ray::BeginShaderMode(mask_shader);
-                tex.draw_texture(BALLOON::RAINBOW_MASK, {.mirror=mirror, .x=crop_start_x, .y=y + y_pos, .x2=-rainbow->width + crop_width, .src=src});
-                ray::EndShaderMode();
-            }
-        }
-    }
-    tex.draw_texture(tex.get_enum("notes/" + (std::to_string((int)note_type))), {.x=x_i, .y=y + y_i});
 }
 
 bool NoteArc::is_finished() const {

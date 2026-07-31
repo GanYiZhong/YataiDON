@@ -2,11 +2,9 @@
 
 #include "../../libs/script.h"
 
-class CoinOverlay : public LuaScript {
-    sol::protected_function fn_update;
-    sol::protected_function fn_draw;
+class CoinOverlay {
 public:
-    CoinOverlay();
+    CoinOverlay() = default;
     void update(double current_ms);
     void draw(float x = 0, float y = 0);
 };

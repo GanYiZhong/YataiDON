@@ -123,8 +123,4 @@ void BoxManager::update(double current_time_ms, bool is_2p) {
     }
 }
 
-void BoxManager::draw() {
-    for (auto& box : boxes) {
-        box->draw(fade_out->attribute);
-    }
-}
+void BoxManager::draw() {}

@@ -2,8 +2,7 @@
 
 #include "../../libs/script.h"
 
-class BottomCharacters : public LuaScript {
-    sol::protected_function fn_start, fn_update, fn_draw, fn_is_finished;
+class BottomCharacters {
 public:
     BottomCharacters();
     void start();

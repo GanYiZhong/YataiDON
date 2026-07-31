@@ -3,7 +3,7 @@
 #include "../../libs/script.h"
 #include "../../libs/screen.h"
 
-class Box : public LuaScript {
+class Box {
 private:
     float x;
     float y;
@@ -20,8 +20,6 @@ private:
     bool moving_right;
     bool moving_up;
     bool moving_down;
-
-    sol::protected_function fn_draw;
 
 public:
     float width;

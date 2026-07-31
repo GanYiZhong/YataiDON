@@ -8,8 +8,7 @@ enum CrownType {
     CROWN_DFC   = 2
 };
 
-class ResultCrown : public LuaScript {
-    sol::protected_function fn_update, fn_draw, fn_is_settled;
+class ResultCrown {
 public:
     ResultCrown() = default;
     ResultCrown(int crown_type, bool is_2p);

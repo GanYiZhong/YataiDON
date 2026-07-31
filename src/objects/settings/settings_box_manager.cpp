@@ -92,6 +92,4 @@ void SettingsBoxManager::update(double current_time_ms) {
     }
 }
 
-void SettingsBoxManager::draw() {
-    for (auto& b : boxes) b->draw();
-}
+void SettingsBoxManager::draw() {}

@@ -45,33 +45,10 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
 
     Modifiers mods = player_data_to_modifiers(pd.value_or(PlayerData{}));
     bool is_shinuchi = global_data.config->general.score_method == ScoreMethod::SHINUCHI;
-
-    if (script_manager.lua) {
-        sol::state& lua = *script_manager.lua;
-        auto preload = [&](const char* cls, const char* script) {
-            if (lua[cls].valid()) return;
-            auto result = lua.script_file(script_manager.get_lua_script_path(script));
-            if (!result.valid()) {
-                sol::error err = result;
-                spdlog::error("Error loading {}.lua: {}", script, err.what());
-            }
-        };
-        preload("BottomCharacters",   "bottom_characters");
-        preload("ResultCrown",        "result_crown");
-        preload("ResultCrownMessage", "result_crown_message");
-        preload("HighScoreIndicator", "high_score_indicator");
-    }
-
-    if (!load("ResultPlayer", "result_player",
-              (int)player_num, is_2p, has_2p,
-              sd.result_data.gauge_length, sd.selected_difficulty, sd.selected_difficulty,
-              (int)crown_type, score_diff, is_shinuchi,
-              mods.display, mods.inverse, mods.random, mods.speed))
-        return;
-
-    fn_update     = lua_object["update"];
-    fn_draw       = lua_object["draw"];
-    fn_draw_gauge = lua_object["draw_gauge"];
+    (void)crown_type;
+    (void)score_diff;
+    (void)is_shinuchi;
+    (void)mods;
 }
 
 void ResultPlayer::update_score_animation(double current_ms, bool is_skipped) {
@@ -123,25 +100,10 @@ void ResultPlayer::update_score_animation(double current_ms, bool is_skipped) {
 }
 
 void ResultPlayer::update(double current_ms, bool fade_in_finished, bool is_skipped) {
-    if (!score_delay.has_value()) {
-        sol::optional<bool> lua_started = lua_object["fade_in_started"];
-        if (lua_started && lua_started.value()) {
-            score_delay = current_ms;
-        }
-    }
+    (void)fade_in_finished;
     update_score_animation(current_ms, is_skipped);
-    call(fn_update, "ResultPlayer:update",
-         current_ms, fade_in_finished,
-         score, good, ok, bad, max_combo, total_drumroll);
     nameplate.update(current_ms);
     chara->update(current_ms);
 }
 
-void ResultPlayer::draw() {
-    call(fn_draw, "ResultPlayer:draw");
-    chara->draw(tex.skin_config[SC::RESULT_CHARA].x,
-                tex.skin_config[SC::RESULT_CHARA].y + ((int)is_2p * tex.screen_height / 2));
-    call(fn_draw_gauge, "ResultPlayer:draw_gauge");
-    nameplate.draw(tex.skin_config[SC::RESULT_NAMEPLATE].x,
-                   tex.skin_config[SC::RESULT_NAMEPLATE].y + (is_2p * tex.skin_config[SC::RESULT_NAMEPLATE].height));
-}
+void ResultPlayer::draw() {}

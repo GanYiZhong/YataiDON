@@ -20,20 +20,11 @@ EntryPlayer::EntryPlayer(PlayerNum player_num, int side, BoxManager* box_manager
     } else {
         chara->set_don_colors(chara_default_color_1(player_id), chara_default_color_2(player_id), {249, 240, 225, 255});
     }
-
-    if (!load("EntryPlayer", "player", side)) return;
-    fn_start_animations   = lua_object["start_animations"];
-    fn_update             = lua_object["update"];
-    fn_draw_drum_back     = lua_object["draw_drum_back"];
-    fn_draw_drum_front    = lua_object["draw_drum_front"];
-    fn_is_cloud_finished  = lua_object["is_cloud_finished"];
-    fn_get_nameplate_fade = lua_object["get_nameplate_fade"];
 }
 
-void EntryPlayer::start_animations() { call(fn_start_animations, "EntryPlayer:start_animations"); }
+void EntryPlayer::start_animations() {}
 
 void EntryPlayer::update(double current_time) {
-    call(fn_update, "EntryPlayer:update", current_time);
     nameplate->update(current_time);
     indicator->update(current_time);
     chara->update(current_time);
@@ -44,38 +35,18 @@ void EntryPlayer::open_costume_menu() {
     costume_menu.emplace(player_num);
 }
 
-void EntryPlayer::draw_drum() {
-    auto pos_opt = call_r<sol::table>(fn_draw_drum_back, "EntryPlayer:draw_drum_back");
-    if (pos_opt) {
-        sol::table& pos = pos_opt.value();
-        chara->draw(pos.get<float>(1), pos.get<float>(2));
-    }
-    call(fn_draw_drum_front, "EntryPlayer:draw_drum_front");
-}
+void EntryPlayer::draw_drum() {}
 
-void EntryPlayer::draw_costume_menu() {
-    if (!costume_menu) return;
-    auto sc = (player_num == PlayerNum::P2) ? SC::ENTRY_COSTUME_MENU_2P : SC::ENTRY_COSTUME_MENU_1P;
-    auto& info = tex.skin_config[sc];
-    costume_menu->draw(info.x, info.y);
-}
+void EntryPlayer::draw_costume_menu() {}
 
-void EntryPlayer::draw_nameplate_and_indicator(float fade) {
-    if (side == 0) {
-        nameplate->draw(tex.skin_config[SC::NAMEPLATE_ENTRY_LEFT].x, tex.skin_config[SC::NAMEPLATE_ENTRY_LEFT].y, fade);
-        indicator->draw(tex.skin_config[SC::INDICATOR_ENTRY_LEFT].x, tex.skin_config[SC::INDICATOR_ENTRY_LEFT].y, fade);
-    } else {
-        nameplate->draw(tex.skin_config[SC::NAMEPLATE_ENTRY_RIGHT].x, tex.skin_config[SC::NAMEPLATE_ENTRY_RIGHT].y, fade);
-        indicator->draw(tex.skin_config[SC::INDICATOR_ENTRY_RIGHT].x, tex.skin_config[SC::INDICATOR_ENTRY_RIGHT].y, fade);
-    }
-}
+void EntryPlayer::draw_nameplate_and_indicator(float fade) {}
 
 bool EntryPlayer::is_cloud_animation_finished() {
-    return call_r<bool>(fn_is_cloud_finished, "EntryPlayer:is_cloud_finished").value_or(false);
+    return true;
 }
 
 float EntryPlayer::get_nameplate_fadein() {
-    return call_r<float>(fn_get_nameplate_fade, "EntryPlayer:get_nameplate_fade").value_or(1.0f);
+    return 1.0f;
 }
 
 void EntryPlayer::handle_input() {

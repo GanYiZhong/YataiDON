@@ -7,7 +7,7 @@
 #include "../global/chara_3d.h"
 #include "../../libs/script.h"
 
-class EntryPlayer : public LuaScript {
+class EntryPlayer {
 private:
     int side;
     BoxManager* box_manager;
@@ -16,13 +16,6 @@ private:
     std::unique_ptr<Indicator> indicator;
     std::unique_ptr<Chara3D> chara;
     int chara_index = 0;
-
-    sol::protected_function fn_start_animations;
-    sol::protected_function fn_update;
-    sol::protected_function fn_draw_drum_back;
-    sol::protected_function fn_draw_drum_front;
-    sol::protected_function fn_is_cloud_finished;
-    sol::protected_function fn_get_nameplate_fade;
 
 public:
     PlayerNum player_num;

@@ -63,35 +63,6 @@ void GaugeHitEffect::update(double current_ms) {
 }
 
 void GaugeHitEffect::draw(float y) {
-    //Main hit effect texture
-    tex.draw_texture(GAUGE::HIT_EFFECT,
-                    {.color=ray::Fade(color, fade_out->attribute),
-                    .frame=(int)texture_change->attribute,
-                    .center=true,
-                    .y=y,
-                    .x2=x2_pos,
-                    .y2=y2_pos,
-                    .origin=origin,
-                    .rotation=rotation_angle,
-                    .index=is_2p});
-
-    //Note type texture
-    SkinInfo pos_data = tex.skin_config[SC::GAUGE_HIT_EFFECT_NOTE];
-    tex.draw_texture(tex.get_enum("notes/" + (std::to_string((int)note_type))),
-        {.x=pos_data.x, .y=y+pos_data.y + (pos_data.height * is_2p), .fade=fade_out->attribute});
-
-    //Circle effect texture
-    ray::Color texture_color;
-    if (circle_fadein->is_finished) {
-        texture_color = ray::Fade(ray::WHITE, std::min(circle_fadein->attribute, fade_out->attribute));
-    } else {
-        texture_color = ray::Fade(ray::YELLOW, std::min(circle_fadein->attribute, fade_out->attribute));
-    }
-    if (is_big) {
-        tex.draw_texture(GAUGE::HIT_EFFECT_CIRCLE_BIG, {.color=texture_color, .y=y, .index=is_2p});
-    } else {
-        tex.draw_texture(GAUGE::HIT_EFFECT_CIRCLE, {.color=texture_color, .y=y, .index=is_2p});
-    }
 }
 
 bool GaugeHitEffect::is_finished() const {

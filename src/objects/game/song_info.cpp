@@ -14,15 +14,6 @@ void SongInfo::update(double current_ms) {
 }
 
 void SongInfo::draw() {
-    float text_x = tex.skin_config[SC::SONG_INFO].x;
-    float text_y = tex.skin_config[SC::SONG_INFO].y - song_title->height / 2.0f;
-    song_num->draw(text_x - song_num->width, text_y, fade->attribute);
-
-    song_title->draw({.x=text_x - song_title->width, .y=text_y, .fade=1 - fade->attribute});
-
-    if (genre < 9) {
-        tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
-    }
 }
 
 SongNum::SongNum(int song_num) {
@@ -43,5 +34,4 @@ SongNum::SongNum(int song_num) {
 }
 
 void SongNum::draw(float x, float y, float fade) {
-    text->draw({.x=x, .y=y, .fade = fade});
 }

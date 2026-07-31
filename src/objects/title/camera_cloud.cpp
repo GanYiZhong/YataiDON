@@ -19,8 +19,4 @@ void CameraCloud::update(double current_ms) {
     breathing->update(current_ms);
 }
 
-void CameraCloud::draw() {
-    tex.draw_texture(CAMERA::CAMERA_CLOUD, {.scale=(float)breathing->attribute, .center=true, .y=(float)move_up->attribute, .fade=fade_in->attribute});
-    tex.draw_texture(CAMERA::CAMERA_CLOUD_TEXT_1, {.scale=(float)breathing->attribute, .center=true, .y=(float)move_up->attribute, .fade=std::min(fade_in->attribute, 1 - text_fade->attribute)});
-    tex.draw_texture(CAMERA::CAMERA_CLOUD_TEXT_2, {.scale=(float)breathing->attribute, .center=true, .y=(float)move_up->attribute, .fade=std::min(fade_in->attribute, text_fade->attribute)});
-}
+void CameraCloud::draw() {}

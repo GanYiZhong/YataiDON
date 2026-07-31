@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-class CostumeMenu : public LuaScript {
+class CostumeMenu {
 public:
     PlayerNum player_num;
     bool is_2p = false;
@@ -24,10 +24,6 @@ public:
     std::string get_costume_name() const;
 
 private:
-    sol::protected_function fn_update;
-    sol::protected_function fn_draw_bg;
-    sol::protected_function fn_draw_fg;
-
     std::vector<ray::Texture2D> costume_icons;
     std::vector<int> costume_ids;
     bool icons_loaded = false;

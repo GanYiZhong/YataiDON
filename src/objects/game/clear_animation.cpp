@@ -58,39 +58,4 @@ void ClearAnimation::update(double current_ms) {
 }
 
 void ClearAnimation::draw() {
-    if (draw_clear_full) {
-        tex.draw_texture(ENDING_ANIM::CLEAR, {
-            .index = (int)is_2p
-        });
-    } else {
-        for (int i = 4; i >= 0; i--) {
-            tex.draw_texture(ENDING_ANIM::CLEAR_SEPARATED, {
-                .frame = i,
-                .x = (float)(i * tex.skin_config[SC::CLEAR_ANIMATION_X_SPACING].x),
-                .y = (float)(-clear_separate_stretch[i]->attribute),
-                .y2 = (float)(clear_separate_stretch[i]->attribute),
-                .fade = (float)(clear_separate_fade_in[i]->attribute),
-                .index = (int)is_2p
-            });
-        }
-    }
-
-    tex.draw_texture(ENDING_ANIM::CLEAR_HIGHLIGHT, {
-        .fade = (float)(clear_highlight_fade_in->attribute),
-        .index = (int)is_2p
-    });
-
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_l_" + name), {
-        .frame = frame,
-        .x = (float)(-bachio_move_out->attribute),
-        .fade = (float)(bachio_fade_in->attribute),
-        .index = (int)is_2p
-    });
-
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_r_" + name), {
-        .frame = frame,
-        .x = (float)(bachio_move_out->attribute),
-        .fade = (float)(bachio_fade_in->attribute),
-        .index = (int)is_2p
-    });
 }

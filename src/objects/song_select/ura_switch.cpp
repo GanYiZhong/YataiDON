@@ -19,6 +19,4 @@ void UraSwitchAnimation::update(double current_ms) {
     fade_out->update(current_ms);
 }
 
-void UraSwitchAnimation::draw() {
-    tex.draw_texture(DIFF_SELECT::URA_SWITCH, {.frame=(int)texture_change->attribute, .fade=fade_out->attribute});
-}
+void UraSwitchAnimation::draw() {}

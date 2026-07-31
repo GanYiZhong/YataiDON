@@ -12,11 +12,6 @@ void Fireworks::update(double current_ms) {
 }
 
 void Fireworks::draw() {
-    if (!explosion_anim->is_finished) {
-        for (int i = 0; i < 5; i++) {
-            tex.draw_texture(GOGO_TIME::EXPLOSION, {.frame = (int)explosion_anim->attribute, .index = i});
-        }
-    }
 }
 
 bool Fireworks::is_finished() {
