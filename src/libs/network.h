@@ -26,6 +26,9 @@ public:
     std::string register_user(const std::string& username);
     void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score);
 
+    bool check_import_requested(const std::string& access_code);
+    void clear_import_flag(const std::string& access_code);
+
 private:
     void check_heartbeat();
 

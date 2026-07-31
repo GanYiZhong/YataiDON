@@ -303,6 +303,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (!global_data.config->general.access_code.empty() &&
+        network.check_import_requested(global_data.config->general.access_code)) {
+        spdlog::info("hiroba requested a score import, exporting scores.db");
+        scores_manager.export_to_hiroba(global_data.config->general.access_code, scores_manager.player_1);
+        network.clear_import_flag(global_data.config->general.access_code);
+    }
+
     Screens initial_screen = check_args(argc, argv);
 
     double target_fps = global_data.config->video.target_fps;

@@ -54,6 +54,7 @@ public:
     PlayerData player_2_data;
     ScoresManager(const fs::path& db_path);
     void py_taiko_import(const fs::path& old_db_path);
+    void export_to_hiroba(const std::string& access_code, int player_id);
     std::optional<Score> get_score(std::string& hash, int difficulty, int player_id);
     Score save_score(std::string& hash, int difficulty, int player_id, Score score);
     void add_path_binding(const fs::path& path, const std::array<std::string, 5>& hashes);

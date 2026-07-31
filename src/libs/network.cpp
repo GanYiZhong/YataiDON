@@ -1,5 +1,6 @@
 #include "network.h"
 #include "scores.h"
+#include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
 
 NetworkClient network;
@@ -13,6 +14,32 @@ void NetworkClient::check_heartbeat() {
         cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
         cpr::Timeout{2000}
     );
+}
+
+bool NetworkClient::check_import_requested(const std::string& access_code) {
+    cpr::Response response = cpr::Get(
+        cpr::Url{std::string(NETWORK_URL) + "/user"},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    return doc.HasMember("import_requested") && doc["import_requested"].IsBool()
+        && doc["import_requested"].GetBool();
+}
+
+void NetworkClient::clear_import_flag(const std::string& access_code) {
+    cpr::Response response = cpr::Post(
+        cpr::Url{std::string(NETWORK_URL) + "/clear_import_flag"},
+        cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+    );
+    if (response.status_code != 200) {
+        spdlog::error("Failed to clear import flag: HTTP {} - {}", response.status_code, response.text);
+    }
 }
 
 std::string NetworkClient::register_user(const std::string& username) {
@@ -76,6 +103,8 @@ void NetworkClient::update(double current_ms) {
 
 std::string NetworkClient::register_user(const std::string&) { return ""; }
 void NetworkClient::submit_score(std::string&, int, const std::string&, Score) {}
+bool NetworkClient::check_import_requested(const std::string&) { return false; }
+void NetworkClient::clear_import_flag(const std::string&) {}
 void NetworkClient::update(double) {}
 
 #endif

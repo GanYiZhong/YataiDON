@@ -1,5 +1,6 @@
 #include "scores.h"
 #include "color_utils.h"
+#include "network.h"
 #include "song_parser.h"
 #include <numeric>
 
@@ -298,6 +299,41 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
     spdlog::info("py_taiko_import: done — {} imported, {} skipped", imported, skipped);
 
     if (imported > 0) load_score_cache();
+}
+
+void ScoresManager::export_to_hiroba(const std::string& access_code, int player_id) {
+    sqlite3_stmt* stmt;
+    const char* query =
+        "SELECT hash, difficulty, crown, rank, score, good, ok, bad, drumroll, max_combo "
+        "FROM scores WHERE player_id = ? AND hash IS NOT NULL AND hash != '';";
+    if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
+        spdlog::error("export_to_hiroba: failed to prepare statement: {}", sqlite3_errmsg(db_fsd));
+        return;
+    }
+    sqlite3_bind_int(stmt, 1, player_id);
+
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* hash_text = sqlite3_column_text(stmt, 0);
+        std::string hash = hash_text ? reinterpret_cast<const char*>(hash_text) : "";
+        if (hash.empty()) continue;
+
+        Score s;
+        int difficulty = sqlite3_column_int(stmt, 1);
+        s.crown     = static_cast<Crown>(sqlite3_column_int(stmt, 2));
+        s.rank      = static_cast<Rank>(sqlite3_column_int(stmt, 3));
+        s.score     = sqlite3_column_int(stmt, 4);
+        s.good      = sqlite3_column_int(stmt, 5);
+        s.ok        = sqlite3_column_int(stmt, 6);
+        s.bad       = sqlite3_column_int(stmt, 7);
+        s.drumroll  = sqlite3_column_int(stmt, 8);
+        s.max_combo = sqlite3_column_int(stmt, 9);
+
+        network.submit_score(hash, difficulty, access_code, s);
+        count++;
+    }
+    sqlite3_finalize(stmt);
+    spdlog::info("export_to_hiroba: submitted {} scores", count);
 }
 
 std::optional<Score> ScoresManager::get_score(std::string& hash, int difficulty, int player_id) {
