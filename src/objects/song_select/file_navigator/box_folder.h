@@ -26,6 +26,8 @@ public:
 
     void refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files);
 
+    const char* lua_kind() const override { return "folder"; }
+
 protected:
     void draw_open_bg(float fade);
     void draw_open_fg(float fade);

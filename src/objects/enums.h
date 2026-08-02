@@ -80,6 +80,29 @@ enum class GenreIndex : int {
     DIFFICULTY  = 14
 };
 
+const std::map<GenreIndex, int> GENRE_TO_REF_FRAME = {
+    { GenreIndex::TUTORIAL,    0 },
+    { GenreIndex::JPOP,        1 },
+    { GenreIndex::ANIME,       2 },
+    { GenreIndex::VOCALOID,    8 },
+    { GenreIndex::CHILDREN,    7 },
+    { GenreIndex::VARIETY,     6 },
+    { GenreIndex::CLASSICAL,   5 },
+    { GenreIndex::GAME,        3 },
+    { GenreIndex::NAMCO,       4 },
+    { GenreIndex::DEFAULT,     0 },
+    { GenreIndex::RECOMMENDED, 0 },
+    { GenreIndex::FAVORITE,    0 },
+    { GenreIndex::RECENT,      9 },
+    { GenreIndex::DAN,         0 },
+    { GenreIndex::DIFFICULTY,  0 },
+};
+
+inline int genre_to_ref_frame(GenreIndex genre) {
+    auto it = GENRE_TO_REF_FRAME.find(genre);
+    return it != GENRE_TO_REF_FRAME.end() ? it->second : 0;
+}
+
 const std::map<std::string, TextureIndex> TEXTURE_MAP = {
     {"VOCALOID",    TextureIndex::VOCALOID},
     {"ボーカロイド", TextureIndex::VOCALOID},

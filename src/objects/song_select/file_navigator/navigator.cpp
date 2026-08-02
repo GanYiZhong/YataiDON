@@ -2,6 +2,7 @@
 #include "box_song_osu.h"
 #include "box_back.h"
 #include "color_utils.h"
+#include "../song_select_script.h"
 #include "../../../libs/filesystem.h"
 #include <random>
 
@@ -909,11 +910,15 @@ void Navigator::set_positions(bool init, float duration) {
         float position;
         if (vertical_gallery) {
             float base_spacing = 120 * tex.screen_scale;
-            float center_y     = 300 * tex.screen_scale;
-            float fixed_x      = 594 * tex.screen_scale;
+            float center_y     = 360 * tex.screen_scale;
+            float fixed_x      = 640 * tex.screen_scale;
+            float expand_gap   = 90 * tex.screen_scale;
             position = center_y + offset * base_spacing;
+            if (offset > 0)      position += expand_gap;
+            else if (offset < 0) position -= expand_gap;
             items[i]->vertical   = true;
-            items[i]->cross_pos  = fixed_x;
+            float horizontal_spacing = 30 * tex.screen_scale;
+            items[i]->cross_pos = fixed_x + offset * horizontal_spacing;
             if (init || std::abs(position - items[i]->position) >= tex.screen_height) {
                 items[i]->set_position(position);
             } else {
@@ -966,7 +971,7 @@ void Navigator::enter_diff_select() {
         float duration = 800;
         float distance = (150 * tex.screen_scale);
         if (vertical_gallery) {
-            float center_y = 300 * tex.screen_scale;
+            float center_y = 360 * tex.screen_scale;
             bool on_screen = box->position > -100 && box->position < tex.screen_height + 100;
             if (on_screen && i != open_index) {
                 if (box->position < center_y) {
@@ -1081,8 +1086,9 @@ float Navigator::get_diff_fade_in() {
 }
 
 void Navigator::draw_background() {
-    int width = tex.textures[BOX::BACKGROUND]->width;
+    if (script && script->draw_background(this)) return;
 
+    int width = tex.textures[BOX::BACKGROUND]->width;
     for (int i = 0; i < width * 4; i += width) {
         tex.draw_texture(BOX::BACKGROUND, {.frame=(int)last_bg_genre_index, .x=(float)(i - background_move->attribute)});
         tex.draw_texture(BOX::BACKGROUND, {.frame=(int)bg_genre_index,  .x=(float)(i - background_move->attribute), .fade=1.0f - background_fade_change->attribute});
@@ -1111,9 +1117,17 @@ void Navigator::draw() {
             ? (box->position > -100 && box->position < tex.screen_height + 100)
             : (box->position > -100 && box->position < tex.screen_width  + 100);
         if (on_screen) {
-            box->draw();
+            if (!script || !script->draw_box(box.get()))
+                box->draw();
         }
     }
+}
+
+void Navigator::draw_diff_select_bg() {
+    if (open_index >= items.size()) return;
+    BaseBox* box = items[open_index].get();
+    if (!script || !script->draw_box_bg(box))
+        box->draw_diff_select_bg();
 }
 
 void Navigator::draw_score_history() {

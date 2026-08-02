@@ -5,6 +5,8 @@
 #include <queue>
 #include <unordered_map>
 
+class SongSelectScript;
+
 struct CourseStats {
     int total       = 0;
     int full_combos = 0;
@@ -98,6 +100,8 @@ public:
     fs::path current_path;
     std::string current_search;
 
+    SongSelectScript* script = nullptr;
+
     void join_loader();
     void preload(std::vector<fs::path> songs_paths);
     void init(std::vector<fs::path> songs_paths);
@@ -128,7 +132,13 @@ public:
     void update(double current_ms);
     void draw_background();
     void draw();
+    void draw_diff_select_bg();
     void draw_score_history();
+
+    MoveAnimation* background_move_anim() const { return background_move; }
+    FadeAnimation* background_fade_anim() const { return background_fade_change; }
+    int bg_genre_frame() const { return genre_to_ref_frame(bg_genre_index); }
+    int last_bg_genre_frame() const { return genre_to_ref_frame(last_bg_genre_index); }
 };
 
 extern Navigator navigator;

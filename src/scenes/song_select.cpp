@@ -10,6 +10,7 @@ void SongSelectScreen::on_screen_start() {
 
     diff_fade_out = (FadeAnimation*)tex.get_animation(2);
     script = std::make_unique<SongSelectScript>();
+    navigator.script = script.get();
 
     shader = load_shader("shader/dummy.vs", "shader/colortransform.fs");
 
@@ -27,6 +28,7 @@ void SongSelectScreen::on_screen_start() {
     navigator.refresh_scores();
 
     player = std::make_unique<SongSelectPlayer>(global_data.player_num);
+    player->script = script.get();
 
     indicator = std::make_unique<Indicator>(Indicator::State::SELECT);
     song_num = std::make_unique<SongNum>(global_data.songs_played);
@@ -200,6 +202,11 @@ void SongSelectScreen::draw_overlays() {
 void SongSelectScreen::draw() {
     navigator.draw_background();
     player->draw_background_diffs(state);
+    bool in_diff_select = player->selected_song && state == SongSelectState::SONG_SELECTED;
+    if (in_diff_select) {
+        navigator.draw_diff_select_bg();
+        player->try_lua_selector(false, navigator.get_diff_fade_in());
+    }
     navigator.draw();
     script->draw_footer();
 

@@ -2,6 +2,7 @@
 #include "global_data.h"
 #include "text.h"
 #include "audio.h"
+#include "../objects/song_select/file_navigator/box_lua_bindings.h"
 #include <spdlog/spdlog.h>
 
 static DrawTextureParams parse_draw_params(sol::optional<sol::table> params_table) {
@@ -506,6 +507,14 @@ void ScriptManager::register_lua_bindings() {
         return get_current_ms();
     });
 
+    tex.set_function("player_num", []() -> int {
+        return (int)global_data.player_num;
+    });
+
+    tex.set_function("display_bpm", []() -> bool {
+        return global_data.config->general.display_bpm;
+    });
+
     sol::table audio_tbl = lua.create_table();
 
     audio_tbl.set_function("play_sound", [](const std::string& name, sol::optional<std::string> preset_str) {
@@ -525,6 +534,8 @@ void ScriptManager::register_lua_bindings() {
     });
 
     lua["audio"] = audio_tbl;
+
+    register_song_select_lua_bindings(lua);
 }
 
 ScriptManager script_manager;
