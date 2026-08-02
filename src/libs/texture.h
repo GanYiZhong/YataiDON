@@ -144,6 +144,29 @@ public:
         unload_textures();
     }
 
+    // Non-Graphics per-skin asset roots (Sounds/Videos/Models) have no inheritance
+    // mechanism of their own — these let those subsystems reuse the same parent-skin
+    // knowledge init() already parsed from skin_config.json's screen.parent, instead
+    // of every skin needing its own physical copy of everything.
+    fs::path skin_root()   const { return graphics_path.parent_path(); }
+    fs::path parent_root() const { return parent_graphics_path.parent_path(); }
+    bool has_parent_skin() const { return parent_graphics_path != graphics_path; }
+
+    // relative_path is skin-root-relative, e.g. "Sounds/don.wav", "Videos/op_videos".
+    // Prefers the child skin's own copy; falls back to the parent's if the child
+    // doesn't have it. Returns the child path unchanged if neither exists (same
+    // "let the caller's own missing-file handling deal with it" behavior as before
+    // this existed).
+    fs::path resolve_skin_path(const fs::path& relative_path) const {
+        fs::path child = skin_root() / relative_path;
+        if (fs::exists(child)) return child;
+        if (has_parent_skin()) {
+            fs::path parent = parent_root() / relative_path;
+            if (fs::exists(parent)) return parent;
+        }
+        return child;
+    }
+
     void unload_textures();
 
     BaseAnimation* get_animation(const int id, bool is_copy = false);

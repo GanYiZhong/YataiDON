@@ -135,9 +135,10 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
         use_render_textures = false;
 
     this->mirror = mirror;
-    fs::path root_path = fs::path("Skins") / global_data.config->paths.skin / "Models";
-    fs::path model_path = root_path / "cos" / (model_name + ".glb");
-    fs::path anim_path = root_path / "animations.glb";
+    // Models has no inheritance mechanism of its own (unlike Graphics) — each asset
+    // resolves against the child skin first, falling back to the parent's.
+    fs::path model_path = tex.resolve_skin_path(fs::path("Models/cos") / (model_name + ".glb"));
+    fs::path anim_path = tex.resolve_skin_path("Models/animations.glb");
     cos_model = ray::LoadModel(model_path.string().c_str());
     model_valid = cos_model.meshCount > 0;
     for (int m = 0; m < cos_model.meshCount; m++) {
@@ -173,7 +174,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
     reindex_animations(cos_model, glb_model, anims, anim_count);
     ray::UnloadModel(glb_model);
 
-    fs::path face_dir = root_path / "face";
+    fs::path face_dir = tex.resolve_skin_path("Models/face");
     load_face_textures(face_dir);
 
     fs::path skin_anim_path = fs::path("Skins") / global_data.config->paths.skin

@@ -15,12 +15,10 @@ void TitleScreen::on_screen_start() {
 void TitleScreen::load_videos() {
     op_video_list.clear();
     attract_video_list.clear();
-    fs::path videos_path = fs::path("Skins" / global_data.config->paths.skin / "Videos");
-    if (!fs::exists(videos_path)) {
-        spdlog::error("Error: videos folder not found");
-        return;
-    }
-    fs::path op_path = videos_path / "op_videos";
+    // Videos has no inheritance mechanism of its own (unlike Graphics) — resolve each
+    // subfolder against the child skin first, falling back to the parent's (see
+    // screen.parent in skin_config.json / TextureWrapper::resolve_skin_path).
+    fs::path op_path = tex.resolve_skin_path("Videos/op_videos");
     if (fs::exists(op_path)) {
         for (const auto& entry : fs::recursive_directory_iterator(op_path)) {
             if (entry.path().extension() == ".mp4")
@@ -30,7 +28,7 @@ void TitleScreen::load_videos() {
         spdlog::warn("op_videos folder not found");
     }
 
-    fs::path attract_path = videos_path / "attract_videos";
+    fs::path attract_path = tex.resolve_skin_path("Videos/attract_videos");
     if (fs::exists(attract_path)) {
         for (const auto& entry : fs::recursive_directory_iterator(attract_path)) {
             if (entry.path().extension() == ".mp4")

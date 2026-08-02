@@ -25,7 +25,7 @@ void CostumeMenu::load_costume_icons() {
     if (icons_loaded) return;
     icons_loaded = true;
 
-    fs::path dir = fs::path("Skins") / global_data.config->paths.skin / "Models/costume_icon";
+    fs::path dir = tex.resolve_skin_path("Models/costume_icon");
     if (!fs::exists(dir)) return;
 
     std::vector<std::pair<int, fs::path>> entries;

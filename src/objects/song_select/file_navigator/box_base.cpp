@@ -1,5 +1,6 @@
 #include "box_base.h"
 #include "color_utils.h"
+#include <string_view>
 
 BaseBox::BaseBox(const fs::path& path, const BoxDef& box_def)
     : path(path), texture_index(box_def.texture_index),
@@ -62,6 +63,7 @@ void BaseBox::expand_box() {
     yellow_box.emplace();
     yellow_box_opened = false;
     open_anim->start();
+    bar_open_started_at = get_current_ms();
 }
 
 void BaseBox::close_box() {
@@ -167,9 +169,10 @@ void BaseBox::draw_diff_select() {
 
 void BaseBox::draw()
 {
-    if (yellow_box.has_value() && yellow_box->is_diff_select) {
+    std::string_view state = draw_state();
+    if (state == "diff_select") {
         draw_diff_select();
-    } else if (yellow_box.has_value() && yellow_box_opened) {
+    } else if (state == "open") {
         draw_open();
     } else {
         draw_closed();

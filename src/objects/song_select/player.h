@@ -7,6 +7,8 @@
 #include "ura_switch.h"
 #include "diff_sort.h"
 
+class SongSelectScript;
+
 class SongSelectPlayer {
 public:
     PlayerNum player_num;
@@ -38,6 +40,9 @@ public:
     std::unique_ptr<Chara3D> chara;
     Nameplate nameplate;
 
+    SongSelectScript* script = nullptr;
+    bool selector_handled_by_lua = false;
+
     SongSelectPlayer(PlayerNum player_num);
 
     void update(double current_time);
@@ -50,6 +55,7 @@ public:
     std::optional<std::string> handle_input_search();
 
     void draw_selector(bool is_half, float fade_in);
+    void try_lua_selector(bool is_half, float fade_in);
     void draw_background_diffs(SongSelectState state);
     void draw(SongSelectState state, bool is_half, float diff_fade_in);
 

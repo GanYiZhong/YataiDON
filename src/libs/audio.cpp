@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "texture.h"
 #ifdef __ANDROID__
 extern "C" {
 #include <libavformat/avformat.h>
@@ -771,34 +772,15 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
 }
 
 void AudioEngine::load_screen_sounds(const std::string& screen_name) {
-    fs::path path = sounds_path / screen_name;
-    if (!fs::exists(path)) {
-        spdlog::warn("Sounds for screen {} not found", screen_name);
-        return;
-    }
-
-    load_sound(sounds_path / "don.wav", "don");
-    load_sound(sounds_path / "ka.wav",  "kat");
-
-    try {
-        for (const auto& entry : fs::directory_iterator(path)) {
-            if (entry.is_directory()) {
-                for (const auto& file : fs::directory_iterator(entry.path())) {
-                    load_sound(file.path(),
-                                entry.path().stem().string() + "_" + file.path().stem().string());
-                }
-            } else if (entry.is_regular_file()) {
-                load_sound(entry.path(), entry.path().stem().string());
-            }
-        }
-    } catch (const fs::filesystem_error& e) {
-        spdlog::error("load_screen_sounds: error scanning {}: {}", path.string(), e.what());
-    }
-
-    fs::path global_path = sounds_path / "global";
-    if (fs::exists(global_path)) {
+    // Sounds has no inheritance mechanism of its own (unlike Graphics), so a child
+    // skin missing a sound folder would previously get nothing at all. Load the
+    // parent skin's copy first (if any), then the child's on top — same "child
+    // overrides, parent fills gaps" order as TextureWrapper::load_folder — so a
+    // child skin only needs to ship the sounds it actually wants to change.
+    auto scan = [&](const fs::path& dir) {
+        if (!fs::exists(dir)) return;
         try {
-            for (const auto& entry : fs::directory_iterator(global_path)) {
+            for (const auto& entry : fs::directory_iterator(dir)) {
                 if (entry.is_directory()) {
                     for (const auto& file : fs::directory_iterator(entry.path())) {
                         load_sound(file.path(),
@@ -809,9 +791,29 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            spdlog::error("load_screen_sounds: error scanning global sounds: {}", e.what());
+            spdlog::error("load_screen_sounds: error scanning {}: {}", dir.string(), e.what());
         }
+    };
+
+    bool has_parent = tex.has_parent_skin();
+    fs::path parent_sounds = tex.parent_root() / "Sounds";
+
+    fs::path path = sounds_path / screen_name;
+    if (!fs::exists(path) && !(has_parent && fs::exists(parent_sounds / screen_name))) {
+        spdlog::warn("Sounds for screen {} not found", screen_name);
+        return;
     }
+
+    if (has_parent) load_sound(parent_sounds / "don.wav", "don");
+    load_sound(sounds_path / "don.wav", "don");
+    if (has_parent) load_sound(parent_sounds / "ka.wav", "kat");
+    load_sound(sounds_path / "ka.wav", "kat");
+
+    if (has_parent) scan(parent_sounds / screen_name);
+    scan(path);
+
+    if (has_parent) scan(parent_sounds / "global");
+    scan(sounds_path / "global");
 }
 
 void AudioEngine::unload_sound(const std::string& name) {

@@ -21,7 +21,7 @@ struct Chara3DFixture : public SandboxScreen::Fixture {
     Chara3DFixture() {
         name = "Chara3D";
         screen = "global";
-        fs::path models_dir = fs::path("Skins") / global_data.config->paths.skin / "Models/cos";
+        fs::path models_dir = tex.resolve_skin_path("Models/cos");
         if (fs::exists(models_dir)) {
             for (auto& entry : fs::directory_iterator(models_dir)) {
                 if (entry.path().extension() == ".glb")

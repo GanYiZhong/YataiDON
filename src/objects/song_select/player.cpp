@@ -1,7 +1,12 @@
 #include "player.h"
+#include "song_select_script.h"
 #include "../../libs/audio.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
+
+void SongSelectPlayer::try_lua_selector(bool is_half, float fade_in) {
+    selector_handled_by_lua = script && script->draw_selector(this, is_half, fade_in);
+}
 
 SongSelectPlayer::SongSelectPlayer(PlayerNum player_num)
     : player_num(player_num)
@@ -406,9 +411,10 @@ void SongSelectPlayer::draw_background_diffs(SongSelectState state) {
 }
 
 void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade_in) {
-    if (selected_song && state == SongSelectState::SONG_SELECTED) {
+    if (selected_song && state == SongSelectState::SONG_SELECTED && !selector_handled_by_lua) {
         draw_selector(is_half, diff_fade_in);
     }
+    selector_handled_by_lua = false;
 
     float offset = 0.0f;
     if (neiro_selector.has_value()) {
