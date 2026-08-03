@@ -1,5 +1,6 @@
 #include "network.h"
 #include "scores.h"
+#include "color_utils.h"
 #include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
 
@@ -28,6 +29,30 @@ bool NetworkClient::check_import_requested(const std::string& access_code) {
     if (doc.Parse(response.text.c_str()).HasParseError()) return false;
     return doc.HasMember("import_requested") && doc["import_requested"].IsBool()
         && doc["import_requested"].GetBool();
+}
+
+bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3) {
+    cpr::Response response = cpr::Get(
+        cpr::Url{std::string(NETWORK_URL) + "/user"},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("chara_color_1") || !doc["chara_color_1"].IsString()) return false;
+    if (!doc.HasMember("chara_color_2") || !doc["chara_color_2"].IsString()) return false;
+    if (!doc.HasMember("chara_color_3") || !doc["chara_color_3"].IsString()) return false;
+
+    try {
+        color_1 = parse_hex_color(doc["chara_color_1"].GetString());
+        color_2 = parse_hex_color(doc["chara_color_2"].GetString());
+        color_3 = parse_hex_color(doc["chara_color_3"].GetString());
+    } catch (const std::invalid_argument&) {
+        return false;
+    }
+    return true;
 }
 
 void NetworkClient::clear_import_flag(const std::string& access_code) {
@@ -105,6 +130,7 @@ std::string NetworkClient::register_user(const std::string&) { return ""; }
 void NetworkClient::submit_score(std::string&, int, const std::string&, Score) {}
 bool NetworkClient::check_import_requested(const std::string&) { return false; }
 void NetworkClient::clear_import_flag(const std::string&) {}
+bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }
 void NetworkClient::update(double) {}
 
 #endif

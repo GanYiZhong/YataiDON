@@ -311,6 +311,16 @@ int main(int argc, char* argv[]) {
         network.clear_import_flag(global_data.config->general.access_code);
     }
 
+    if (!global_data.config->general.access_code.empty()) {
+        ray::Color chara_color_1, chara_color_2, chara_color_3;
+        if (network.fetch_chara_colors(global_data.config->general.access_code, chara_color_1, chara_color_2, chara_color_3)) {
+            scores_manager.player_1_data.chara_color_1 = chara_color_1;
+            scores_manager.player_1_data.chara_color_2 = chara_color_2;
+            scores_manager.player_1_data.chara_color_3 = chara_color_3;
+            scores_manager.save_player_data(scores_manager.player_1_data);
+        }
+    }
+
     Screens initial_screen = check_args(argc, argv);
 
     double target_fps = global_data.config->video.target_fps;

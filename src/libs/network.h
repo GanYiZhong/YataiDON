@@ -29,13 +29,15 @@ public:
     bool check_import_requested(const std::string& access_code);
     void clear_import_flag(const std::string& access_code);
 
+    bool fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3);
+
 private:
     void check_heartbeat();
 
     bool online = false;
 #if defined(NETWORK_ENABLED)
     std::optional<cpr::AsyncResponse> pending_heartbeat;
-    static constexpr double HEARTBEAT_INTERVAL_MS = 5000.0;
+    static constexpr double HEARTBEAT_INTERVAL_MS = 30000.0;
     double last_heartbeat_ms = -HEARTBEAT_INTERVAL_MS;
 #endif
 };
