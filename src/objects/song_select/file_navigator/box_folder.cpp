@@ -221,6 +221,8 @@ void FolderBox::draw_open_fg(float fade) {
 }
 
 void FolderBox::draw_open() {
+    if (!text_loaded) load_text();
+
     if (entered) {
         draw_open_bg(0.0);
         draw_open_fg(enter_fade->attribute);
