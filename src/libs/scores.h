@@ -45,6 +45,7 @@ private:
     sqlite3* db_fsd;
     std::unordered_map<fs::path, std::array<std::string, 5>> path_to_hashes;
     std::unordered_map<std::string, fs::path> single_hash_to_path;
+    std::unordered_map<std::string, fs::path> diff_hash_to_path;
     std::map<std::tuple<std::string, int, int>, Score> score_cache;
     void load_score_cache();
 public:
@@ -61,6 +62,7 @@ public:
     std::array<std::string, 5>& get_hashes(const fs::path& path);
     std::string get_single_hash(const fs::path& path);
     std::optional<fs::path> get_path_by_hash(const std::string& single_hash);
+    std::optional<fs::path> get_path_by_diff_hash(const std::string& diff_hash);
     void add_song(const std::array<std::string, 5>& hash, const std::string& title, const std::string& subtitle);
     void remap_hashes(const std::unordered_map<std::string, std::string>& old_to_new);
     std::optional<PlayerData> get_player_data(int player_id);

@@ -82,6 +82,7 @@ std::optional<Screens> SongSelect2PScreen::update() {
         diff_sort_selector->update(current_time);
     }
 
+    poll_song_jump(current_time);
     handle_input(current_time);
 
     player->update(current_time);

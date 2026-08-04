@@ -114,6 +114,7 @@ public:
     void apply_diff_sort(int course, int level);
     void cancel_diff_sort();
     void load_current_directory(const fs::path path);
+    bool jump_to_song(const std::string& hash);
     void enter_diff_select();
     void exit_diff_select();
     float get_diff_fade_in();

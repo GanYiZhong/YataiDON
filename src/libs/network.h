@@ -31,6 +31,9 @@ public:
 
     bool fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3);
 
+    void poll_song_jump(const std::string& access_code);
+    std::optional<std::string> take_song_jump_result();
+
 private:
     void check_heartbeat();
 
@@ -39,6 +42,9 @@ private:
     std::optional<cpr::AsyncResponse> pending_heartbeat;
     static constexpr double HEARTBEAT_INTERVAL_MS = 30000.0;
     double last_heartbeat_ms = -HEARTBEAT_INTERVAL_MS;
+
+    std::optional<cpr::AsyncResponse> pending_song_jump;
+    std::optional<std::string> song_jump_result;
 #endif
 };
 

@@ -385,11 +385,20 @@ void ScoresManager::add_path_binding(const fs::path& path, const std::array<std:
     path_to_hashes[path] = hashes;
     std::string single = std::accumulate(hashes.begin(), hashes.end(), std::string{});
     single_hash_to_path[single] = path;
+    for (const std::string& hash : hashes) {
+        if (!hash.empty()) diff_hash_to_path[hash] = path;
+    }
 }
 
 std::optional<fs::path> ScoresManager::get_path_by_hash(const std::string& single_hash) {
     auto it = single_hash_to_path.find(single_hash);
     if (it != single_hash_to_path.end()) return it->second;
+    return std::nullopt;
+}
+
+std::optional<fs::path> ScoresManager::get_path_by_diff_hash(const std::string& diff_hash) {
+    auto it = diff_hash_to_path.find(diff_hash);
+    if (it != diff_hash_to_path.end()) return it->second;
     return std::nullopt;
 }
 

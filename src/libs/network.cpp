@@ -8,10 +8,16 @@ NetworkClient network;
 
 #if defined(NETWORK_ENABLED)
 
+static std::string network_url(const std::string& endpoint) {
+    std::string base = NETWORK_URL;
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    return base + endpoint;
+}
+
 void NetworkClient::check_heartbeat() {
     if (pending_heartbeat.has_value()) return;
     pending_heartbeat = cpr::GetAsync(
-        cpr::Url{std::string(NETWORK_URL) + "/health"},
+        cpr::Url{network_url("/health")},
         cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
         cpr::Timeout{2000}
     );
@@ -19,7 +25,7 @@ void NetworkClient::check_heartbeat() {
 
 bool NetworkClient::check_import_requested(const std::string& access_code) {
     cpr::Response response = cpr::Get(
-        cpr::Url{std::string(NETWORK_URL) + "/user"},
+        cpr::Url{network_url("/user")},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
     );
@@ -33,7 +39,7 @@ bool NetworkClient::check_import_requested(const std::string& access_code) {
 
 bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3) {
     cpr::Response response = cpr::Get(
-        cpr::Url{std::string(NETWORK_URL) + "/user"},
+        cpr::Url{network_url("/user")},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
     );
@@ -57,7 +63,7 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
 
 void NetworkClient::clear_import_flag(const std::string& access_code) {
     cpr::Response response = cpr::Post(
-        cpr::Url{std::string(NETWORK_URL) + "/clear_import_flag"},
+        cpr::Url{network_url("/clear_import_flag")},
         cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
@@ -69,7 +75,7 @@ void NetworkClient::clear_import_flag(const std::string& access_code) {
 
 std::string NetworkClient::register_user(const std::string& username) {
     cpr::Response response = cpr::Post(
-        cpr::Url{std::string(NETWORK_URL) + "/register_user"},
+        cpr::Url{network_url("/register_user")},
         cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
         cpr::Payload{{"username", username}},
         cpr::Timeout{5000}
@@ -83,7 +89,7 @@ std::string NetworkClient::register_user(const std::string& username) {
 
 void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score) {
     cpr::Response response = cpr::Post(
-        cpr::Url{std::string(NETWORK_URL) + "/submit_score"},
+        cpr::Url{network_url("/submit_score")},
         cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
         cpr::Parameters{
             {"access_code", access_code},
@@ -105,22 +111,52 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
     }
 }
 
+void NetworkClient::poll_song_jump(const std::string& access_code) {
+    if (pending_song_jump.has_value()) return;
+    pending_song_jump = cpr::GetAsync(
+        cpr::Url{network_url("/poll_song_jump")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+    );
+}
+
+std::optional<std::string> NetworkClient::take_song_jump_result() {
+    if (!song_jump_result.has_value()) return std::nullopt;
+    std::optional<std::string> result = std::move(song_jump_result);
+    song_jump_result.reset();
+    return result;
+}
+
 void NetworkClient::update(double current_ms) {
     if (current_ms - last_heartbeat_ms >= HEARTBEAT_INTERVAL_MS) {
         last_heartbeat_ms = current_ms;
         check_heartbeat();
     }
 
-    if (!pending_heartbeat.has_value()) return;
-    if (pending_heartbeat->wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    if (pending_heartbeat.has_value() &&
+        pending_heartbeat->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_heartbeat->get();
+        pending_heartbeat.reset();
 
-    cpr::Response response = pending_heartbeat->get();
-    pending_heartbeat.reset();
+        bool was_online = online;
+        online = response.status_code == 200;
+        if (online != was_online) {
+            spdlog::info("hiroba heartbeat: {}", online ? "online" : "offline");
+        }
+    }
 
-    bool was_online = online;
-    online = response.status_code == 200;
-    if (online != was_online) {
-        spdlog::info("hiroba heartbeat: {}", online ? "online" : "offline");
+    if (pending_song_jump.has_value() &&
+        pending_song_jump->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_song_jump->get();
+        pending_song_jump.reset();
+
+        if (response.status_code == 200) {
+            rapidjson::Document doc;
+            if (!doc.Parse(response.text.c_str()).HasParseError() &&
+                doc.HasMember("hash") && doc["hash"].IsString()) {
+                song_jump_result = doc["hash"].GetString();
+            }
+        }
     }
 }
 
@@ -131,6 +167,8 @@ void NetworkClient::submit_score(std::string&, int, const std::string&, Score) {
 bool NetworkClient::check_import_requested(const std::string&) { return false; }
 void NetworkClient::clear_import_flag(const std::string&) {}
 bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }
+void NetworkClient::poll_song_jump(const std::string&) {}
+std::optional<std::string> NetworkClient::take_song_jump_result() { return std::nullopt; }
 void NetworkClient::update(double) {}
 
 #endif

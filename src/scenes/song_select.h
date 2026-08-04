@@ -49,6 +49,9 @@ protected:
     virtual void handle_input_diff_sorting();
     virtual void handle_input_search();
 
+    void poll_song_jump(double current_ms);
+    double last_song_jump_poll_ms = -1e9;
+
     virtual void draw_overlays();
 
     virtual Screens get_game_screen_target() { return Screens::GAME; }

@@ -847,6 +847,136 @@ void Navigator::load_current_directory(const fs::path path) {
 #endif
 }
 
+bool Navigator::jump_to_song(const std::string& hash) {
+    auto song_path_opt = scores_manager.get_path_by_diff_hash(hash);
+    if (!song_path_opt) {
+        spdlog::warn("jump_to_song: no song found for hash {}", hash);
+        return false;
+    }
+    fs::path song_path = *song_path_opt;
+
+    std::vector<fs::path> chain;
+    fs::path cur = song_path.parent_path();
+    while (true) {
+        fs::path folder = find_box_def_folder(cur);
+        if (folder.empty()) break;
+        chain.push_back(folder);
+        if (std::find(root_paths.begin(), root_paths.end(), folder.parent_path()) != root_paths.end())
+            break;
+        cur = folder.parent_path();
+    }
+    if (chain.empty()) {
+        spdlog::warn("jump_to_song: could not resolve a genre folder for {}", song_path.string());
+        return false;
+    }
+    std::reverse(chain.begin(), chain.end());
+
+    BoxDef final_box_def = parse_box_def(chain.back());
+    if (!final_box_def.collection.empty()) {
+        spdlog::warn("jump_to_song: song resolves into a synthetic collection folder, not supported: {}", chain.back().string());
+        return false;
+    }
+
+    join_loader();
+    is_inline = false;
+    inline_state.reset();
+    pending_inline_path.reset();
+    pending_inline_folder = nullptr;
+    genre_bg.reset();
+    awaiting_diff_sort = false;
+    diff_sort_filter.reset();
+
+    auto load_full = [&](const fs::path& folder) {
+        open_index = 0;
+        def_file_cache.clear();
+        box_def_cache.clear();
+        setup_back_box(folder, true);
+        loading_complete = false;
+        load_current_directory_async(folder);
+        flush_pending_boxes();
+    };
+
+    load_full(chain.front().parent_path());
+    for (size_t i = 0; i + 1 < chain.size(); i++) {
+        load_full(chain[i]);
+    }
+
+    fs::path final_folder = chain.back();
+    bool final_has_children = has_child_folders(final_folder);
+
+    if (final_has_children || items.empty()) {
+        load_full(final_folder);
+    } else {
+        int folder_index = -1;
+        for (int i = 0; i < (int)items.size(); i++) {
+            if (items[i]->path == final_folder) {
+                folder_index = i;
+                break;
+            }
+        }
+        if (folder_index < 0) {
+            spdlog::warn("jump_to_song: could not locate folder box for {}", final_folder.string());
+            return false;
+        }
+
+
+        items[open_index]->close_box();
+        open_index = folder_index;
+        set_positions(true, 0);
+        items[open_index]->expand_box();
+        items[open_index]->enter_box();
+
+        FolderBox* folder_box = static_cast<FolderBox*>(items[open_index].get());
+        for (auto& item : items) {
+            if (item && item->position > folder_box->position)
+                item->move_box(tex.screen_width + 150, 600);
+        }
+
+        InlineState state;
+        state.folder_index     = open_index;
+        state.first_song_index = open_index + 1;
+        state.songs_count      = 0;
+        state.saved_folder_box = std::unique_ptr<FolderBox>(static_cast<FolderBox*>(items[open_index].release()));
+        pending_inline_folder  = folder_box;
+        inline_state           = std::move(state);
+
+        setup_back_box(final_folder, false);
+        genre_bg.emplace(folder_box->text_name, folder_box->back_color, folder_box->texture_index, 1000.0f);
+
+        loading_complete = false;
+        is_inline = true;
+        load_songs_inline_async(final_folder, final_box_def);
+        flush_pending_boxes();
+    }
+
+    if (items.empty()) {
+        spdlog::warn("jump_to_song: destination folder loaded no items for {}", song_path.string());
+        return false;
+    }
+
+    int target_index = -1;
+    for (int i = 0; i < (int)items.size(); i++) {
+        if (items[i]->path == song_path) {
+            target_index = i;
+            break;
+        }
+    }
+    if (target_index < 0) {
+        spdlog::warn("jump_to_song: song loaded but not found among items: {}", song_path.string());
+        return false;
+    }
+
+    items[open_index]->close_box();
+    open_index = target_index;
+    bg_genre_index = items[open_index]->genre_index;
+    last_bg_genre_index = bg_genre_index;
+    set_positions(true, 0);
+    items[open_index]->expand_box();
+    background_fade_change->start();
+    is_processing = false;
+    return true;
+}
+
 void Navigator::setup_back_box(const fs::path& path, bool has_children) {
     auto back = make_back_box(path.parent_path());
     if (has_children) {
