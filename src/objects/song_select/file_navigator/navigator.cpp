@@ -270,6 +270,7 @@ void Navigator::flush_pending_boxes() {
         set_positions(false, 800);
         if (!items.empty()) items[open_index]->expand_box();
         is_processing = false;
+        inline_streaming = false;
         loading_complete = false;
     }
 }
@@ -1079,7 +1080,7 @@ void Navigator::set_positions(bool init, float duration) {
 }
 
 void Navigator::navigate(int delta, bool snap) {
-    if (items.empty()) return;
+    if (items.empty() || inline_streaming) return;
     items[open_index]->close_box();
     last_bg_genre_index = bg_genre_index;
     open_index = ((open_index + delta) % (int)items.size() + (int)items.size()) % (int)items.size();
@@ -1171,6 +1172,7 @@ void Navigator::update(double current_ms) {
             inline_state->songs_count = 0; // will be updated as boxes arrive
             pending_inline_path.reset();
             is_processing = false; // flush_pending_boxes will finalise
+            inline_streaming = true;
         }
     }
 

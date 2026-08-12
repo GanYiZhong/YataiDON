@@ -97,6 +97,12 @@ public:
     ~Navigator();
 
     bool is_processing = false;
+    // True while an inline collection (RECOMMENDED, etc.) is still streaming
+    // boxes in from the loader thread. is_processing is deliberately false
+    // during that window so the flush can finalise, but navigation must stay
+    // blocked: the completion step sorts and repositions items around
+    // open_index, so moving the selection mid-load corrupts the display.
+    bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;
 
