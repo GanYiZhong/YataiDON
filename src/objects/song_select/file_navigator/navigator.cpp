@@ -78,7 +78,12 @@ static bool alpha_less(const std::string& a, const std::string& b) {
     return a.size() < b.size();
 }
 
-static void apply_song_color(SongBox* song, const BoxDef& box_def) {
+// Record where the song really lives. A song listed inside a collection is
+// built from that collection's BoxDef, so the box keeps the collection's
+// genre on purpose - its colours and the wheel background stay the
+// collection's - but the game screen's genre label needs the song's own.
+static void apply_song_genre(SongBox* song, const BoxDef& box_def) {
+    song->song_genre_index = box_def.genre_index;
     if (box_def.fore_color.has_value())
         song->fore_color = box_def.fore_color;
     else if (box_def.back_color.has_value())
@@ -479,7 +484,7 @@ void Navigator::load_collection_new(const fs::path& path, const BoxDef& box_def)
             if (songs_added > 0 && songs_added % 10 == 0)
                 enqueue_inline_box(make_back_box(path.parent_path()));
             auto song = make_song_box(entry.path(), box_def, SongParser(entry.path()));
-            apply_song_color(song.get(), sibling_box_def);
+            apply_song_genre(song.get(), sibling_box_def);
             song->fade_in(266);
             enqueue_inline_box(std::move(song));
             songs_added++;
@@ -504,7 +509,7 @@ void Navigator::load_collection_difficulty(const fs::path& path, const BoxDef& b
             if (songs_added > 0 && songs_added % 10 == 0)
                 enqueue_inline_box(make_back_box(path.parent_path()));
             auto song = make_song_box(entry.path(), box_def, parser);
-            apply_song_color(song.get(), sibling_box_def);
+            apply_song_genre(song.get(), sibling_box_def);
             song->fade_in(266);
             enqueue_inline_box(std::move(song));
             songs_added++;
@@ -545,7 +550,7 @@ void Navigator::load_from_song_list(const fs::path& path, const BoxDef& box_def,
         if (mark_favorite) song->is_favorite = true;
         fs::path genre_folder = find_box_def_folder(song_path);
         if (!genre_folder.empty())
-            apply_song_color(song.get(), parse_box_def(genre_folder));
+            apply_song_genre(song.get(), parse_box_def(genre_folder));
         song->fade_in(266);
         enqueue_inline_box(std::move(song));
         songs_added++;
@@ -665,7 +670,7 @@ void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& 
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
         fs::path genre_folder = find_box_def_folder(song_path);
         if (!genre_folder.empty())
-            apply_song_color(song.get(), parse_box_def(genre_folder));
+            apply_song_genre(song.get(), parse_box_def(genre_folder));
         song->fade_in(266);
         enqueue_inline_box(std::move(song));
     }
@@ -686,7 +691,7 @@ void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_d
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
         fs::path genre_folder = find_box_def_folder(song_path);
         if (!genre_folder.empty())
-            apply_song_color(song.get(), parse_box_def(genre_folder));
+            apply_song_genre(song.get(), parse_box_def(genre_folder));
         song->fade_in(266);
         enqueue_inline_box(std::move(song));
         songs_added++;
