@@ -4,7 +4,7 @@
 #include "../libs/global_data.h"
 #include "../libs/text.h"
 #include "../objects/result/background.h"
-#include "../objects/result/gauge.h"
+#include "../objects/game/gauge.h"
 #include "../objects/global/allnet_indicator.h"
 #include "../objects/global/coin_overlay.h"
 
@@ -24,7 +24,7 @@ private:
     FadeAnimation* page2_fade = nullptr;
 
     std::optional<ResultBackground> background;
-    std::unique_ptr<ResultGauge>  gauge;
+    std::unique_ptr<Gauge>        gauge;
     std::unique_ptr<OutlinedText>    hori_name;
     std::vector<std::unique_ptr<OutlinedText>> song_names;
 

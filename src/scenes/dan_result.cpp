@@ -13,7 +13,7 @@ void DanResultScreen::on_screen_start() {
 
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
     background.emplace(PlayerNum::DAN, tex.screen_width);
-    //gauge = std::make_unique<ResultGauge>(GaugeMode::DAN, global_data.player_num, sd.dan_result_data.gauge_length);
+    //gauge = std::make_unique<Gauge>(Gauge::make_result(GaugeMode::DAN, global_data.player_num, sd.dan_result_data.gauge_length));
 
     int font_size = tex.skin_config[SC::DAN_TITLE].font_size;
     hori_name = std::make_unique<OutlinedText>(sd.dan_result_data.dan_title, font_size, ray::WHITE, ray::BLACK, false);
@@ -225,7 +225,7 @@ void DanResultScreen::draw_page2(double fade) {
       for (int j = 0; j < (int)sv.size(); j++)
           tex.draw_texture(RESULT_INFO::SCORE_COUNTER, {.frame=sv[j]-'0', .x=-(float)(j*sm), .fade=fade}); }
 
-    //gauge->draw(fade);
+    //gauge->draw_result(fade);
     draw_exam_info(fade);
 
     // Pass / Fail verdict
