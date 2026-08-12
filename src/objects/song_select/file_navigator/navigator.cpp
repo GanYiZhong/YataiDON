@@ -610,6 +610,40 @@ void Navigator::add_to_recent(const SongBox* song) {
     if ((int)entries.size() > 25) entries.resize(25);
 
     write_song_list(song_list_path, entries);
+    promote_recent_box(song);
+}
+
+// The listing keeps back boxes interleaved every 10 songs, so move the song
+// between the song slots only and leave those separators where they are.
+void Navigator::promote_recent_box(const SongBox* song) {
+    if (!inline_state.has_value() || pending_inline_folder == nullptr) return;
+    if (pending_inline_folder->collection != "RECENT") return;
+
+    int first = inline_state->first_song_index;
+    int end   = first + inline_state->songs_count;
+    if (first < 0 || end > (int)items.size()) return;
+
+    std::vector<int> slots;
+    for (int i = first; i < end; i++)
+        if (dynamic_cast<SongBox*>(items[i].get())) slots.push_back(i);
+
+    int pos = -1;
+    for (int i = 0; i < (int)slots.size(); i++)
+        if (items[slots[i]]->path == song->path) { pos = i; break; }
+    if (pos <= 0) return;  // not in this listing, or already first
+
+    auto moved = std::move(items[slots[pos]]);
+    for (int i = pos; i > 0; i--) items[slots[i]] = std::move(items[slots[i - 1]]);
+    items[slots[0]] = std::move(moved);
+
+    // Keep the cursor on the same song rather than on whatever slid into
+    // its slot.
+    if (open_index == slots[pos]) {
+        open_index = slots[0];
+    } else {
+        for (int i = 0; i < pos; i++)
+            if (open_index == slots[i]) { open_index = slots[i + 1]; break; }
+    }
 }
 
 void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& box_def) {
