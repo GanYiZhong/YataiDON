@@ -1406,29 +1406,42 @@ void Player::draw_song_timer(double current_ms, float y) {
 }
 
 void Player::draw_modifiers(float y) {
+    // These icons hang below the score cover for 1P. The 2P score cover is
+    // shifted down and mirrored vertically, so mirror each icon's offset
+    // within the cover as well: the stack pokes above the bar instead of
+    // below (otherwise the icons draw at the 1P-relative spot, hidden under
+    // the 2P nameplate / panel edge).
+    auto icon_y = [&](uint32_t id) {
+        if (!is_2p) return y;
+        float cover_h = (float)tex.textures[LANE::LANE_SCORE_COVER]->y2[0];
+        float json_y  = (float)tex.textures[id]->y[0];
+        float icon_h  = (float)tex.textures[id]->y2[0];
+        return y + tex.skin_config[SC::SCORE_COUNTER_2P_Y_OFFSET].y
+                 + cover_h - icon_h - 2.0f * json_y;
+    };
 
     if (score_method == ScoreMethod::SHINUCHI) {
-        tex.draw_texture(LANE::MOD_SHINUCHI, {.y=y});
+        tex.draw_texture(LANE::MOD_SHINUCHI, {.y=icon_y(LANE::MOD_SHINUCHI)});
     }
 
     if (modifiers.speed >= 40) {
-        tex.draw_texture(LANE::MOD_YONBAI, {.y=y});
+        tex.draw_texture(LANE::MOD_YONBAI, {.y=icon_y(LANE::MOD_YONBAI)});
     } else if (modifiers.speed >= 30) {
-        tex.draw_texture(LANE::MOD_SANBAI, {.y=y});
+        tex.draw_texture(LANE::MOD_SANBAI, {.y=icon_y(LANE::MOD_SANBAI)});
     } else if (modifiers.speed > 10) {
-        tex.draw_texture(LANE::MOD_BAISAKU, {.y=y});
+        tex.draw_texture(LANE::MOD_BAISAKU, {.y=icon_y(LANE::MOD_BAISAKU)});
     }
 
     if (modifiers.display) {
-        tex.draw_texture(LANE::MOD_DORON, {.y=y});
+        tex.draw_texture(LANE::MOD_DORON, {.y=icon_y(LANE::MOD_DORON)});
     }
     if (modifiers.inverse) {
-        tex.draw_texture(LANE::MOD_ABEKOBE, {.y=y});
+        tex.draw_texture(LANE::MOD_ABEKOBE, {.y=icon_y(LANE::MOD_ABEKOBE)});
     }
     if (modifiers.random == 2) {
-        tex.draw_texture(LANE::MOD_DETARAME, {.y=y});
+        tex.draw_texture(LANE::MOD_DETARAME, {.y=icon_y(LANE::MOD_DETARAME)});
     } else if (modifiers.random == 1) {
-        tex.draw_texture(LANE::MOD_KIMAGURE, {.y=y});
+        tex.draw_texture(LANE::MOD_KIMAGURE, {.y=icon_y(LANE::MOD_KIMAGURE)});
     }
 }
 
