@@ -64,6 +64,7 @@ struct sound {
 
     bool is_playing;                // Whether the sound is currently playing
     unsigned int current_frame;     // Current playback position in frames
+    float frame_frac;               // Fractional part of playback position (for pitch != 1.0)
     bool loop;                      // Whether to loop the sound
 
     float volume;                   // Volume multiplier (0.0 to 1.0+)
