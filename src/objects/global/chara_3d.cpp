@@ -231,8 +231,13 @@ void Chara3D::load_face_textures(fs::path& face_dir) {
     if (paths.empty()) return;
     std::sort(paths.begin(), paths.end());
     ray::Image sheet = ray::LoadImage(paths[0].string().c_str());
-    for (int f = 0; f < 12; f++) {
-        ray::Rectangle rect = {0, (float)(f * 128), 128, 128};
+    // Frames are square and stacked vertically; derive the size from the
+    // sheet width instead of assuming 128px, so higher-resolution skins
+    // slice on the right boundaries (the UVs are normalized anyway).
+    int frame_size = sheet.width;
+    int frame_count = frame_size > 0 ? sheet.height / frame_size : 0;
+    for (int f = 0; f < frame_count; f++) {
+        ray::Rectangle rect = {0, (float)(f * frame_size), (float)frame_size, (float)frame_size};
         ray::Image frame_img = ray::ImageFromImage(sheet, rect);
         face_textures.push_back(ray::LoadTextureFromImage(frame_img));
         ray::UnloadImage(frame_img);
@@ -408,7 +413,10 @@ void Chara3D::draw_outline(float x, float y) {
     cos_model.transform = rotation_xyz(rot_x * DEG2RAD, y_angle * DEG2RAD, rot_z * DEG2RAD);
 
     rlSetCullFace(RL_CULL_FACE_FRONT);
-    ray::DrawModel(cos_model, {x, y, 400.0f}, scale, ray::WHITE);
+    // scale is in 1280x720 virtual units; the camera maps the skin's virtual
+    // canvas to the window, so follow the skin resolution or the model
+    // shrinks relative to everything else on hi-res skins.
+    ray::DrawModel(cos_model, {x, y, 400.0f}, scale * tex.screen_scale, ray::WHITE);
     rlSetCullFace(RL_CULL_FACE_BACK);
 
     cos_model.transform = saved_transform;
@@ -420,7 +428,7 @@ void Chara3D::draw_3d(float x, float y) {
     ray::Matrix saved = cos_model.transform;
     float y_angle = mirror ? -rot_y : rot_y;
     cos_model.transform = rotation_xyz(rot_x * DEG2RAD, y_angle * DEG2RAD, rot_z * DEG2RAD);
-    ray::DrawModel(cos_model, {x, y, 400.0f}, scale, ray::WHITE);
+    ray::DrawModel(cos_model, {x, y, 400.0f}, scale * tex.screen_scale, ray::WHITE);
     cos_model.transform = saved;
 }
 
