@@ -163,12 +163,17 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
         unsigned long frames_to_process = framesPerBuffer;
         unsigned long output_index = 0;
         bool still_playing = true;
-        float frame_f = (float)frame;
+        // Track the position as integer frame + fractional remainder. The
+        // fraction must survive across mix() calls, otherwise non-integer
+        // pitches degrade toward trunc(pitch) as the buffer size shrinks
+        // (at buffer_size=1, pitch 0.9 never advances and 1.5 plays at 1.0).
+        double frame_f = (double)frame
+                       + std::atomic_ref<float>(snd.frame_frac).load(std::memory_order_relaxed);
 
         while (frames_to_process > 0 && still_playing) {
             unsigned long src_frame = (unsigned long)frame_f;
             if (src_frame >= snd.frame_count) {
-                if (snd.loop) { frame_f = 0.0f; continue; }
+                if (snd.loop) { frame_f = 0.0; continue; }
                 else { still_playing = false; break; }
             }
 
@@ -196,6 +201,7 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
         }
         frame = (unsigned int)frame_f;
 
+        std::atomic_ref<float>(snd.frame_frac).store((float)(frame_f - (double)frame), std::memory_order_relaxed);
         aref_frame.store(frame, std::memory_order_relaxed);
         if (!still_playing)
             aref_playing.store(false, std::memory_order_release);
@@ -672,6 +678,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
             snd.volume = 1.0f;
             snd.pan    = 0.5f;
             snd.pitch  = 1.0f;
+            snd.frame_frac = 0.0f;
             if ((double)ff_rate != target_sample_rate) {
                 double ratio = target_sample_rate / (double)ff_rate;
                 long out_frames = (long)(ff_frames * ratio) + 1;
@@ -724,6 +731,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
         snd.volume = 1.0f;
         snd.pan = 0.5f;
         snd.pitch = 1.0f;
+        snd.frame_frac = 0.0f;
 
         if (snd.sample_rate != target_sample_rate) {
             double ratio = target_sample_rate / (double)snd.sample_rate;
@@ -877,6 +885,7 @@ void AudioEngine::play_sound(const std::string& name, VolumePreset volume_preset
         }
 
         std::atomic_ref<unsigned int>(snd.current_frame).store(0, std::memory_order_relaxed);
+        std::atomic_ref<float>(snd.frame_frac).store(0.0f, std::memory_order_relaxed);
         std::atomic_ref<bool>(snd.is_playing).store(true, std::memory_order_release);
     } else {
         //spdlog::warn("Sound {} not found", name);
@@ -889,6 +898,7 @@ void AudioEngine::stop_sound(const std::string& name) {
     if (it != sounds.end()) {
         std::atomic_ref<bool>(it->second.is_playing).store(false, std::memory_order_relaxed);
         std::atomic_ref<unsigned int>(it->second.current_frame).store(0, std::memory_order_relaxed);
+        std::atomic_ref<float>(it->second.frame_frac).store(0.0f, std::memory_order_relaxed);
     } else {
         spdlog::warn("Sound {} not found", name);
     }
@@ -953,6 +963,7 @@ void AudioEngine::seek_sound(const std::string& name, float position) {
         sound& snd = it->second;
         unsigned int frame = static_cast<unsigned int>(std::max(position, 0.0f) * static_cast<float>(target_sample_rate));
         std::atomic_ref<unsigned int>(snd.current_frame).store(std::min(frame, snd.frame_count), std::memory_order_relaxed);
+        std::atomic_ref<float>(snd.frame_frac).store(0.0f, std::memory_order_relaxed);
     } else {
         spdlog::warn("Sound {} not found", name);
     }
