@@ -93,6 +93,11 @@ Screens GameScreen::on_screen_end(Screens next_screen) {
         spdlog::info("Background unloaded");
     }
     transition.reset();
+    // Let an in-flight song load land before the base class unloads all
+    // sounds, otherwise the worker inserts an orphaned "song" entry after
+    // the cleanup and its buffer leaks on the next load.
+    if (pending_song_load.valid()) pending_song_load.wait();
+    pending_song_load = {};
     song_music.reset();
     parser.reset();
     players.clear();
@@ -128,11 +133,34 @@ void GameScreen::init_tja(fs::path song) {
     global_data.session_data[(int)global_data.player_num].song_title = titles.count(lang) ? titles.at(lang) : titles.count("en") ? titles.at("en") : titles.empty() ? "" : titles.begin()->second;
     global_data.session_data[(int)global_data.player_num].song_subtitle = subtitles.count(lang) ? subtitles.at(lang) : "";
 
-    if (fs::exists(parser->metadata.wave) && !song_music.has_value()) {
-        song_music = audio.load_sound(parser->metadata.wave, "song");
+    if (fs::exists(parser->metadata.wave) && !song_music.has_value() && !pending_song_load.valid()) {
+        fs::path wave = parser->metadata.wave;
+        pending_song_load = std::async(std::launch::async, [wave] {
+            return audio.load_sound(wave, "song");
+        });
     }
 
     players.push_back(std::make_unique<Player>(parser, global_data.player_num, global_data.session_data[(int)global_data.player_num].selected_difficulty, false, get_player_modifiers(global_data.player_num)));
+}
+
+void GameScreen::poll_pending_song() {
+    if (!pending_song_load.valid() ||
+        pending_song_load.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+
+    std::string name = pending_song_load.get();
+    if (name.empty()) return;
+    song_music = name;
+
+    // If the chart already passed its start point while the audio was still
+    // decoding, join in progress at the right position.
+    if (song_started && !paused) {
+        audio.play_sound(*song_music, VolumePreset::MUSIC);
+        double audio_ms = ms_from_start
+                        - (parser->metadata.offset * 1000 + start_delay
+                           - (double)global_data.config->general.audio_offset);
+        audio.seek_sound(*song_music, (float)std::max(0.0, audio_ms / 1000.0));
+    }
 }
 
 void GameScreen::start_song(double ms_from_start) {
@@ -294,6 +322,7 @@ std::optional<Screens> GameScreen::update() {
         ms_from_start = current_ms - start_ms;
 
     transition->update(current_ms);
+    poll_pending_song();
     if (transition->is_finished()) {
         start_song(ms_from_start);
         global_data.input_locked = 0;

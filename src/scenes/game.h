@@ -7,6 +7,7 @@
 #include "../objects/game/song_info.h"
 #include "../objects/game/result_transition.h"
 #include "../objects/global/allnet_indicator.h"
+#include <future>
 
 class GameScreen : public Screen {
 protected:
@@ -29,6 +30,10 @@ public:
 
     std::optional<VideoPlayer> movie;
     std::optional<std::string> song_music;
+    // Song audio decodes (and possibly resamples) on a worker thread; the
+    // synchronous load blocked the main thread for seconds on long songs.
+    // update() polls this and fills song_music when the load finishes.
+    std::future<std::string> pending_song_load;
     std::optional<SongParser> parser;
     std::string scene_preset;
     std::vector<std::unique_ptr<Player>> players;
@@ -49,6 +54,8 @@ public:
     virtual void init_tja(fs::path song);
 
     void start_song(double ms_from_start);
+
+    void poll_pending_song();
 
     void restart_song();
 
