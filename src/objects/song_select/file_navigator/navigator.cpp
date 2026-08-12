@@ -299,7 +299,10 @@ void Navigator::flush_pending_boxes() {
         } else if (items.size() > 1) {
             std::vector<int> sortable_indices;
             std::vector<std::unique_ptr<BaseBox>> sortable;
-            for (int i = 1; i < (int)items.size(); i++) {
+            // Skip index 0 only when it actually is the level's back box
+            // (root levels no longer have one).
+            int first_sortable = dynamic_cast<BackBox*>(items[0].get()) ? 1 : 0;
+            for (int i = first_sortable; i < (int)items.size(); i++) {
                 if (!items[i]->preserve_order) {
                     sortable_indices.push_back(i);
                     sortable.push_back(std::move(items[i]));
@@ -1066,11 +1069,15 @@ bool Navigator::jump_to_song(const std::string& hash) {
 }
 
 void Navigator::setup_back_box(const fs::path& path, bool has_children) {
-    auto back = make_back_box(path.parent_path());
     if (has_children) {
         items.clear();
-        items.push_back(std::move(back));
+        // A root level has no folder to close: the box would point at the
+        // songs dir's parent and selecting it does nothing sensible.
+        if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
+            return;
+        items.push_back(make_back_box(path.parent_path()));
     } else {
+        auto back = make_back_box(path.parent_path());
         back->fade_in(266);
         items.erase(items.begin() + open_index);
         items.insert(items.begin() + open_index, std::move(back));
