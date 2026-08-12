@@ -14,7 +14,18 @@ public:
 
     void draw(float) override {
         if (type == DrumType::DON) {
+            // The skin ships a single full-face don flash, so clip it to the
+            // half that was actually hit - otherwise left and right don look
+            // identical on the input test.
+            auto& drum   = *tex.textures[PRACTICE::LARGE_DRUM];
+            float left   = x_offset + (float)drum.x[0];
+            float centre = left + drum.width / 2.0f;
+            float right  = left + (float)drum.width;
+            int sx = virtual_to_screen_x(side == Side::LEFT ? left   : centre);
+            int ex = virtual_to_screen_x(side == Side::LEFT ? centre : right);
+            ray::BeginScissorMode(sx, 0, ex - sx, ray::GetScreenHeight());
             tex.draw_texture(PRACTICE::LARGE_DRUM_DON, {.x = x_offset, .y = y_offset, .fade = fade->attribute});
+            ray::EndScissorMode();
         } else if (side == Side::LEFT) {
             tex.draw_texture(PRACTICE::LARGE_DRUM_KAT_L, {.x = x_offset, .y = y_offset, .fade = fade->attribute});
         } else {
