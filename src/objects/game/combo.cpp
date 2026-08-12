@@ -1,7 +1,7 @@
 #include "combo.h"
 #include "../../libs/texture.h"
 #include "../../libs/global_data.h"
-#include <math.h>
+#include <cmath>
 
 Combo::Combo(int combo, double current_ms)
     : combo(combo) {

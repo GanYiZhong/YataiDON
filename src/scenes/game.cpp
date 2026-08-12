@@ -2,6 +2,7 @@
 #include "../libs/scores.h"
 #include "../libs/input.h"
 #include "../libs/network.h"
+#include <cmath>
 
 
 void GameScreen::on_screen_start() {

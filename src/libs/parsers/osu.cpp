@@ -1,5 +1,6 @@
 #include "osu.h"
 #include <fstream>
+#include <cmath>
 
 std::vector<std::string> OsuParser::read_file_lines(const fs::path& path) {
     std::vector<std::string> lines;

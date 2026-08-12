@@ -3,6 +3,7 @@
 #include "box_base.h"
 #include "score_history.h"
 #include "../../../libs/song_parser.h"
+#include <cmath>
 
 class SongBox : public BaseBox {
 public:

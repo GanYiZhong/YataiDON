@@ -1,6 +1,6 @@
 #include "color_utils.h"
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <stdexcept>
 
 float rgb_to_hue(int r, int g, int b) {

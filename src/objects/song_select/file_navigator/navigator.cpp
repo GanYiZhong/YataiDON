@@ -5,6 +5,7 @@
 #include "../song_select_script.h"
 #include "../../../libs/filesystem.h"
 #include <random>
+#include <cmath>
 
 static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef& box_def, SongParser parser) {
     if (path.extension() == ".osu")
