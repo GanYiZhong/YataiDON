@@ -172,6 +172,20 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
                 load_current_directory(root_path);
             }
         } else {
+            // A song was played (or the screen was left) with a folder open:
+            // come back to closed folders, cursor on the folder that was
+            // open, and remember the song so reopening it lands there.
+            if (inline_state.has_value()) {
+                if (open_index >= 0 && open_index < (int)items.size()) {
+                    if (dynamic_cast<SongBox*>(items[open_index].get()))
+                        reopen_song_path = items[open_index]->path;
+                }
+                reopen_folder_path = inline_state->saved_folder_box
+                                   ? std::optional<fs::path>(inline_state->saved_folder_box->path)
+                                   : std::nullopt;
+                if (!reopen_folder_path) reopen_song_path.reset();
+                collapse_inline_now();
+            }
             for (auto& item : items) {
                 item->reset();
                 item->fade_in(0);
@@ -190,6 +204,36 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
     bg_genre_index = items.empty() ? GenreIndex::TUTORIAL : items[open_index]->genre_index;
     last_bg_genre_index = bg_genre_index;
     if (genre_bg.has_value()) genre_bg->fade_in();
+}
+
+// Same restore the fade-out completion does, but at once: used when coming
+// back to song select, where the wheel should already be settled.
+void Navigator::collapse_inline_now() {
+    if (!inline_state.has_value()) return;
+    join_loader();
+
+    InlineState& state = *inline_state;
+    int end = state.first_song_index + state.songs_count;
+    if (state.first_song_index < 0 || end > (int)items.size() ||
+        state.folder_index < 0 || state.folder_index >= (int)items.size() ||
+        !state.saved_folder_box) {
+        return;
+    }
+
+    items.erase(items.begin() + state.first_song_index, items.begin() + end);
+    items.erase(items.begin() + state.folder_index);
+    items.insert(items.begin() + state.folder_index, std::move(state.saved_folder_box));
+    open_index = state.folder_index;
+
+    inline_state.reset();
+    pending_inline_folder = nullptr;
+    pending_inline_path.reset();
+    genre_bg.reset();
+    genre_bg_end_pos.reset();
+    is_inline = false;
+    is_processing = false;
+    inline_streaming = false;
+    loading_complete = false;
 }
 
 void Navigator::join_loader() {
@@ -328,6 +372,21 @@ void Navigator::flush_pending_boxes() {
             for (int j = 0; j < (int)sortable_indices.size(); j++)
                 items[sortable_indices[j]] = std::move(sortable[j]);
         }
+        // Reopening the folder that was collapsed on the way back from a
+        // song: land on that song rather than the folder's first entry.
+        if (inline_state.has_value() && reopen_song_path && reopen_folder_path) {
+            const auto& folder = inline_state->saved_folder_box;
+            if (folder && folder->path == *reopen_folder_path) {
+                int first = inline_state->first_song_index;
+                int end   = std::min(first + inline_state->songs_count, (int)items.size());
+                for (int i = first; i < end; i++) {
+                    if (items[i]->path == *reopen_song_path) { open_index = i; break; }
+                }
+            }
+            reopen_folder_path.reset();
+            reopen_song_path.reset();
+        }
+
         set_positions(false, 800);
         if (!items.empty()) items[open_index]->expand_box();
         is_processing = false;
