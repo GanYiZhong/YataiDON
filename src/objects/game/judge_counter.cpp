@@ -1,6 +1,6 @@
 #include "../../libs/texture.h"
 #include "judge_counter.h"
-#include <math.h>
+#include <cmath>
 
 
 JudgeCounter::JudgeCounter()

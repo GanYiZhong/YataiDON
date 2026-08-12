@@ -1,5 +1,6 @@
 #include "game_practice.h"
 #include "../libs/input.h"
+#include <cmath>
 
 void PracticeGameScreen::on_screen_start() {
     GameScreen::on_screen_start();

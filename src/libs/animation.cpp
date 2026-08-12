@@ -1,6 +1,7 @@
 #include "animation.h"
 #include "global_data.h"
 #include "rapidjson/error/en.h"
+#include <cmath>
 
 using std::runtime_error;
 

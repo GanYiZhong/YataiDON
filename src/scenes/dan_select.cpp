@@ -4,6 +4,7 @@
 #include "../objects/song_select/file_navigator/navigator.h"
 #include "../libs/filesystem.h"
 #include <filesystem>
+#include <cmath>
 
 int DanNavigator::total_notes_for(const std::vector<DanSongEntry>& songs) {
     int total = 0;

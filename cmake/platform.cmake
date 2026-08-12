@@ -18,7 +18,6 @@ if(WIN32)
         bcrypt
         secur32
         ws2_32
-        ucrtbase
         msvcrt
         dbghelp
     )
