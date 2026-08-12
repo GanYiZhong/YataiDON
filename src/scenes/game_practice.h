@@ -30,6 +30,15 @@ public:
         judge_counter = JudgeCounter();
     }
 
+    // While paused, don't consume drum presses as hit attempts: input
+    // arrives from the polling thread mid-frame, so a resume press landing
+    // between global_keys_practice() and this player's update was eaten
+    // here and the player had to press again.
+    void handle_input(double ms_from_start, double current_ms, std::optional<Background>& background) override {
+        if (paused) return;
+        Player::handle_input(ms_from_start, current_ms, background);
+    }
+
     void spawn_hit_effects(DrumType drum_type, Side side) {
         lane_hit_effect = LaneHitEffect(drum_type, Judgments::BAD); //judgment parameter workaround
         draw_drum_hit_list.push_back(std::make_unique<DrumHitEffect>(drum_type, side));
