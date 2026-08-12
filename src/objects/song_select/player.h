@@ -49,6 +49,10 @@ public:
     bool is_voice_playing();
 
     SongSelectState select_song();
+    // Fully cancel this player's difficulty pick (leaving diff select).
+    // Clears voice_played too: it survives is_ready, and the ready check in
+    // update() re-arms from it, instantly re-locking the player otherwise.
+    void reset_selection();
     SongSelectState handle_input_browsing(double current_ms);
     SongSelectState handle_input_selecting();
     std::optional<std::pair<int,int>> handle_input_diff_sort(DiffSortSelect* diff_sort_selector);

@@ -93,13 +93,18 @@ std::optional<Screens> SongSelect2PScreen::update() {
             BaseBox* item = navigator.get_current_item();
             select_song((SongBox*)item);
         }
-    } else if (player->is_ready && player->selected_difficulty == Difficulty::BACK) {
+    }
+    // A BACK pick from either player cancels diff select for both. This must
+    // not be an else-if on the both-ready branch: with the other player
+    // already ready, a BACK pick used to land in that branch, do nothing,
+    // and leave both players locked.
+    if (!game_transition.has_value() &&
+        ((player->is_ready && player->selected_difficulty == Difficulty::BACK) ||
+         (player_2->is_ready && player_2->selected_difficulty == Difficulty::BACK))) {
         navigator.exit_diff_select();
         state = SongSelectState::BROWSING;
-        player->is_ready = false;
-        player->selected_song = false;
-        player_2->is_ready = false;
-        player_2->selected_song = false;
+        player->reset_selection();
+        player_2->reset_selection();
     }
 
     if (screen_init) navigator.update(current_time);
