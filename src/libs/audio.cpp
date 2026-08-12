@@ -807,9 +807,13 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
     fs::path parent_sounds = tex.parent_root() / "Sounds";
 
     fs::path path = sounds_path / screen_name;
-    if (!fs::exists(path) && !(has_parent && fs::exists(parent_sounds / screen_name))) {
+    // A screen without its own sound folder still gets don/kat and the
+    // global folder - those are screen-independent. Returning here also
+    // took those away, leaving such screens (input_test, loading) silent.
+    bool has_screen_sounds = fs::exists(path) ||
+                             (has_parent && fs::exists(parent_sounds / screen_name));
+    if (!has_screen_sounds) {
         spdlog::warn("Sounds for screen {} not found", screen_name);
-        return;
     }
 
     if (has_parent) load_sound(parent_sounds / "don.wav", "don");
@@ -817,8 +821,10 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
     if (has_parent) load_sound(parent_sounds / "ka.wav", "kat");
     load_sound(sounds_path / "ka.wav", "kat");
 
-    if (has_parent) scan(parent_sounds / screen_name);
-    scan(path);
+    if (has_screen_sounds) {
+        if (has_parent) scan(parent_sounds / screen_name);
+        scan(path);
+    }
 
     if (has_parent) scan(parent_sounds / "global");
     scan(sounds_path / "global");
