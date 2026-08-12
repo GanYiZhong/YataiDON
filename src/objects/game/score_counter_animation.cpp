@@ -1,8 +1,8 @@
 #include "score_counter_animation.h"
 #include "../../libs/texture.h"
 
-ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter) : counter(counter) {
-    direction = 1;
+ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, bool is_2p) : counter(counter) {
+    direction = is_2p ? -1 : 1;
     counter_str = std::to_string(counter);
     margin = tex.skin_config[SC::SCORE_COUNTER_MARGIN].x;
     total_width = counter_str.length() * margin;
@@ -24,7 +24,6 @@ ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter) 
 
     if (player_num == PlayerNum::P2) {
         base_color = ray::Color{84, 250, 238, 255};
-        direction = -1;
     } else {
         base_color = ray::Color{254, 102, 0, 255};
     }

@@ -21,7 +21,10 @@ private:
     std::vector<float> y_pos_list;
 
 public:
-    ScoreCounterAnimation(PlayerNum player_num, int counter);
+    // player_num picks the popup color (player identity); is_2p picks the
+    // animation direction (lane layout). They differ in practice mode, where
+    // a P2 player still plays on the top (1P-positioned) lane.
+    ScoreCounterAnimation(PlayerNum player_num, int counter, bool is_2p);
 
     void update(double current_ms);
     void draw(float y);
