@@ -152,8 +152,7 @@ std::optional<Screens> SongSelectScreen::update() {
         } else if (player->selected_difficulty == Difficulty::BACK) {
             navigator.exit_diff_select();
             state = SongSelectState::BROWSING;
-            player->is_ready = false;
-            player->selected_song = false;
+            player->reset_selection();
         }
     }
 

@@ -84,6 +84,12 @@ bool SongSelectPlayer::is_voice_playing() {
     return audio.is_sound_playing("voice_start_song_" + std::to_string((int)player_num) + "p");
 }
 
+void SongSelectPlayer::reset_selection() {
+    is_ready = false;
+    selected_song = false;
+    voice_played = false;
+}
+
 void SongSelectPlayer::start_background_diffs() {
     selected_diff_text_resize->start();
     selected_diff_text_fadein->start();
