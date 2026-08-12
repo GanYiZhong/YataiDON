@@ -49,13 +49,8 @@ public:
     bool is_voice_playing();
 
     SongSelectState select_song();
-    // Place the difficulty cursor on this player's last confirmed
-    // difficulty. Ura maps onto Oni; if the song doesn't have that course,
-    // the nearest available one below is used.
+    void sync_ura(bool ura);
     void init_diff_cursor();
-    // Fully cancel this player's difficulty pick (leaving diff select).
-    // Clears voice_played too: it survives is_ready, and the ready check in
-    // update() re-arms from it, instantly re-locking the player otherwise.
     void reset_selection();
     SongSelectState handle_input_browsing(double current_ms);
     SongSelectState handle_input_selecting();

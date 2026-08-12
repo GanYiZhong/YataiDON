@@ -34,12 +34,21 @@ void SongSelect2PScreen::handle_input_browsing(double current_ms) {
 }
 
 void SongSelect2PScreen::handle_input_selecting() {
+    bool ura_1p = player->is_ura;
+    bool ura_2p = player_2->is_ura;
+
     if (!player->is_ready) {
         player->handle_input_selecting();
     }
     if (!player_2->is_ready) {
         player_2->handle_input_selecting();
     }
+
+    // Both players share one difficulty column, so whoever flipped the
+    // oni/ura toggle this frame decides it for both - what the column
+    // shows is what both players get.
+    if (player->is_ura != ura_1p)        player_2->sync_ura(player->is_ura);
+    else if (player_2->is_ura != ura_2p) player->sync_ura(player_2->is_ura);
 }
 
 void SongSelect2PScreen::select_song(SongBox* song) {

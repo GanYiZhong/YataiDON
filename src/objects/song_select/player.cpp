@@ -125,6 +125,17 @@ void SongSelectPlayer::start_background_diffs() {
     selected_diff_highlight_fade->start();
 }
 
+void SongSelectPlayer::sync_ura(bool ura) {
+    // A player who already confirmed keeps what the column showed when
+    // they pressed; only someone still choosing follows the toggle.
+    if (voice_played || is_ready) return;
+    if (is_ura == ura) return;
+    is_ura = ura;
+    ura_toggle = 0;
+    if (selected_difficulty == Difficulty::ONI || selected_difficulty == Difficulty::URA)
+        selected_difficulty = Difficulty(7 - (int)selected_difficulty);
+}
+
 SongSelectState SongSelectPlayer::select_song() {
     audio.play_sound("don", VolumePreset::SOUND);
     BaseBox* item = navigator.get_current_item();
