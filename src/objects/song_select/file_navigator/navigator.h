@@ -88,6 +88,9 @@ private:
     void load_collection_recommended(const fs::path& path, const BoxDef& box_def);
     void load_collection_search(const fs::path& path, const BoxDef& box_def);
     void load_songs_inline_async(const fs::path path, BoxDef box_def);
+    // Mirror add_to_recent's reordering in the boxes already on screen, so
+    // coming back to the recent collection doesn't show a stale order.
+    void promote_recent_box(const SongBox* song);
     void flush_pending_boxes();
     void exit_inline();
     void begin_inline_load();
