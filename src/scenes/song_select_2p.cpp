@@ -9,6 +9,7 @@ void SongSelect2PScreen::on_screen_start() {
 static void init_player_diffs(SongSelectPlayer* p, SongBox* song) {
     p->selected_song = true;
     p->curr_diffs = song->get_diffs();
+    p->init_diff_cursor();
     p->selected_diff_bounce->start();
     p->selected_diff_fadein->start();
 }
@@ -55,6 +56,9 @@ void SongSelect2PScreen::select_song(SongBox* song) {
     sd2.selected_difficulty = (int)player_2->selected_difficulty;
     sd2.song_hash = song->hashes[sd2.selected_difficulty];
     sd2.genre_index = (int)song->genre_index - 1;
+
+    global_data.last_difficulty[(int)PlayerNum::P1] = sd1.selected_difficulty;
+    global_data.last_difficulty[(int)PlayerNum::P2] = sd2.selected_difficulty;
 
     game_transition.emplace(song->text_name, song->text_subtitle, false);
     if (exists(sd1.selected_song.parent_path() / "Loading.png")) {

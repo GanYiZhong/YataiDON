@@ -129,6 +129,11 @@ struct GlobalData {
     PlayerNum first_login_player = PlayerNum::P1;
     int input_locked = 0;
     std::vector<SessionData> session_data = std::vector<SessionData>(3);
+    // Difficulty each player last confirmed, indexed like session_data;
+    // -1 until they pick one. Only used to place the difficulty cursor, so
+    // it lives for the run and is deliberately not written to the config.
+    // Not part of SessionData: that is reset after every song.
+    std::vector<int> last_difficulty = std::vector<int>(3, -1);
 
     GlobalData() {
         // Initialize vectors with default-constructed elements

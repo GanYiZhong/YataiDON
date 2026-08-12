@@ -44,6 +44,7 @@ void SongSelectScreen::select_song(SongBox* song) {
     session_data.selected_difficulty = (int)player->selected_difficulty;
     session_data.song_hash = song->hashes[session_data.selected_difficulty];
     session_data.genre_index = (int)song->genre_index - 1;
+    global_data.last_difficulty[(int)global_data.player_num] = session_data.selected_difficulty;
     game_transition.emplace(song->text_name, song->text_subtitle, false);
     if (exists(session_data.selected_song.parent_path() / "Loading.png")) {
         game_transition->add_loading_graphic((session_data.selected_song.parent_path() / "Loading.png").string());
@@ -103,6 +104,12 @@ void SongSelectScreen::poll_song_jump(double current_ms) {
 
 void SongSelectScreen::handle_input(double current_ms) {
     if (navigator.is_processing || navigator.inline_streaming) {
+        clear_input_buffers();
+        return;
+    }
+    // Ignore input while the difficulty panel is still expanding, matching
+    // the cursor which only appears once the animation is done.
+    if (state == SongSelectState::SONG_SELECTED && navigator.get_diff_fade_in() < 1.0f) {
         clear_input_buffers();
         return;
     }
