@@ -43,7 +43,7 @@ void SongSelectScreen::select_song(SongBox* song) {
     session_data.selected_song = song->path;
     session_data.selected_difficulty = (int)player->selected_difficulty;
     session_data.song_hash = song->hashes[session_data.selected_difficulty];
-    session_data.genre_index = (int)song->genre_index - 1;
+    session_data.genre_index = (int)song->song_genre_index - 1;
     global_data.last_difficulty[(int)global_data.player_num] = session_data.selected_difficulty;
     game_transition.emplace(song->text_name, song->text_subtitle, false);
     if (exists(session_data.selected_song.parent_path() / "Loading.png")) {

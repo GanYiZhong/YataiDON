@@ -78,13 +78,12 @@ static bool alpha_less(const std::string& a, const std::string& b) {
     return a.size() < b.size();
 }
 
-// A song listed inside a collection (recent, recommended, favourite, ...)
-// is built from that collection's BoxDef, so it inherits the collection's
-// genre. Adopt the genre folder's presentation instead: its colour, and its
-// genre index - the collection ones are past the end of the genre graphics,
-// so the game screen's genre label came out blank.
+// Record where the song really lives. A song listed inside a collection is
+// built from that collection's BoxDef, so the box keeps the collection's
+// genre on purpose - its colours and the wheel background stay the
+// collection's - but the game screen's genre label needs the song's own.
 static void apply_song_genre(SongBox* song, const BoxDef& box_def) {
-    song->genre_index = box_def.genre_index;
+    song->song_genre_index = box_def.genre_index;
     if (box_def.fore_color.has_value())
         song->fore_color = box_def.fore_color;
     else if (box_def.back_color.has_value())

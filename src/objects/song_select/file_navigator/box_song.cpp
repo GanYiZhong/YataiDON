@@ -4,6 +4,10 @@
 SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     : BaseBox(path, box_def)
 {
+    // Same as the box's genre unless this is a collection listing, where
+    // apply_song_genre overrides it with the folder the song lives in.
+    song_genre_index = genre_index;
+
     parser.get_metadata();
     auto& titles = parser.metadata.title;
     const std::string& lang = global_data.config->general.language;

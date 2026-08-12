@@ -21,6 +21,11 @@ public:
     double box_opened_at = 0.0;
     FadeAnimation* diff_fade_in;
     bool is_ura = false;
+    // The genre the song itself belongs to. Same as genre_index for a song
+    // sitting in its genre folder, but inside a collection the box keeps the
+    // collection's genre (its colours and background are the collection's)
+    // while the game screen still needs the song's own genre for its label.
+    GenreIndex song_genre_index = GenreIndex::DEFAULT;
 
     SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser);
 
