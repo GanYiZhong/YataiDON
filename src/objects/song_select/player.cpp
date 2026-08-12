@@ -84,6 +84,35 @@ bool SongSelectPlayer::is_voice_playing() {
     return audio.is_sound_playing("voice_start_song_" + std::to_string((int)player_num) + "p");
 }
 
+void SongSelectPlayer::init_diff_cursor() {
+    int last = global_data.last_difficulty[(int)player_num];
+    if (last < (int)Difficulty::EASY) return;
+
+    // An ura pick lands the cursor on the oni column; the player flips to
+    // ura themselves if this song has one.
+    Difficulty desired = (Difficulty)std::min(last, (int)Difficulty::ONI);
+
+    Difficulty pick = Difficulty::BACK;
+    for (Difficulty d : curr_diffs) {
+        if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
+        if (d <= desired && (pick == Difficulty::BACK || d > pick)) pick = d;
+    }
+    if (pick == Difficulty::BACK) {
+        // nothing at or below the remembered difficulty - take the lowest
+        for (Difficulty d : curr_diffs) {
+            if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
+            if (pick == Difficulty::BACK || d < pick) pick = d;
+        }
+    }
+    if (pick != Difficulty::BACK) {
+        selected_difficulty = pick;
+        // draw_selector positions from prev_diff until the move animation
+        // has run; leaving it at BACK draws the cursor over the option
+        // column instead of the picked difficulty.
+        prev_diff = pick;
+    }
+}
+
 void SongSelectPlayer::reset_selection() {
     is_ready = false;
     selected_song = false;
@@ -106,6 +135,7 @@ SongSelectState SongSelectPlayer::select_song() {
         selected_song = true;
         SongBox* song_item = (SongBox*)item;
         curr_diffs = song_item->get_diffs();
+        init_diff_cursor();
         selected_diff_bounce->start();
         selected_diff_fadein->start();
         return SongSelectState::SONG_SELECTED;
@@ -352,6 +382,10 @@ void SongSelectPlayer::toggle_ura_mode() {
 }
 
 void SongSelectPlayer::draw_selector(bool is_half, float fade_in) {
+    // Keep the cursor hidden until the difficulty panel finished expanding:
+    // parts of the selector (the outline) draw unfaded, so a pre-placed
+    // cursor popped in at full opacity over the still-fading panel.
+    if (fade_in < 1.0f) return;
     float fade = (neiro_selector.has_value() || modifier_selector.has_value())
         ? 0.5f : fade_in;
     float direction = diff_select_move_right ? 1.0f : -1.0f;
