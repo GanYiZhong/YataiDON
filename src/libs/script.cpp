@@ -369,6 +369,12 @@ void ScriptManager::register_lua_bindings() {
         info["name"] = tex_obj->name;
         info["x"] = sol::as_table(tex_obj->x);
         info["y"] = sol::as_table(tex_obj->y);
+        // Drawn size per position, which is what draw_texture uses. This
+        // differs from width/height (the source image size) whenever
+        // texture.json stretches the texture, e.g. a nine-slice centre
+        // piece - scripts need it to lay out against what is on screen.
+        info["x2"] = sol::as_table(tex_obj->x2);
+        info["y2"] = sol::as_table(tex_obj->y2);
         info["width"] = tex_obj->width;
         info["height"] = tex_obj->height;
 
@@ -406,9 +412,14 @@ void ScriptManager::register_lua_bindings() {
 
         script_manager.tex.load_folder(screen_name, subset);
 
-        auto it = tex_id_map.find(subset + "/" + texture_name);
+        // Look for the localised variant first. Texture ids are keyed by
+        // subset, not by screen, so an unrelated screen using the same
+        // subset name can own the unsuffixed id - result/background asking
+        // for "result_text" resolved to dan_result's, which isn't loaded
+        // here, and the header silently didn't draw.
+        auto it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
         if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
-        it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
+        it = tex_id_map.find(subset + "/" + texture_name);
         if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
         return sol::nullopt;
     });

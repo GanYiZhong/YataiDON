@@ -363,8 +363,23 @@ void KeyBindControllerOptionBox::confirm() {
 
 void KeyBindControllerOptionBox::update(double current_time) {
     flicker_fade->update(current_time);
-    if (is_highlighted) {
+    if (!is_highlighted) {
+        capture_armed = false;
+        return;
+    }
+    if (!capture_armed) {
+        // Drop the press that opened this box, plus anything buffered
+        // before it, so capture starts clean.
+        take_gamepad_button_pressed();
+        capture_armed = true;
+        return;
+    }
+    {
+        // raylib only reports devices it has a gamepad mapping for; fall
+        // back to the input layer's own polling, which also covers plain
+        // SDL joysticks (most drum controllers).
         int btn = ray::GetGamepadButtonPressed();
+        if (btn <= 0) btn = take_gamepad_button_pressed();
         if (btn > 0) {
             value = {btn};
             confirm();

@@ -108,6 +108,9 @@ std::optional<Screens> EntryScreen::handle_input() {
             if (player) player->handle_input();
         }
     } else if (state == EntryState::SELECT_MODE) {
+        // The mode boxes are only drawn once every player's entry animation
+        // has played out; don't let them be picked while they are invisible.
+        if (!mode_select_ready()) return std::nullopt;
         for (auto& player : players) {
             if (player) player->handle_input();
         }
@@ -196,10 +199,15 @@ void EntryScreen::draw_player_drum() {
     }
 }
 
-void EntryScreen::draw_mode_select() {
+bool EntryScreen::mode_select_ready() {
     for (auto& player : players) {
-        if (player && !player->is_cloud_animation_finished()) return;
+        if (player && !player->is_cloud_animation_finished()) return false;
     }
+    return true;
+}
+
+void EntryScreen::draw_mode_select() {
+    if (!mode_select_ready()) return;
     box_manager->draw();
 }
 

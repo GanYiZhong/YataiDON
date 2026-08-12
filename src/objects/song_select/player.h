@@ -49,14 +49,8 @@ public:
     bool is_voice_playing();
 
     SongSelectState select_song();
-    // Follow the other player's oni/ura toggle. The difficulty column is
-    // shared in 2P, so both players must sit on the same side of it -
-    // otherwise the column reads ura while this player still starts oni.
-    // No sound or switch animation: the player who toggled already ran it.
     void sync_ura(bool ura);
-    // Fully cancel this player's difficulty pick (leaving diff select).
-    // Clears voice_played too: it survives is_ready, and the ready check in
-    // update() re-arms from it, instantly re-locking the player otherwise.
+    void init_diff_cursor();
     void reset_selection();
     SongSelectState handle_input_browsing(double current_ms);
     SongSelectState handle_input_selecting();

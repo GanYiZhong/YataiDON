@@ -75,6 +75,12 @@ std::atomic<bool> touch_drum_pressed{false};
 static std::array<bool, 349> previous_key_states{};
 static std::array<bool, 18>  previous_gamepad_states{};
 
+// Gamepad/joystick buttons and axes are folded into the key space at these
+// offsets (config stores the bare button number).
+static constexpr int GAMEPAD_VKEY_BASE = 10000;
+static constexpr int AXIS_VKEY_BASE    = 20000;
+static std::atomic<int> last_gamepad_vkey{0};
+
 bool is_input_key_pressed(const std::vector<int>& keys, const std::vector<int>& gamepad_buttons) {
 
     for (int key : keys) {
@@ -410,11 +416,27 @@ void poll_keyboard_once() {
         }
     }
 
+    // Remember the newest controller press separately from pressed_keys so
+    // the keybind screen can read it: the pressed_keys entry is consumed by
+    // whatever navigates the menu before the option box ever sees it.
+    for (int vkey : local_pressed) {
+        if (vkey >= GAMEPAD_VKEY_BASE && vkey < AXIS_VKEY_BASE) {
+            last_gamepad_vkey.store(vkey, std::memory_order_relaxed);
+            break;
+        }
+    }
+
     if (!local_pressed.empty() || !local_released.empty()) {
         std::lock_guard<std::mutex> lock(input_mutex);
         pressed_keys.insert(local_pressed.begin(), local_pressed.end());
         released_keys.insert(local_released.begin(), local_released.end());
     }
+}
+
+int take_gamepad_button_pressed() {
+    int vkey = last_gamepad_vkey.exchange(0, std::memory_order_relaxed);
+    if (vkey < GAMEPAD_VKEY_BASE || vkey >= AXIS_VKEY_BASE) return 0;
+    return vkey - GAMEPAD_VKEY_BASE;
 }
 
 void input_polling_thread() {
