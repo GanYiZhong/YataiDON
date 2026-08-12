@@ -42,6 +42,9 @@ private:
     void draw_side_select(float fade);
     void draw_player_drum();
     void draw_mode_select();
+    // True once every registered player's entry animation has played out,
+    // i.e. once the mode boxes are actually on screen.
+    bool mode_select_ready();
     std::optional<Screens> handle_input();
 
 public:
