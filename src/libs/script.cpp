@@ -412,9 +412,14 @@ void ScriptManager::register_lua_bindings() {
 
         script_manager.tex.load_folder(screen_name, subset);
 
-        auto it = tex_id_map.find(subset + "/" + texture_name);
+        // Look for the localised variant first. Texture ids are keyed by
+        // subset, not by screen, so an unrelated screen using the same
+        // subset name can own the unsuffixed id - result/background asking
+        // for "result_text" resolved to dan_result's, which isn't loaded
+        // here, and the header silently didn't draw.
+        auto it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
         if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
-        it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
+        it = tex_id_map.find(subset + "/" + texture_name);
         if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
         return sol::nullopt;
     });
