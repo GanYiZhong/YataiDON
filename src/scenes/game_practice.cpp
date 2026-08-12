@@ -226,6 +226,7 @@ std::optional<Screens> PracticeGameScreen::update() {
             ms_from_start = current_ms - start_ms;
         }
     }
+    poll_pending_song();
     if (transition->is_finished()) {
         start_song(current_ms);
         global_data.input_locked = 0;

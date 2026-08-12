@@ -53,6 +53,7 @@ std::optional<Screens> Game2PScreen::update() {
     if (!paused) {
         ms_from_start = current_time - start_ms;
     }
+    poll_pending_song();
     if (transition->is_finished()) {
         start_song(ms_from_start);
         global_data.input_locked = 0;
