@@ -1531,8 +1531,13 @@ void Player::seek_to(double resume_time) {
 
     reset_chart();
 
-    auto filter = [resume_time](std::deque<Note>& q) {
-        while (!q.empty() && q.front().hit_ms < resume_time) q.pop_front();
+    // Keep notes sitting exactly on the resume boundary (a bar's downbeat
+    // lands there): the resume time is derived with floating arithmetic and
+    // can come out a hair above the note's hit_ms, occasionally dropping
+    // the first note of the target bar from the hit queues.
+    const double boundary_eps = 1.0;
+    auto filter = [resume_time, boundary_eps](std::deque<Note>& q) {
+        while (!q.empty() && q.front().hit_ms < resume_time - boundary_eps) q.pop_front();
     };
     filter(don_notes);
     filter(kat_notes);
@@ -1540,6 +1545,6 @@ void Player::seek_to(double resume_time) {
 
     draw_note_list.erase(
         std::remove_if(draw_note_list.begin(), draw_note_list.end(),
-            [resume_time](const Note& n) { return n.hit_ms < resume_time; }),
+            [resume_time, boundary_eps](const Note& n) { return n.hit_ms < resume_time - boundary_eps; }),
         draw_note_list.end());
 }
