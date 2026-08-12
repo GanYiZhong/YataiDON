@@ -226,7 +226,10 @@ private:
 
     virtual void spawn_hit_effects(DrumType drum_type, Side side);
 
-    void handle_input(double ms_from_start, double current_ms, std::optional<Background>& background);
+protected:
+    virtual void handle_input(double ms_from_start, double current_ms, std::optional<Background>& background);
+
+private:
 
     void draw_bar(double current_ms, float y, const Note& bar);
 
