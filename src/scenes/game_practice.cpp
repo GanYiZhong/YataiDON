@@ -119,6 +119,13 @@ void PracticeGameScreen::pause_song_practice() {
         }
         song_started = true;
         start_ms = get_current_ms() - pause_time;
+        // update() computed ms_from_start at the top of this frame while we
+        // were still paused, so it holds the stale pause position. The player
+        // update later this frame would sweep the freshly seeked queues with
+        // that stale clock - instantly missing the notes right after the
+        // resume point and pair-popping drumrolls between the scrobble target
+        // and wherever the pause happened.
+        ms_from_start = start_time;
     }
 }
 
