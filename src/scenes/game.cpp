@@ -176,6 +176,15 @@ void GameScreen::restart_song() {
     audio.play_sound("restart", VolumePreset::SOUND);
     song_started = false;
     score_saved = false;
+    paused = false;
+    pause_time = 0;
+    last_resync_ms = 0;
+    // Reset the chart clock the same way on_screen_start does. With the
+    // stale start_ms, ms_from_start was already far past the start
+    // threshold, so the song began the very next frame instead of after
+    // the usual lead-in (#83).
+    start_ms = get_current_ms() - parser->metadata.offset*1000 - (double)global_data.config->general.audio_offset;
+    ms_from_start = get_current_ms() - start_ms;
 }
 
 std::optional<Screens> GameScreen::global_keys() {

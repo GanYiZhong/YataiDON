@@ -100,6 +100,14 @@ std::optional<Screens> Game2PScreen::update() {
         init_tja(global_data.session_data[(int)PlayerNum::P1].selected_song);
         audio.play_sound("restart", VolumePreset::SOUND);
         song_started = false;
+        score_saved = false;
+        paused = false;
+        pause_time = 0;
+        last_resync_ms = 0;
+        // See GameScreen::restart_song - reset the chart clock or the song
+        // starts immediately, skipping the lead-in (#83).
+        start_ms = get_current_ms() - parser->metadata.offset*1000 - (double)global_data.config->general.audio_offset;
+        ms_from_start = get_current_ms() - start_ms;
     }
     if (check_key_pressed(global_data.config->keys.back_key)) {
         if (song_music.has_value()) audio.stop_sound(song_music.value());
