@@ -2,6 +2,27 @@
 #include "../../../libs/filesystem.h"
 #include "../../../libs/scores.h"
 #include "../../../libs/audio.h"
+#include <mutex>
+
+// The crown/count scan below walks the folder's whole subtree and runs a
+// score query per chart. Every FolderBox at a directory level does this when
+// the level loads (each genre box at the root scans its entire genre), so
+// cache the result per folder until scores or song lists change - otherwise
+// every back-navigation repeats seconds of I/O and the main thread hitches
+// on join_loader() waiting for it.
+namespace {
+struct FolderScan {
+    std::map<int, Crown> crown;
+    int tja_count;
+};
+std::mutex scan_cache_mutex;
+std::map<fs::path, FolderScan> scan_cache;
+}
+
+void FolderBox::invalidate_scan_cache() {
+    std::lock_guard<std::mutex> lock(scan_cache_mutex);
+    scan_cache.clear();
+}
 
 FolderBox::FolderBox(const fs::path& path, const BoxDef& box_def, std::map<std::pair<std::string, std::string>, fs::path>& song_files)
     : BaseBox(path, box_def), tja_count(0)
@@ -12,6 +33,16 @@ FolderBox::FolderBox(const fs::path& path, const BoxDef& box_def, std::map<std::
 }
 
 void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files) {
+    {
+        std::lock_guard<std::mutex> lock(scan_cache_mutex);
+        auto it = scan_cache.find(path);
+        if (it != scan_cache.end()) {
+            crown = it->second.crown;
+            tja_count = it->second.tja_count;
+            return;
+        }
+    }
+
     crown.clear();
     tja_count = 0;
     std::set<int> disqualified;
@@ -51,6 +82,11 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
             tja_count++;
             update_crown(entry.path());
         }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(scan_cache_mutex);
+        scan_cache[path] = {crown, tja_count};
     }
 }
 

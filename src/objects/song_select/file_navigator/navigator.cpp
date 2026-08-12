@@ -13,6 +13,49 @@ static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef
     return std::make_unique<SongBox>(path, box_def, std::move(parser));
 }
 
+// Parse many charts concurrently. Reading and line-parsing the chart file is
+// the dominant cost when a big folder opens, and it is embarrassingly
+// parallel, so pre-parse on a small pool and let the loader thread consume
+// the results in directory order.
+static std::unordered_map<std::string, std::unique_ptr<SongParser>>
+parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abort_flag) {
+    std::vector<std::unique_ptr<SongParser>> parsed(paths.size());
+    unsigned workers = std::clamp(std::thread::hardware_concurrency(), 2u, 8u);
+    std::atomic<size_t> next{0};
+    std::vector<std::thread> pool;
+    for (unsigned t = 0; t < workers && t < paths.size(); t++) {
+        pool.emplace_back([&] {
+            for (size_t i; (i = next.fetch_add(1)) < paths.size();) {
+                if (abort_flag.load()) break;
+                try {
+                    parsed[i] = std::make_unique<SongParser>(paths[i]);
+                } catch (const std::exception& e) {
+                    spdlog::warn("Failed to parse {}: {}", paths[i].string(), e.what());
+                }
+            }
+        });
+    }
+    for (auto& th : pool) th.join();
+
+    std::unordered_map<std::string, std::unique_ptr<SongParser>> out;
+    for (size_t i = 0; i < paths.size(); i++)
+        if (parsed[i]) out.emplace(paths[i].string(), std::move(parsed[i]));
+    return out;
+}
+
+// Move a pre-parsed parser out of the map, or parse on the spot when the
+// pre-pass missed the file (fallback only - should not happen).
+static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<SongParser>>& preparsed,
+                              const fs::path& path) {
+    auto it = preparsed.find(path.string());
+    if (it != preparsed.end()) {
+        SongParser p = std::move(*it->second);
+        preparsed.erase(it);
+        return p;
+    }
+    return SongParser(path);
+}
+
 static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
     BoxDef d;
     d.back_color    = BackBox::COLOR;
@@ -214,6 +257,7 @@ void sort_items(std::vector<std::unique_ptr<BaseBox>>& items, int first_index, i
 }
 
 void Navigator::refresh_scores() {
+    FolderBox::invalidate_scan_cache();
     SongBox* curr_item = dynamic_cast<SongBox*>(get_current_item());
     if (curr_item) {
         curr_item->refresh_scores();
@@ -323,6 +367,18 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     setup_back_box(path, true);
 
+    // Pre-parse the level's song files on a worker pool (see
+    // parse_songs_parallel) so the streaming loop below only assembles boxes.
+    std::vector<fs::path> song_paths;
+    try {
+        for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
+            if (abort_loading) break;
+            if (!fs::is_directory(entry.path()) && is_song_file(entry.path()))
+                song_paths.push_back(entry.path());
+        }
+    } catch (const fs::filesystem_error&) { /* main loop reports errors */ }
+    auto preparsed = parse_songs_parallel(song_paths, abort_loading);
+
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
             if (abort_loading) break;
@@ -335,7 +391,7 @@ void Navigator::load_current_directory_async(const fs::path path) {
                         continue;
                     }
                     if (is_song_file(curr_path))
-                        enqueue_box(make_song_box(curr_path, box_def, SongParser(curr_path)));
+                        enqueue_box(make_song_box(curr_path, box_def, take_parser(preparsed, curr_path)));
                     continue;
                 }
                 if (has_def_file(curr_path)) {
@@ -482,6 +538,7 @@ void Navigator::load_from_song_list(const fs::path& path, const BoxDef& box_def,
 
 void Navigator::toggle_favorite(SongBox* song) {
     if (!favorite_folder_path) return;
+    FolderBox::invalidate_scan_cache();  // song_list.txt counts change
     auto& t = song->parser.metadata.title;
     auto& s = song->parser.metadata.subtitle;
     std::string title    = t.count("en") ? t.at("en") : t.begin()->second;
@@ -520,6 +577,7 @@ fs::path Navigator::find_box_def_folder(const fs::path& song_path) {
 
 void Navigator::add_to_recent(const SongBox* song) {
     if (!recent_folder_path) return;
+    FolderBox::invalidate_scan_cache();  // song_list.txt counts change
     fs::path song_list_path = *recent_folder_path / "song_list.txt";
 
     auto& titles    = song->parser.metadata.title;
@@ -539,25 +597,25 @@ void Navigator::add_to_recent(const SongBox* song) {
 }
 
 void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& box_def) {
-    std::vector<std::pair<fs::path, BoxDef>> all_songs;
-    for (const auto& sibling : fs::directory_iterator(path.parent_path())) {
-        if (abort_loading) break;
-        if (!fs::is_directory(sibling) || sibling.path() == path) continue;
-        BoxDef sibling_box_def = parse_box_def(sibling.path());
-        for (const auto& entry : fs::recursive_directory_iterator(sibling)) {
-            if (abort_loading) break;
-            if (is_song_file(entry.path()))
-                all_songs.push_back({entry.path(), sibling_box_def});
-        }
-    }
+    // Pick from the already-built song index instead of re-walking the whole
+    // library on disk: that recursive scan took seconds on a large library,
+    // and any navigation issued meanwhile stalled on join_loader() until it
+    // finished.
+    std::vector<fs::path> all_songs;
+    all_songs.reserve(song_files.size());
+    for (const auto& [key, song_path] : song_files)
+        all_songs.push_back(song_path);
+
     std::mt19937 rng(std::random_device{}());
     std::shuffle(all_songs.begin(), all_songs.end(), rng);
     int count = std::min((int)all_songs.size(), 10);
     for (int i = 0; i < count; i++) {
         if (abort_loading) break;
-        const auto& [song_path, song_box_def] = all_songs[i];
+        const fs::path& song_path = all_songs[i];
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
-        apply_song_color(song.get(), song_box_def);
+        fs::path genre_folder = find_box_def_folder(song_path);
+        if (!genre_folder.empty())
+            apply_song_color(song.get(), parse_box_def(genre_folder));
         song->fade_in(266);
         enqueue_inline_box(std::move(song));
     }
@@ -588,11 +646,12 @@ void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_d
 void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
     wait_for_song_files();
     int songs_added = 0;
+    std::unordered_map<std::string, std::unique_ptr<SongParser>> preparsed;
 
     auto add_song = [&](const fs::path& song_path) {
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path()));
-        auto box = make_song_box(song_path, box_def, SongParser(song_path));
+        auto box = make_song_box(song_path, box_def, take_parser(preparsed, song_path));
         box->fade_in(266);
         enqueue_inline_box(std::move(box));
         songs_added++;
@@ -627,6 +686,33 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
         return;
     }
 
+    // Pre-pass: gather the song files this loop will visit (same filters as
+    // below) and parse them on a worker pool before streaming the boxes in.
+    std::vector<fs::path> song_paths;
+    try {
+        for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
+            if (abort_loading) break;
+            const fs::path& curr_path = entry.path();
+            if (!fs::is_directory(curr_path)) {
+                if (is_song_file(curr_path)) song_paths.push_back(curr_path);
+                continue;
+            }
+            if (is_osu_song_folder(curr_path)) continue;
+            std::error_code ec;
+            auto it = fs::recursive_directory_iterator(curr_path, ec);
+            while (it != fs::end(it)) {
+                if (abort_loading) break;
+                if (fs::is_directory(it->path()) && is_osu_song_folder(it->path()))
+                    it.disable_recursion_pending();
+                else if (is_song_file(it->path()))
+                    song_paths.push_back(it->path());
+                it.increment(ec);
+                if (ec) { ec.clear(); }
+            }
+        }
+    } catch (const fs::filesystem_error&) { /* main loop reports errors */ }
+    preparsed = parse_songs_parallel(song_paths, abort_loading);
+
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
             if (abort_loading) break;
@@ -638,7 +724,7 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
                         continue;
                     }
                     if (is_song_file(curr_path))
-                        enqueue_inline_box(make_song_box(curr_path, box_def, SongParser(curr_path)));
+                        enqueue_inline_box(make_song_box(curr_path, box_def, take_parser(preparsed, curr_path)));
                     continue;
                 }
                 if (is_osu_song_folder(curr_path)) {

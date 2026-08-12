@@ -1,14 +1,14 @@
 #include "box_song_osu.h"
 
 SongBoxOsu::SongBoxOsu(const fs::path& path, const BoxDef& box_def, SongParser parser)
-    : SongBox(path, box_def, parser)
+    : SongBox(path, box_def, std::move(parser))
 {
-    this->parser = parser;
-    parser.get_metadata();
-    text_name = parser.get_difficulty_name();
+    // The base constructor already parsed the metadata and owns the parser -
+    // read from the member instead of keeping two more copies alive.
+    text_name = this->parser.get_difficulty_name();
 
     const std::string& lang = global_data.config->general.language;
-    auto& subtitles = parser.metadata.subtitle;
+    auto& subtitles = this->parser.metadata.subtitle;
     text_subtitle = subtitles.count(lang) ? subtitles.at(lang) : subtitles.count("en") ? subtitles.at("en") : subtitles.empty() ? "" : subtitles.begin()->second;
 
     is_favorite = false;

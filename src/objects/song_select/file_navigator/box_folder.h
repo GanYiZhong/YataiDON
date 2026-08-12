@@ -25,6 +25,9 @@ public:
     void exit_box() override;
 
     void refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files);
+    // Drop the cached crown/tja_count folder scans. Call whenever scores or
+    // song lists change (after a play, favorite toggle, recent update).
+    static void invalidate_scan_cache();
 
     const char* lua_kind() const override { return "folder"; }
 

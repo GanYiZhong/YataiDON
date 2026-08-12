@@ -4,7 +4,6 @@
 SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     : BaseBox(path, box_def)
 {
-    this->parser = parser;
     parser.get_metadata();
     auto& titles = parser.metadata.title;
     const std::string& lang = global_data.config->general.language;
@@ -12,6 +11,12 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
 
     auto& subtitles = parser.metadata.subtitle;
     text_subtitle = subtitles.count(lang) ? subtitles.at(lang) : subtitles.count("en") ? subtitles.at("en") : subtitles.empty() ? "" : subtitles.begin()->second;
+
+    // Move, don't copy: the parser holds every line of the chart file, and
+    // the copy showed up hard when a big folder builds hundreds of boxes.
+    // Moving after get_metadata() also means the member actually carries the
+    // parsed metadata.
+    this->parser = std::move(parser);
 
     is_favorite = false;
     diff_fade_in = (FadeAnimation*)tex.get_animation(12);
