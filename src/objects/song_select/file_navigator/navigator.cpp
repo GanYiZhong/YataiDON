@@ -542,6 +542,10 @@ void Navigator::load_from_song_list(const fs::path& path, const BoxDef& box_def,
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path()));
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
+        // The text file is the order: most recent first for RECENT, the
+        // order they were added for FAVORITE. Without this the completion
+        // sort alphabetises them and that meaning is lost.
+        song->preserve_order = true;
         if (mark_favorite) song->is_favorite = true;
         fs::path genre_folder = find_box_def_folder(song_path);
         if (!genre_folder.empty())
