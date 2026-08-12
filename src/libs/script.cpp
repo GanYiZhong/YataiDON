@@ -369,6 +369,12 @@ void ScriptManager::register_lua_bindings() {
         info["name"] = tex_obj->name;
         info["x"] = sol::as_table(tex_obj->x);
         info["y"] = sol::as_table(tex_obj->y);
+        // Drawn size per position, which is what draw_texture uses. This
+        // differs from width/height (the source image size) whenever
+        // texture.json stretches the texture, e.g. a nine-slice centre
+        // piece - scripts need it to lay out against what is on screen.
+        info["x2"] = sol::as_table(tex_obj->x2);
+        info["y2"] = sol::as_table(tex_obj->y2);
         info["width"] = tex_obj->width;
         info["height"] = tex_obj->height;
 
