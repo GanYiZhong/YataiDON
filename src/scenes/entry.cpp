@@ -57,6 +57,14 @@ std::optional<Screens> EntryScreen::handle_input() {
     if (state == EntryState::SELECT_SIDE) {
         if (is_l_don_pressed() || is_r_don_pressed()) {
             if (side == 1) {
+                if (players[0]) {
+                    // The side select was opened to add a second player -
+                    // cancelling it goes back to the first player's mode
+                    // select instead of dropping the whole entry to title.
+                    audio.play_sound("don", VolumePreset::SOUND);
+                    state = EntryState::SELECT_MODE;
+                    return std::nullopt;
+                }
                 return on_screen_end(Screens::TITLE);
             }
             global_data.player_num = (side == 0) ? PlayerNum::P1 : PlayerNum::P2;
