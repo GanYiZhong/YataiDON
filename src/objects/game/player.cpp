@@ -958,7 +958,7 @@ void Player::note_correct(const Note& note, double current_ms) {
         }
         if (combo % 100 == 0 && score_method == ScoreMethod::GEN3) {
             score += 10000;
-            base_score_list.push_back(ScoreCounterAnimation(player_num, 10000));
+            base_score_list.push_back(ScoreCounterAnimation(player_num, 10000, is_2p));
         }
     }
 
@@ -981,7 +981,7 @@ void Player::check_drumroll(double current_ms, DrumType drum_type, std::optional
     if (background.has_value()) background->handle_drumroll(PlayerNum(is_2p + 1));
     score += 100;
     if (base_score_list.size() < 5) {
-        base_score_list.push_back(ScoreCounterAnimation(player_num, 100));
+        base_score_list.push_back(ScoreCounterAnimation(player_num, 100, is_2p));
     }
     if (draw_note_buffer.empty()) return;
     if (!other_notes.empty()) {
@@ -1007,7 +1007,7 @@ void Player::check_balloon(double current_ms, DrumType drum_type, const Note& ba
     curr_balloon_count++;
     total_drumroll++;
     score += 100;
-    base_score_list.push_back(ScoreCounterAnimation(player_num, 100));
+    base_score_list.push_back(ScoreCounterAnimation(player_num, 100, is_2p));
     if (curr_balloon_count == balloon.count.value()) {
         is_balloon = false;
         balloon_counter->update(current_ms, curr_balloon_count);
@@ -1026,7 +1026,7 @@ void Player::check_kusudama(double current_ms, DrumType drum_type, const Note& b
     curr_balloon_count++;
     total_drumroll++;
     score += 100;
-    base_score_list.push_back(ScoreCounterAnimation(player_num, 100));
+    base_score_list.push_back(ScoreCounterAnimation(player_num, 100, is_2p));
     if (curr_balloon_count == balloon.count.value()) {
         is_balloon = false;
         audio.play_sound("kusudama_pop", VolumePreset::HITSOUND);
@@ -1097,7 +1097,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             good_count++;
             score += base_score;
             if (base_score_list.size() < 5) {
-                base_score_list.push_back(ScoreCounterAnimation(player_num, base_score));
+                base_score_list.push_back(ScoreCounterAnimation(player_num, base_score, is_2p));
             }
             note_correct(curr_note, current_ms);
             if (dan_gauge) dan_gauge->add_good();
@@ -1112,7 +1112,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             ok_count++;
             score += 10 * std::floor(base_score / 2 / 10);
             if (base_score_list.size() < 5) {
-                base_score_list.push_back(ScoreCounterAnimation(player_num, 10 * std::floor(base_score / 2 / 10)));
+                base_score_list.push_back(ScoreCounterAnimation(player_num, 10 * std::floor(base_score / 2 / 10), is_2p));
             }
             note_correct(curr_note, current_ms);
             if (dan_gauge) dan_gauge->add_ok();
@@ -1169,7 +1169,7 @@ void Player::balloon_counter_manager(double current_ms) {
         if (balloon_counter->is_finished()) {
             if (score_method == ScoreMethod::GEN3) {
                 score += 5000;
-                base_score_list.push_back(ScoreCounterAnimation(player_num, 5000));
+                base_score_list.push_back(ScoreCounterAnimation(player_num, 5000, is_2p));
             }
             balloon_counter.reset();
             chara->set_anim(AnimIndex::DON_NORMAL);

@@ -679,7 +679,7 @@ struct ScoreCounterAnimFixture : public SandboxScreen::Fixture {
     uint32_t anchor_texture_id() override { return LANE::SCORE_NUMBER; }
 
     void reset(double) override { active.reset(); type_idx = 0; }
-    void on_space(double) override { active.emplace(PlayerNum::P1, scores[type_idx]); }
+    void on_space(double) override { active.emplace(PlayerNum::P1, scores[type_idx], false); }
 
     void update(double ms) override {
         if (active && active->is_finished()) active.reset();
