@@ -127,14 +127,17 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
         navigator.load_current_directory(navigator.current_path);
     }
 
+    bool navigated = false;
     if (ray::IsKeyPressed(ray::KEY_LEFT_CONTROL) || (l_kat && current_ms <= last_moved + 50)) {
         audio.play_sound("skip", VolumePreset::SOUND);
         navigator.skip_left();
         last_moved = current_ms;
+        navigated = true;
     } else if (l_kat || wheel > 0) {
         audio.play_sound("kat", VolumePreset::SOUND);
         navigator.move_left();
         last_moved = current_ms;
+        navigated = true;
     }
 
     if (ray::IsKeyPressed(ray::KEY_RIGHT_CONTROL) || (r_kat && current_ms <= last_moved + 50)) {
@@ -145,6 +148,7 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
         audio.play_sound("kat", VolumePreset::SOUND);
         navigator.move_right();
         last_moved = current_ms;
+        navigated = true;
     }
 
     if (ray::IsKeyPressed(ray::KEY_SPACE)) {
@@ -155,7 +159,10 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
         }
     }
 
-    if (l_don || r_don) {
+    // A don landing on the same frame as a navigation would open the newly
+    // selected item while the boxes are still mid-slide, corrupting the
+    // wheel display - navigation wins, the select is dropped for this frame.
+    if (!navigated && (l_don || r_don)) {
         BaseBox* item = navigator.get_current_item();
         if (navigator.is_directory(item) && item->collection == COLLECTIONS[5])
             return SongSelectState::SEARCHING;
