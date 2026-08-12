@@ -126,6 +126,9 @@ void SongSelectPlayer::start_background_diffs() {
 }
 
 void SongSelectPlayer::sync_ura(bool ura) {
+    // A player who already confirmed keeps what the column showed when
+    // they pressed; only someone still choosing follows the toggle.
+    if (voice_played || is_ready) return;
     if (is_ura == ura) return;
     is_ura = ura;
     ura_toggle = 0;
