@@ -103,6 +103,9 @@ class KeyBindControllerOptionBox : public BaseOptionBox {
     std::vector<int> value;
     std::unique_ptr<OutlinedText>    value_text;
     std::unique_ptr<FadeAnimation>   flicker_fade;
+    // Capture starts one frame after highlighting, so the press that opened
+    // the box isn't immediately bound to it.
+    bool capture_armed = false;
 
     void rebuild_text();
 public:

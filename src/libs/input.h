@@ -23,6 +23,12 @@ bool check_key_pressed(int key);
 // This consumes the key release event
 bool check_key_released(int key);
 
+// Most recent controller button press, as the bare button number the
+// config stores (0 if none since the last call, which this consumes).
+// Covers SDL joysticks too, unlike raylib's GetGamepadButtonPressed which
+// only sees devices it has a gamepad mapping for.
+int take_gamepad_button_pressed();
+
 // Clear all buffered input events
 // Useful when changing screens or locking input
 void clear_input_buffers();
