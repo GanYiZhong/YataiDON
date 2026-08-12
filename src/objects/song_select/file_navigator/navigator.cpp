@@ -65,6 +65,19 @@ static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
     return std::make_unique<BackBox>(parent_path, d);
 }
 
+// Case-insensitive comparison so the wheel sorts alphabetically instead of
+// by raw byte value ('Z' < 'a' in ASCII put all lowercase titles last).
+// Bytes outside ASCII (UTF-8 continuations etc.) compare unchanged.
+static bool alpha_less(const std::string& a, const std::string& b) {
+    size_t n = std::min(a.size(), b.size());
+    for (size_t i = 0; i < n; i++) {
+        unsigned char ca = std::tolower(static_cast<unsigned char>(a[i]));
+        unsigned char cb = std::tolower(static_cast<unsigned char>(b[i]));
+        if (ca != cb) return ca < cb;
+    }
+    return a.size() < b.size();
+}
+
 static void apply_song_color(SongBox* song, const BoxDef& box_def) {
     if (box_def.fore_color.has_value())
         song->fore_color = box_def.fore_color;
@@ -240,7 +253,7 @@ void sort_items(std::vector<std::unique_ptr<BaseBox>>& items, int first_index, i
 
         std::sort(sortable.begin(), sortable.end(),
             [](const std::unique_ptr<BaseBox>& a, const std::unique_ptr<BaseBox>& b) {
-                return a->text_name < b->text_name;
+                return alpha_less(a->text_name, b->text_name);
             });
 
         int sortable_idx = 0;
@@ -310,7 +323,7 @@ void Navigator::flush_pending_boxes() {
             }
             std::sort(sortable.begin(), sortable.end(),
                 [](const std::unique_ptr<BaseBox>& a, const std::unique_ptr<BaseBox>& b) {
-                    return a->path.filename().string() < b->path.filename().string();
+                    return alpha_less(a->path.filename().string(), b->path.filename().string());
                 });
             for (int j = 0; j < (int)sortable_indices.size(); j++)
                 items[sortable_indices[j]] = std::move(sortable[j]);
