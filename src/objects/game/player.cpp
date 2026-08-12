@@ -153,10 +153,22 @@ void Player::autoplay_manager(double ms_from_start, double current_ms, std::opti
             check_note(ms_from_start, hit_type, current_ms, background);
         }
     } else {
+        // A big note is struck with both hands, like a player would, so light
+        // up both sides and leave the alternating hand where it was for the
+        // next single note. Drumrolls keep alternating even when big.
+        auto autoplay_hit = [&](DrumType type, bool big) {
+            if (big) {
+                spawn_hit_effects(type, Side::LEFT);
+                spawn_hit_effects(type, Side::RIGHT);
+            } else {
+                autoplay_hit_side = autoplay_hit_side == Side::LEFT ? Side::RIGHT : Side::LEFT;
+                spawn_hit_effects(type, autoplay_hit_side);
+            }
+        };
+
         while (!don_notes.empty() && ms_from_start >= don_notes.front().hit_ms) {
             hit_type = DrumType::DON;
-            autoplay_hit_side = autoplay_hit_side == Side::LEFT ? Side::RIGHT : Side::LEFT;
-            spawn_hit_effects(hit_type, autoplay_hit_side);
+            autoplay_hit(hit_type, don_notes.front().type == NoteType::DON_L);
             audio.play_sound(don_hitsound, VolumePreset::HITSOUND);
             check_note(ms_from_start, hit_type, current_ms, background);
             last_note_hit = current_ms;
@@ -164,8 +176,7 @@ void Player::autoplay_manager(double ms_from_start, double current_ms, std::opti
 
         while (!kat_notes.empty() && ms_from_start >= kat_notes.front().hit_ms) {
             hit_type = DrumType::KAT;
-            autoplay_hit_side = autoplay_hit_side == Side::LEFT ? Side::RIGHT : Side::LEFT;
-            spawn_hit_effects(hit_type, autoplay_hit_side);
+            autoplay_hit(hit_type, kat_notes.front().type == NoteType::KAT_L);
             audio.play_sound(kat_hitsound, VolumePreset::HITSOUND);
             check_note(ms_from_start, hit_type, current_ms, background);
         }
