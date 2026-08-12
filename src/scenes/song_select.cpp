@@ -102,7 +102,7 @@ void SongSelectScreen::poll_song_jump(double current_ms) {
 }
 
 void SongSelectScreen::handle_input(double current_ms) {
-    if (navigator.is_processing) {
+    if (navigator.is_processing || navigator.inline_streaming) {
         clear_input_buffers();
         return;
     }
