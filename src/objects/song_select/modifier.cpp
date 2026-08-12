@@ -122,15 +122,17 @@ void ModifierSelector::left() {
     if (is_confirmed) return;
     const std::string& mod_name = MOD_NAMES[current_mod_index];
 
+    // dir is the on-screen slide direction (see NeiroSelector): pressing left
+    // scrolls the content rightward so the previous value enters from the left.
     if (mod_name == "speed") {
         player->modifier_speed = std::max(1, player->modifier_speed - 1);
-        start_text_animation(-1);
+        start_text_animation(1);
     } else if (mod_name == "random") {
         player->modifier_random = std::max(0, player->modifier_random - 1);
-        start_text_animation(-1);
+        start_text_animation(1);
     } else {
         set_bool(current_mod_index, !get_bool(current_mod_index));
-        start_text_animation(-1);
+        start_text_animation(1);
     }
 }
 
@@ -140,13 +142,13 @@ void ModifierSelector::right() {
 
     if (mod_name == "speed") {
         player->modifier_speed += 1;
-        start_text_animation(1);
+        start_text_animation(-1);
     } else if (mod_name == "random") {
         player->modifier_random = (player->modifier_random + 1) % 3;
-        start_text_animation(1);
+        start_text_animation(-1);
     } else {
         set_bool(current_mod_index, !get_bool(current_mod_index));
-        start_text_animation(1);
+        start_text_animation(-1);
     }
 }
 

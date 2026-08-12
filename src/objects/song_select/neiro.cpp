@@ -63,7 +63,10 @@ void NeiroSelector::left() {
     text = std::move(text_2);
     text_2 = std::make_unique<OutlinedText>(sounds[selected_sound], tex.skin_config[SC::NEIRO_TEXT].font_size, ray::WHITE, ray::BLACK, false);
 
-    direction = -1;
+    // direction is the on-screen slide direction of the texts: pressing left
+    // scrolls the content rightward so the previous value enters from the
+    // left edge (the incoming text is placed at direction * -OPTION_TEXT_IN.x).
+    direction = 1;
     if (selected_sound == (int)sounds.size() - 1) return;
     audio.play_sound(curr_sound, VolumePreset::HITSOUND);
 }
@@ -79,7 +82,7 @@ void NeiroSelector::right() {
     text = std::move(text_2);
     text_2 = std::make_unique<OutlinedText>(sounds[selected_sound], tex.skin_config[SC::NEIRO_TEXT].font_size, ray::WHITE, ray::BLACK, false);
 
-    direction = 1;
+    direction = -1;
     if (selected_sound == (int)sounds.size() - 1) return;
     audio.play_sound(curr_sound, VolumePreset::HITSOUND);
 }
