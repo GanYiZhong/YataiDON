@@ -2,6 +2,10 @@
 #include "../libs/input.h"
 
 void InputTestScreen::on_screen_start() {
+    // Loads the screen's sounds (don/kat come from the skin root), which the
+    // hit handlers below play. Without it the screen was silent - the
+    // previous screen's on_screen_end had already unloaded everything.
+    Screen::on_screen_start();
     tex.load_animations("game");
     tex.load_folder("game", "practice");
     tex.load_folder("settings", "background");
