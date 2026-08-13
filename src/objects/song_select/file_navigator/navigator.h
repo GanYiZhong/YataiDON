@@ -56,6 +56,11 @@ private:
     std::atomic<bool>        loading_complete{false};
     std::atomic<bool>        abort_loading{false};
 
+    // Set when a folder is collapsed on returning from a song, so reopening
+    // that same folder puts the cursor back on the song that was played.
+    std::optional<fs::path>  reopen_folder_path;
+    std::optional<fs::path>  reopen_song_path;
+
     std::optional<fs::path>  recent_folder_path;
     std::optional<fs::path>  favorite_folder_path;
     std::set<std::string>    favorite_songs;
@@ -91,6 +96,9 @@ private:
     // Mirror add_to_recent's reordering in the boxes already on screen, so
     // coming back to the recent collection doesn't show a stale order.
     void promote_recent_box(const SongBox* song);
+    // Close an open folder immediately, with no fade-out, and leave the
+    // cursor on the folder itself.
+    void collapse_inline_now();
     void flush_pending_boxes();
     void exit_inline();
     void begin_inline_load();
