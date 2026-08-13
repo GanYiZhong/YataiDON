@@ -31,6 +31,7 @@ private:
     int open_index;
     bool is_init      = false;
     bool is_preloaded = false;
+    bool built_hide_dan = false;
 
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
@@ -93,8 +94,6 @@ private:
     void load_collection_recommended(const fs::path& path, const BoxDef& box_def);
     void load_collection_search(const fs::path& path, const BoxDef& box_def);
     void load_songs_inline_async(const fs::path path, BoxDef box_def);
-    // Mirror add_to_recent's reordering in the boxes already on screen, so
-    // coming back to the recent collection doesn't show a stale order.
     void promote_recent_box(const SongBox* song);
     // Close an open folder immediately, with no fade-out, and leave the
     // cursor on the folder itself.
@@ -108,11 +107,7 @@ public:
     ~Navigator();
 
     bool is_processing = false;
-    // True while an inline collection (RECOMMENDED, etc.) is still streaming
-    // boxes in from the loader thread. is_processing is deliberately false
-    // during that window so the flush can finalise, but navigation must stay
-    // blocked: the completion step sorts and repositions items around
-    // open_index, so moving the selection mid-load corrupts the display.
+    bool hide_dan = false;
     bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;

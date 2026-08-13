@@ -54,6 +54,7 @@ protected:
 
     virtual void draw_overlays();
 
+    virtual bool hides_dan() { return false; }
     virtual Screens get_game_screen_target() { return Screens::GAME; }
 
 public:

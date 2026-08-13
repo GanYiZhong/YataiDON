@@ -149,6 +149,22 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    if (is_init && hide_dan != built_hide_dan) {
+        join_loader();
+        is_inline = false;
+        inline_state.reset();
+        pending_inline_path.reset();
+        pending_inline_folder = nullptr;
+        genre_bg.reset();
+        genre_bg_end_pos.reset();
+        awaiting_diff_sort = false;
+        diff_sort_filter.reset();
+        items.clear();
+        open_index = 0;
+        is_init = false;
+    }
+    built_hide_dan = hide_dan;
+
     if (!is_init) {
         if (!is_preloaded) {
             preload(songs_paths);
@@ -469,6 +485,11 @@ void Navigator::load_current_directory_async(const fs::path path) {
                 }
                 if (has_def_file(curr_path)) {
                     BoxDef entry_box_def = parse_box_def(curr_path);
+                    // Practice has no dan mode to enter, so the dojo is left
+                    // out of the wheel rather than leading somewhere that
+                    // cannot honour it.
+                    if (hide_dan && entry_box_def.genre_index == GenreIndex::DAN)
+                        continue;
                     auto folder = std::make_unique<FolderBox>(curr_path, entry_box_def, song_files);
                     if (entry_box_def.collection == "RECOMMENDED")
                         folder->tja_count = 10;
