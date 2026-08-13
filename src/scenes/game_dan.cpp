@@ -1,4 +1,5 @@
 #include "game_dan.h"
+#include <algorithm>
 #include "../libs/input.h"
 
 void DanGameScreen::on_screen_start() {
@@ -249,7 +250,12 @@ std::optional<Screens> DanGameScreen::update() {
             sd.dan_result_data.songs.push_back(song_res);
         }
 
-        bool is_last = (song_index == (int)sd.selected_dan.size() - 1);
+        // A course is over once a condition has been lost: the songs left
+        // cannot bring it back, so the run finishes with this song and goes to
+        // the results instead of moving on.
+        bool any_failed = std::any_of(exam_failed.begin(), exam_failed.end(),
+                                      [](bool failed) { return failed; });
+        bool is_last = (song_index == (int)sd.selected_dan.size() - 1) || any_failed;
         if (is_last) {
             if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
                 sd.dan_result_data.dan_color   = dan_color;
