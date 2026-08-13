@@ -49,6 +49,7 @@ private:
 
     DanInfoCache calculate_dan_info();
     int get_exam_progress(const Exam& exam);
+    void fill_unplayed_songs();
     void check_exam_failures(bool course_finished = false);
 
     void draw_dan_info();
