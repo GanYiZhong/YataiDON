@@ -121,9 +121,6 @@ void DanGameScreen::change_song() {
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
 
-// Songs the course never reached still belong on the result screen: a course
-// lost on its first song is still a three song course. They are listed as
-// every note missed, which is what not playing them amounts to.
 void DanGameScreen::fill_unplayed_songs() {
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
     const std::string& lang = global_data.config->general.language;
