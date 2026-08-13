@@ -131,7 +131,9 @@ int DanGameScreen::get_exam_progress(const Exam& exam) {
     // stack frame that is long gone.
     if (exam.type == "gauge")        return (int)gauge_pct;
     if (exam.type == "judgeperfect") return p->get_good();
-    if (exam.type == "judgegood")    return p->get_ok() + p->get_bad();
+    // Just the oks: a bad is what the judgebad condition counts, and adding it
+    // here spent both allowances on one miss.
+    if (exam.type == "judgegood")    return p->get_ok();
     if (exam.type == "judgebad")     return p->get_bad();
     if (exam.type == "hit")          return p->get_good() + p->get_ok() + p->get_total_drumroll();
     if (exam.type == "score")        return p->get_score();
