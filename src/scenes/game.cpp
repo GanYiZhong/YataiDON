@@ -274,7 +274,6 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     }
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score);
     network.submit_score(hash, session_data.selected_difficulty, global_data.config->general.access_code, score);
-    global_data.songs_played += 1;
 }
 
 void GameScreen::resync_song(double current_ms) {
@@ -305,6 +304,7 @@ void GameScreen::end_song() {
         for (auto& player : players) {
             player->spawn_ending_anim();
         }
+        global_data.songs_played += 1;
         score_saved = true;
     }
     if (ms_from_start >= players[0]->end_time + 8533.34) {
