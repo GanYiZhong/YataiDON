@@ -16,7 +16,7 @@ public:
     TJAEXData   ex_data;
 
     FumenParser() = default;
-    explicit FumenParser(const fs::path& path);
+    explicit FumenParser(const fs::path& path, int start_delay = 0);
     void get_metadata() {}
     std::string get_difficulty_name() { return ""; }
 
@@ -32,6 +32,10 @@ public:
 private:
     const gen4::Library* library = nullptr;
     std::string          song_id;
+    // The lead-in the game plays before the chart starts. TJA charts carry it
+    // in their note times, and the engine starts the music by it, so a chart
+    // without it runs a second ahead of its music.
+    double               start_delay = 0.0;
 
     int      cached_diff = -1;
     NoteList cached_notes;

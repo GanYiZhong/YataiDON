@@ -1,4 +1,5 @@
 #include "fumen.h"
+#include <algorithm>
 #include <fstream>
 
 #pragma pack(push, 1)
@@ -96,7 +97,8 @@ static bool is_roll(uint32_t t)    { return t == FUMEN_RENDA || t == FUMEN_BIG_R
 static bool is_balloon(uint32_t t) { return t == FUMEN_BALLOON || t == FUMEN_KUSUDAMA; }
 static bool has_renda_padding(uint32_t t) { return t == FUMEN_RENDA || t == FUMEN_BIG_RENDA; }
 
-FumenParser::FumenParser(const fs::path& path) : file_path(path) {
+FumenParser::FumenParser(const fs::path& path, int start_delay)
+    : file_path(path), start_delay(static_cast<double>(start_delay)) {
     metadata = TJAMetadata();
     ex_data  = TJAEXData();
 
@@ -185,8 +187,14 @@ void FumenParser::build_notes(int diff) {
         FumenMeasureData mdata{};
         if (!take(&mdata, sizeof(FumenMeasureData))) break;
 
-        double measure_ms = static_cast<double>(mdata.measure_offset);
         double bpm        = static_cast<double>(mdata.bpm);
+
+        // The engine does not play a measure at the time the file gives it: it
+        // adds one whole 4/4 measure at that measure's own BPM. Chart-native
+        // times are that much too early, and since the term depends on the
+        // BPM of each measure it cannot be corrected with one fixed offset.
+        double lead_in    = bpm > 0.0 ? 60000.0 / bpm * 4.0 : 0.0;
+        double measure_ms = static_cast<double>(mdata.measure_offset) + lead_in + start_delay;
         bool   gogo       = mdata.is_gogo_time != 0;
         bool   show_bar   = mdata.is_bar_line_visible != 0;
 
@@ -233,8 +241,7 @@ void FumenParser::build_notes(int diff) {
 
                 if (b != 0) continue;
 
-                double hit_ms = static_cast<double>(mdata.measure_offset)
-                                + static_cast<double>(nb.note_offset);
+                double hit_ms = measure_ms + static_cast<double>(nb.note_offset);
                 NoteType nt = map_note_type(nb.type);
 
                 Note note;
@@ -265,7 +272,11 @@ void FumenParser::build_notes(int diff) {
                     cached_notes.notes.push_back(tail);
 
                 } else if (is_balloon(nb.type)) {
-                    note.count = 20;
+                    // The hit count is the first half of the word at offset 16,
+                    // which the simple note types use for their score value
+                    // instead. Twenty was a placeholder.
+                    int hits = (int)(uint16_t)(nb.unknown2 & 0xFFFF);
+                    note.count = hits > 0 ? hits : 20;
                     cached_notes.notes.push_back(note);
 
                     Note tail;
@@ -300,6 +311,13 @@ void FumenParser::build_notes(int diff) {
             }
         }
     }
+
+    // The added measure is worth less at a higher BPM, so a tempo change can
+    // put a later measure's note ahead of an earlier one in wall time.
+    std::stable_sort(cached_notes.notes.begin(), cached_notes.notes.end(),
+                     [](const Note& a, const Note& b) { return a.hit_ms < b.hit_ms; });
+    for (size_t i = 0; i < cached_notes.notes.size(); i++)
+        cached_notes.notes[i].index = (int)i;
 
     modifier_moji(cached_notes);
 }

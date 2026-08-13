@@ -50,6 +50,14 @@ struct SongEntry {
 
 // The datatable of one game data root, ie. the folder holding datatable/,
 // fumen/ and sound/. Loading is all-or-nothing and happens once.
+// One line of the game's own running order. A song can be listed under more
+// than one genre, so this is what decides both what a genre contains and in
+// what order, rather than the single genre number on the song itself.
+struct OrderEntry {
+    int         genre_no = 0;
+    std::string id;
+};
+
 class Library {
 public:
     // Reads datatable/musicinfo.bin and datatable/wordlist.bin. Returns false
@@ -62,6 +70,10 @@ public:
     const SongEntry* find(const std::string& id) const;
     const std::vector<SongEntry>& songs() const { return entries; }
 
+    // The running order, in file order. Songs missing from it are not listed
+    // by the game and are not listed here either.
+    const std::vector<OrderEntry>& order() const { return order_entries; }
+
     // The chart of one difficulty, decrypted and inflated, or empty if that
     // difficulty does not exist.
     std::vector<uint8_t> load_chart(const std::string& id, int difficulty) const;
@@ -72,9 +84,29 @@ public:
 private:
     bool                   is_loaded = false;
     fs::path               data_root;
-    std::vector<SongEntry> entries;
-    std::vector<uint8_t>   fumen_key;
+    std::vector<SongEntry>  entries;
+    std::vector<OrderEntry> order_entries;
+    std::vector<uint8_t>    fumen_key;
 };
+
+// These games number their genres differently from the ones this project grew
+// up with, so the numbering is translated rather than used directly. Returns a
+// GenreIndex value.
+int genre_index_for(int genre_no);
+
+// The genre's own name, in the language given, falling back to Japanese.
+std::string genre_name(int genre_no, const std::string& language);
+
+// The genres that actually have songs, in the game's own order.
+std::vector<int> genres_present(const Library& library);
+
+// The path used for a genre inside a game data root. These do not exist on
+// disk: a genre is a property of a song, not a folder, and the wheel needs
+// something to hang the boxes on.
+fs::path genre_path(const fs::path& data_root, int genre_no);
+
+// The genre a path made by genre_path names, or -1.
+int genre_of_path(const fs::path& path);
 
 // The library covering a path, loading it the first time it is asked for.
 // Returns null when the path is not inside a game data root.

@@ -4,6 +4,7 @@
 #include <rapidjson/document.h>
 #include <cstring>
 #include <fstream>
+#include <algorithm>
 #include <mutex>
 
 #include "miniz/miniz.h"
@@ -476,8 +477,32 @@ bool Library::load(const fs::path& root) {
         }
     }
 
+    // The running order decides what each genre holds and in what order.
+    std::vector<uint8_t> order = load_encrypted(root / "datatable" / "music_order.bin", table_key);
+    if (!order.empty()) {
+        rapidjson::Document odoc;
+        odoc.Parse(reinterpret_cast<const char*>(order.data()), order.size());
+        if (!odoc.HasParseError() && odoc.HasMember("items") && odoc["items"].IsArray()) {
+            for (const auto& item : odoc["items"].GetArray()) {
+                if (!item.IsObject()) continue;
+                OrderEntry e;
+                e.id       = json_string(item, "id");
+                e.genre_no = json_int(item, "genreNo");
+                if (!e.id.empty()) order_entries.push_back(std::move(e));
+            }
+        }
+    }
+    if (order_entries.empty()) {
+        // No running order to go by: fall back to the genre on each song, in
+        // the order the song table lists them.
+        spdlog::warn("gen4: no music order, falling back to each song's own genre");
+        for (const SongEntry& e : entries)
+            order_entries.push_back({ e.genre_no, e.id });
+    }
+
     is_loaded = true;
-    spdlog::info("gen4: {} songs from {}", entries.size(), root.string());
+    spdlog::info("gen4: {} songs, {} listings from {}",
+                 entries.size(), order_entries.size(), root.string());
     return true;
 }
 
@@ -499,6 +524,68 @@ std::vector<uint8_t> Library::load_chart(const std::string& id, int difficulty) 
     std::error_code ec;
     if (!fs::exists(path, ec)) return {};
     return load_encrypted(path, fumen_key);
+}
+
+// Genre numbering, established by reading the titles filed under each number
+// rather than by assuming the older games' order:
+//   0 pops, 1 anime, 2 kids, 3 vocaloid, 4 game, 5 namco, 6 variety, 7 classic
+// The values on the right are GenreIndex, which orders them differently.
+int genre_index_for(int genre_no) {
+    static const int TO_GENRE_INDEX[8] = {
+        1,  // pops     -> JPOP
+        2,  // anime    -> ANIME
+        4,  // kids     -> CHILDREN
+        3,  // vocaloid -> VOCALOID
+        7,  // game     -> GAME
+        8,  // namco    -> NAMCO
+        5,  // variety  -> VARIETY
+        6,  // classic  -> CLASSICAL
+    };
+    if (genre_no < 0 || genre_no > 7) return 8;
+    return TO_GENRE_INDEX[genre_no];
+}
+
+std::string genre_name(int genre_no, const std::string& language) {
+    static const char* NAMES[8][3] = {
+        // ja                      en                  zh
+        { "ポップス",              "J-POP",            "流行" },
+        { "アニメ",                "Anime",            "動畫" },
+        { "キッズ",                "Kids",             "兒童" },
+        { "ボーカロイド",          "Vocaloid",         "VOCALOID" },
+        { "ゲームミュージック",    "Game Music",       "遊戲音樂" },
+        { "ナムコオリジナル",      "Namco Original",   "南夢宮原創" },
+        { "バラエティ",            "Variety",          "綜合" },
+        { "クラシック",            "Classical",        "古典" },
+    };
+    if (genre_no < 0 || genre_no > 7) return "";
+    int column = 0;
+    if (language.rfind("en", 0) == 0)      column = 1;
+    else if (language.rfind("zh", 0) == 0) column = 2;
+    return NAMES[genre_no][column];
+}
+
+std::vector<int> genres_present(const Library& library) {
+    std::vector<int> found;
+    for (const OrderEntry& e : library.order()) {
+        if (std::find(found.begin(), found.end(), e.genre_no) == found.end())
+            found.push_back(e.genre_no);
+    }
+    std::sort(found.begin(), found.end());
+    return found;
+}
+
+fs::path genre_path(const fs::path& data_root, int genre_no) {
+    return data_root / ("@genre_" + std::to_string(genre_no));
+}
+
+int genre_of_path(const fs::path& path) {
+    std::string name = path.filename().string();
+    if (name.rfind("@genre_", 0) != 0) return -1;
+    try {
+        return std::stoi(name.substr(7));
+    } catch (...) {
+        return -1;
+    }
 }
 
 fs::path find_data_root(const fs::path& path) {
