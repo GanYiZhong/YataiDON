@@ -1,4 +1,5 @@
 #include "game_dan.h"
+#include <algorithm>
 #include "../libs/input.h"
 
 void DanGameScreen::on_screen_start() {
@@ -87,7 +88,7 @@ void DanGameScreen::init_dan() {
     hori_name = std::make_unique<OutlinedText>(title, tex.skin_config[SC::DAN_TITLE].font_size, ray::WHITE, ray::BLACK, false);
 
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, first.genre_index);
+    song_info = SongInfo(current_song_title, first.genre_index - 1, 1);
 
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
@@ -113,7 +114,7 @@ void DanGameScreen::change_song() {
 
     const std::string& lang = global_data.config->general.language;
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, entry.genre_index);
+    song_info = SongInfo(current_song_title, entry.genre_index - 1, song_index + 1);
 
     //dan_transition.start();
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
@@ -246,7 +247,9 @@ std::optional<Screens> DanGameScreen::update() {
             sd.dan_result_data.songs.push_back(song_res);
         }
 
-        bool is_last = (song_index == (int)sd.selected_dan.size() - 1);
+        bool any_failed = std::any_of(exam_failed.begin(), exam_failed.end(),
+                                      [](bool failed) { return failed; });
+        bool is_last = (song_index == (int)sd.selected_dan.size() - 1) || any_failed;
         if (is_last) {
             if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
                 sd.dan_result_data.dan_color   = dan_color;

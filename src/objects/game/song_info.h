@@ -24,7 +24,7 @@ private:
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, int genre);
+    SongInfo(const std::string& song_name, int genre, int song_num);
 
     void update(double current_ms);
     void draw();
