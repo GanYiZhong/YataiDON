@@ -94,9 +94,6 @@ Screens GameScreen::on_screen_end(Screens next_screen) {
         spdlog::info("Background unloaded");
     }
     transition.reset();
-    // Let an in-flight song load land before the base class unloads all
-    // sounds, otherwise the worker inserts an orphaned "song" entry after
-    // the cleanup and its buffer leaks on the next load.
     if (pending_song_load.valid()) pending_song_load.wait();
     pending_song_load = {};
     song_music.reset();
@@ -153,8 +150,6 @@ void GameScreen::poll_pending_song() {
     if (name.empty()) return;
     song_music = name;
 
-    // If the chart already passed its start point while the audio was still
-    // decoding, join in progress at the right position.
     if (song_started && !paused) {
         audio.play_sound(*song_music, VolumePreset::MUSIC);
         double audio_ms = ms_from_start
@@ -208,10 +203,6 @@ void GameScreen::restart_song() {
     paused = false;
     pause_time = 0;
     last_resync_ms = 0;
-    // Reset the chart clock the same way on_screen_start does. With the
-    // stale start_ms, ms_from_start was already far past the start
-    // threshold, so the song began the very next frame instead of after
-    // the usual lead-in (#83).
     start_ms = get_current_ms() - parser->metadata.offset*1000 - (double)global_data.config->general.audio_offset;
     ms_from_start = get_current_ms() - start_ms;
 }
@@ -242,9 +233,6 @@ void GameScreen::update_background(double current_ms) {
 }
 
 void GameScreen::save_score(int player_id, PlayerNum player_num) {
-    // An auto-play run is not the player's own performance, so it is neither
-    // stored nor submitted. Guarding here rather than at the call sites keeps
-    // every path covered - 1P checked already, 2P did not.
     for (const auto& player : players)
         if (player && player->player_num == player_num && player->is_auto_play())
             return;
