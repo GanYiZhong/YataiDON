@@ -1,6 +1,7 @@
 #pragma once
 
 #include <spdlog/spdlog.h>
+#include "../md5.h"
 #include <cstddef>
 #include <deque>
 #include <filesystem>
@@ -350,7 +351,6 @@ private:
     Note add_note(char item, ParserState& state);
 };
 
-std::string md5_hexdigest(const std::vector<unsigned char>& data);
 double get_ms_per_measure(double bpm_val, double time_sig);
 int calculate_base_score(const NoteList& notes);
 std::string test_encodings(const std::filesystem::path& file_path);

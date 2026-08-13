@@ -72,6 +72,7 @@ private:
     void set_positions(bool init, float duration);
     bool is_song_file(const fs::path& path);
     bool is_osu_song_folder(const fs::path& path);
+    bool is_gen4_song_folder(const fs::path& path);
     bool has_def_file(const std::filesystem::path& path);
     fs::path find_box_def_folder(const fs::path& song_path);
     void setup_back_box(const fs::path& path, bool has_children);

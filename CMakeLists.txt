@@ -40,6 +40,16 @@ else()
   set(NETWORK_ENABLED OFF)
 endif()
 
+# Gen 4 arcade data support needs its decryption seeds, which are not ours to
+# publish. They live only in .env, which is gitignored.
+set(DATATABLE_SEED "${_env_DATATABLE_SEED}" CACHE STRING "Decryption seed for the gen 4 arcade datatable")
+set(FUMEN_SEED "${_env_FUMEN_SEED}" CACHE STRING "Decryption seed for gen 4 arcade fumen charts")
+if(DATATABLE_SEED AND FUMEN_SEED)
+  set(GEN4_ENABLED ON)
+else()
+  set(GEN4_ENABLED OFF)
+endif()
+
 include(cmake/deps.cmake)
 include(cmake/codegen.cmake)
 
@@ -54,6 +64,14 @@ file(GLOB_RECURSE HeaderFiles
     src/*.h
     src/*.hpp
 )
+
+# Gen 4 arcade support only builds when its decryption seeds are available.
+list(FILTER CppFiles EXCLUDE REGEX "/src/libs/optional/")
+if(GEN4_ENABLED)
+  file(GLOB Gen4CppFiles src/libs/optional/*.cpp)
+  list(APPEND CppFiles ${Gen4CppFiles})
+endif()
+
 message(STATUS "C++ files found: ${CppFiles}")
 
 if(ANDROID)
@@ -144,6 +162,17 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE rtaudio)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE portaudio)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE g719)
+target_compile_definitions(${PROJECT_NAME} PRIVATE YATAIDON_G719)
+
+if(GEN4_ENABLED)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+    SUPPORT_FUMEN
+    DATATABLE_SEED="${DATATABLE_SEED}"
+    FUMEN_SEED="${FUMEN_SEED}"
+  )
+endif()
 
 include(cmake/platform.cmake)
 

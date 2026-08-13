@@ -4,6 +4,9 @@
 #include "color_utils.h"
 #include "../song_select_script.h"
 #include "../../../libs/filesystem.h"
+#ifdef SUPPORT_FUMEN
+#include "../../../libs/optional/gen4.h"
+#endif
 #include <random>
 #include <cmath>
 
@@ -413,6 +416,10 @@ void Navigator::load_current_directory_async(const fs::path path) {
                     }
                     if (is_song_file(curr_path))
                         enqueue_box(make_song_box(curr_path, box_def, take_parser(preparsed, curr_path)));
+                    continue;
+                }
+                if (is_gen4_song_folder(curr_path)) {
+                    enqueue_box(make_song_box(curr_path, box_def, SongParser(curr_path)));
                     continue;
                 }
                 if (has_def_file(curr_path)) {
@@ -1148,13 +1155,38 @@ bool Navigator::has_child_folders(const fs::path& path) {
 }
 
 bool Navigator::is_directory(BaseBox* item) {
-    return fs::is_directory(item->path);
+    // Not simply "the path is a folder": a gen 4 song is a folder of chart
+    // files, and treating one as a directory opens it instead of playing it.
+    return !is_song(item) && fs::is_directory(item->path);
 }
 
 bool Navigator::is_song_file(const fs::path& path) {
     if (!fs::is_regular_file(path)) return false;
     auto ext = path.extension();
     return ext == ".tja" || ext == ".osu";
+}
+
+// A gen 4 song folder is named after the song id and holds that id's chart
+// files, one per difficulty. It only counts as a song when the game data it
+// belongs to can be read, since the folder alone carries no title or ratings.
+bool Navigator::is_gen4_song_folder(const fs::path& path) {
+#ifdef SUPPORT_FUMEN
+    std::error_code ec;
+    if (!fs::is_directory(path, ec)) return false;
+
+    std::string id = path.filename().string();
+    static const char* suffixes[] = { "_e", "_n", "_h", "_m", "_x" };
+    bool has_chart = false;
+    for (const char* suffix : suffixes) {
+        if (fs::exists(path / (id + suffix + ".bin"), ec)) { has_chart = true; break; }
+    }
+    if (!has_chart) return false;
+
+    return gen4::library_for(path) != nullptr;
+#else
+    (void)path;
+    return false;
+#endif
 }
 
 bool Navigator::is_osu_song_folder(const fs::path& path) {
@@ -1170,7 +1202,8 @@ bool Navigator::is_osu_song_folder(const fs::path& path) {
 
 
 bool Navigator::is_song(BaseBox* item) {
-    return is_song_file(item->path);
+    // What the box is, not what its path looks like.
+    return dynamic_cast<SongBox*>(item) != nullptr;
 }
 
 BaseBox* Navigator::get_current_item() {
