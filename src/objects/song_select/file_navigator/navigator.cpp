@@ -113,7 +113,11 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                         if (is_song_file(it->path())) {
                             SongParser parsed_entry = SongParser(it->path());
                             parsed_entry.get_metadata();
-                            song_files[{parsed_entry.metadata.title["en"], parsed_entry.metadata.subtitle["en"]}] = it->path();
+                            bool playable = false;
+                            for (const auto& [course, data] : parsed_entry.metadata.course_data)
+                                if (course >= 0 && course <= 4) { playable = true; break; }
+                            if (playable)
+                                song_files[{parsed_entry.metadata.title["en"], parsed_entry.metadata.subtitle["en"]}] = it->path();
                         }
                     } catch (const std::exception& inner) {
                         spdlog::warn("Skipping song during scan: {}", inner.what());
