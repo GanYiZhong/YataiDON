@@ -311,7 +311,6 @@ void GameScreen::end_song() {
         for (auto& player : players) {
             player->spawn_ending_anim();
         }
-        // One song was played, whatever was or wasn't recorded for it.
         global_data.songs_played += 1;
         score_saved = true;
     }
