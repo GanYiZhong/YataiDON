@@ -242,6 +242,13 @@ void GameScreen::update_background(double current_ms) {
 }
 
 void GameScreen::save_score(int player_id, PlayerNum player_num) {
+    // An auto-play run is not the player's own performance, so it is neither
+    // stored nor submitted. Guarding here rather than at the call sites keeps
+    // every path covered - 1P checked already, 2P did not.
+    for (const auto& player : players)
+        if (player && player->player_num == player_num && player->is_auto_play())
+            return;
+
     Score score;
     SessionData& session_data = global_data.session_data[(int)player_num];
     std::string hash = session_data.song_hash;
@@ -306,9 +313,7 @@ void GameScreen::resync_song(double current_ms) {
 void GameScreen::end_song() {
     if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
         global_data.session_data[(int)players[0]->player_num].result_data = players[0]->get_result_score();
-        if (!players[0]->is_auto_play()) {
-            save_score(global_data.config->general.player_1_id, players[0]->player_num);
-        }
+        save_score(global_data.config->general.player_1_id, players[0]->player_num);
         for (auto& player : players) {
             player->spawn_ending_anim();
         }
