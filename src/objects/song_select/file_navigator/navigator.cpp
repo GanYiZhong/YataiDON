@@ -1023,8 +1023,11 @@ void Navigator::load_current_directory(const fs::path path) {
         // taken its place.
         if (inline_state.has_value()) {
             collapse_inline_now();
-            // collapse_inline_now parks the cursor on the folder it closed;
-            // move it to the one actually being opened.
+            // collapse_inline_now leaves the folder it closed looking selected,
+            // open yellow box and all. The cursor is about to move to a
+            // different folder, so that box has to be closed for real first.
+            items[open_index]->close_box();
+            // Now move the cursor to the folder actually being opened.
             for (int i = 0; i < (int)items.size(); i++)
                 if (items[i]->path == path) { open_index = i; break; }
             set_positions(true, 0);
