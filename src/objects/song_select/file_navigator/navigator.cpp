@@ -13,10 +13,6 @@ static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef
     return std::make_unique<SongBox>(path, box_def, std::move(parser));
 }
 
-// Parse many charts concurrently. Reading and line-parsing the chart file is
-// the dominant cost when a big folder opens, and it is embarrassingly
-// parallel, so pre-parse on a small pool and let the loader thread consume
-// the results in directory order.
 static std::unordered_map<std::string, std::unique_ptr<SongParser>>
 parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abort_flag) {
     std::vector<std::unique_ptr<SongParser>> parsed(paths.size());
@@ -43,8 +39,6 @@ parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abor
     return out;
 }
 
-// Move a pre-parsed parser out of the map, or parse on the spot when the
-// pre-pass missed the file (fallback only - should not happen).
 static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<SongParser>>& preparsed,
                               const fs::path& path) {
     auto it = preparsed.find(path.string());
@@ -65,9 +59,6 @@ static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
     return std::make_unique<BackBox>(parent_path, d);
 }
 
-// Case-insensitive comparison so the wheel sorts alphabetically instead of
-// by raw byte value ('Z' < 'a' in ASCII put all lowercase titles last).
-// Bytes outside ASCII (UTF-8 continuations etc.) compare unchanged.
 static bool alpha_less(const std::string& a, const std::string& b) {
     size_t n = std::min(a.size(), b.size());
     for (size_t i = 0; i < n; i++) {
@@ -206,8 +197,6 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
     if (genre_bg.has_value()) genre_bg->fade_in();
 }
 
-// Same restore the fade-out completion does, but at once: used when coming
-// back to song select, where the wheel should already be settled.
 void Navigator::collapse_inline_now() {
     if (!inline_state.has_value()) return;
     join_loader();
@@ -224,13 +213,8 @@ void Navigator::collapse_inline_now() {
     items.erase(items.begin() + state.folder_index);
     items.insert(items.begin() + state.folder_index, std::move(state.saved_folder_box));
     open_index = state.folder_index;
-    // The folder box draws itself invisible while it is entered - the genre
-    // band stands in for it - so it has to be taken back out of that state,
-    // exactly like the animated close does.
     items[open_index]->exit_box();
 
-    // Anything the loader had queued belongs to the listing that just went
-    // away; it would otherwise be flushed into the next folder opened.
     {
         std::lock_guard<std::mutex> lock(pending_mutex);
         std::queue<std::unique_ptr<BaseBox>>().swap(pending_inline_boxes);
@@ -367,8 +351,6 @@ void Navigator::flush_pending_boxes() {
         } else if (items.size() > 1) {
             std::vector<int> sortable_indices;
             std::vector<std::unique_ptr<BaseBox>> sortable;
-            // Skip index 0 only when it actually is the level's back box
-            // (root levels no longer have one).
             int first_sortable = dynamic_cast<BackBox*>(items[0].get()) ? 1 : 0;
             for (int i = first_sortable; i < (int)items.size(); i++) {
                 if (!items[i]->preserve_order) {
@@ -383,8 +365,6 @@ void Navigator::flush_pending_boxes() {
             for (int j = 0; j < (int)sortable_indices.size(); j++)
                 items[sortable_indices[j]] = std::move(sortable[j]);
         }
-        // Reopening the folder that was collapsed on the way back from a
-        // song: land on that song rather than the folder's first entry.
         if (inline_state.has_value() && reopen_song_path && reopen_folder_path) {
             const auto& folder = inline_state->saved_folder_box;
             if (folder && folder->path == *reopen_folder_path) {
@@ -453,8 +433,6 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     setup_back_box(path, true);
 
-    // Pre-parse the level's song files on a worker pool (see
-    // parse_songs_parallel) so the streaming loop below only assembles boxes.
     std::vector<fs::path> song_paths;
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
@@ -683,8 +661,6 @@ void Navigator::add_to_recent(const SongBox* song) {
     promote_recent_box(song);
 }
 
-// The listing keeps back boxes interleaved every 10 songs, so move the song
-// between the song slots only and leave those separators where they are.
 void Navigator::promote_recent_box(const SongBox* song) {
     if (!inline_state.has_value() || pending_inline_folder == nullptr) return;
     if (pending_inline_folder->collection != "RECENT") return;
@@ -717,10 +693,6 @@ void Navigator::promote_recent_box(const SongBox* song) {
 }
 
 void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& box_def) {
-    // Pick from the already-built song index instead of re-walking the whole
-    // library on disk: that recursive scan took seconds on a large library,
-    // and any navigation issued meanwhile stalled on join_loader() until it
-    // finished.
     std::vector<fs::path> all_songs;
     all_songs.reserve(song_files.size());
     for (const auto& [key, song_path] : song_files)
@@ -806,8 +778,6 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
         return;
     }
 
-    // Pre-pass: gather the song files this loop will visit (same filters as
-    // below) and parse them on a worker pool before streaming the boxes in.
     std::vector<fs::path> song_paths;
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
@@ -1017,15 +987,8 @@ void Navigator::load_current_directory(const fs::path path) {
     bool has_children = has_child_folders(path);
 
     if (!has_children && !items.empty()) {
-        // Opening a folder while another is expanded: close that one first.
-        // Overwriting inline_state instead left its songs in the wheel for
-        // good and dropped its folder box, stranding the back box that had
-        // taken its place.
         if (inline_state.has_value()) {
             collapse_inline_now();
-            // collapse_inline_now leaves the folder it closed looking selected,
-            // open yellow box and all. The cursor is about to move to a
-            // different folder, so that box has to be closed for real first.
             items[open_index]->close_box();
             // Now move the cursor to the folder actually being opened.
             for (int i = 0; i < (int)items.size(); i++)
@@ -1204,8 +1167,6 @@ bool Navigator::jump_to_song(const std::string& hash) {
 void Navigator::setup_back_box(const fs::path& path, bool has_children) {
     if (has_children) {
         items.clear();
-        // A root level has no folder to close: the box would point at the
-        // songs dir's parent and selecting it does nothing sensible.
         if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
             return;
         items.push_back(make_back_box(path.parent_path()));
