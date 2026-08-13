@@ -89,7 +89,7 @@ void DanGameScreen::init_dan() {
     hori_name = std::make_unique<OutlinedText>(title, tex.skin_config[SC::DAN_TITLE].font_size, ray::WHITE, ray::BLACK, false);
 
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, first.genre_index);
+    song_info = SongInfo(current_song_title, first.genre_index - 1, 1);
 
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
@@ -115,7 +115,7 @@ void DanGameScreen::change_song() {
 
     const std::string& lang = global_data.config->general.language;
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, entry.genre_index);
+    song_info = SongInfo(current_song_title, entry.genre_index - 1, song_index + 1);
 
     //dan_transition.start();
     start_ms = get_current_ms() - parser->metadata.offset * 1000;

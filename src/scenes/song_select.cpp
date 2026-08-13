@@ -32,7 +32,7 @@ void SongSelectScreen::on_screen_start() {
     player->script = script.get();
 
     indicator = std::make_unique<Indicator>(Indicator::State::SELECT);
-    song_num = std::make_unique<SongNum>(global_data.songs_played);
+    song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
     select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { player->select_song(); });
     diff_select_timer = nullptr;
 }
