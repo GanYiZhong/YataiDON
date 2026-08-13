@@ -154,9 +154,6 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
-    // The dojo is left out for practice, so a listing built for one mode is
-    // not the listing the other mode wants. Without this the wheel is simply
-    // reused and normal play inherits practice's missing dojo.
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();
         is_inline = false;
