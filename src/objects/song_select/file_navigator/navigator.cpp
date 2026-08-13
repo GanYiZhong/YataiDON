@@ -16,10 +16,6 @@ static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef
     return std::make_unique<SongBox>(path, box_def, std::move(parser));
 }
 
-// Parse many charts concurrently. Reading and line-parsing the chart file is
-// the dominant cost when a big folder opens, and it is embarrassingly
-// parallel, so pre-parse on a small pool and let the loader thread consume
-// the results in directory order.
 static std::unordered_map<std::string, std::unique_ptr<SongParser>>
 parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abort_flag) {
     std::vector<std::unique_ptr<SongParser>> parsed(paths.size());
@@ -46,8 +42,6 @@ parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abor
     return out;
 }
 
-// Move a pre-parsed parser out of the map, or parse on the spot when the
-// pre-pass missed the file (fallback only - should not happen).
 static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<SongParser>>& preparsed,
                               const fs::path& path) {
     auto it = preparsed.find(path.string());
@@ -68,9 +62,6 @@ static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
     return std::make_unique<BackBox>(parent_path, d);
 }
 
-// Case-insensitive comparison so the wheel sorts alphabetically instead of
-// by raw byte value ('Z' < 'a' in ASCII put all lowercase titles last).
-// Bytes outside ASCII (UTF-8 continuations etc.) compare unchanged.
 static bool alpha_less(const std::string& a, const std::string& b) {
     size_t n = std::min(a.size(), b.size());
     for (size_t i = 0; i < n; i++) {
@@ -81,10 +72,6 @@ static bool alpha_less(const std::string& a, const std::string& b) {
     return a.size() < b.size();
 }
 
-// Record where the song really lives. A song listed inside a collection is
-// built from that collection's BoxDef, so the box keeps the collection's
-// genre on purpose - its colours and the wheel background stay the
-// collection's - but the game screen's genre label needs the song's own.
 static void apply_song_genre(SongBox* song, const BoxDef& box_def) {
     song->song_genre_index = box_def.genre_index;
     if (box_def.fore_color.has_value())
@@ -107,6 +94,33 @@ Navigator::~Navigator() {
 void Navigator::wait_for_song_files() {
     if (song_files_thread.joinable())
         song_files_thread.join();
+}
+
+void Navigator::load_all_roots() {
+    join_loader();
+    items.clear();
+    open_index = 0;
+    def_file_cache.clear();
+    box_def_cache.clear();
+    is_processing    = true;
+    loading_complete = false;
+    reloading_roots  = true;
+
+    auto walk_roots = [this] {
+        for (const fs::path& root : root_paths) {
+            if (abort_loading) break;
+            loading_complete = false;
+            load_current_directory_async(root);
+        }
+        reloading_roots  = false;
+        loading_complete = true;
+    };
+
+#ifndef __EMSCRIPTEN__
+    loader_thread = std::thread(walk_roots);
+#else
+    walk_roots();
+#endif
 }
 
 void Navigator::preload(std::vector<fs::path> songs_paths) {
@@ -162,9 +176,7 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
             preload(songs_paths);
         }
 
-        for (const fs::path& root_path : root_paths) {
-            load_current_directory(root_path);
-        }
+        load_all_roots();
         is_init = true;
     } else {
         if (global_data.config->general.song_limit > 0) {
@@ -208,13 +220,16 @@ void Navigator::join_loader() {
 }
 
 void Navigator::enqueue_box(std::unique_ptr<BaseBox> box) {
-    auto last_write = fs::last_write_time(box->path);
-    auto last_write_sys = ch::system_clock::now() +
-        std::chrono::duration_cast<ch::system_clock::duration>(
-            last_write - std::filesystem::file_time_type::clock::now());
-    auto two_weeks_ago = ch::system_clock::now() - ch::weeks(2);
-    if (last_write_sys < two_weeks_ago)
-        box->is_new = true;
+    std::error_code ec;
+    auto last_write = fs::last_write_time(box->path, ec);
+    if (!ec) {
+        auto last_write_sys = ch::system_clock::now() +
+            std::chrono::duration_cast<ch::system_clock::duration>(
+                last_write - std::filesystem::file_time_type::clock::now());
+        auto two_weeks_ago = ch::system_clock::now() - ch::weeks(2);
+        if (last_write_sys < two_weeks_ago)
+            box->is_new = true;
+    }
 
     std::lock_guard<std::mutex> lock(pending_mutex);
     if (auto* song = dynamic_cast<SongBox*>(box.get())) {
@@ -320,8 +335,6 @@ void Navigator::flush_pending_boxes() {
         } else if (items.size() > 1) {
             std::vector<int> sortable_indices;
             std::vector<std::unique_ptr<BaseBox>> sortable;
-            // Skip index 0 only when it actually is the level's back box
-            // (root levels no longer have one).
             int first_sortable = dynamic_cast<BackBox*>(items[0].get()) ? 1 : 0;
             for (int i = first_sortable; i < (int)items.size(); i++) {
                 if (!items[i]->preserve_order) {
@@ -391,8 +404,19 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     setup_back_box(path, true);
 
-    // Pre-parse the level's song files on a worker pool (see
-    // parse_songs_parallel) so the streaming loop below only assembles boxes.
+    if (is_gen4_root(path)) {
+        try {
+            load_gen4_genres(path);
+        } catch (const std::exception& e) {
+            spdlog::error("Error listing gen4 genres of {}: {}", path.string(), e.what());
+        } catch (...) {
+            spdlog::error("Unknown error listing gen4 genres of {}", path.string());
+        }
+        loading_complete = true;
+        current_path = path;
+        return;
+    }
+
     std::vector<fs::path> song_paths;
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
@@ -416,6 +440,13 @@ void Navigator::load_current_directory_async(const fs::path path) {
                     }
                     if (is_song_file(curr_path))
                         enqueue_box(make_song_box(curr_path, box_def, take_parser(preparsed, curr_path)));
+                    continue;
+                }
+                if (is_gen4_root(curr_path)) {
+                    BoxDef gen4_def = box_def;
+                    gen4_def.name        = curr_path.filename().string();
+                    gen4_def.genre_index = GenreIndex::DEFAULT;
+                    enqueue_box(std::make_unique<FolderBox>(curr_path, gen4_def, song_files));
                     continue;
                 }
                 if (is_gen4_song_folder(curr_path)) {
@@ -468,6 +499,12 @@ void Navigator::load_current_directory_async(const fs::path path) {
         }
     } catch (const fs::filesystem_error& e) {
         spdlog::error("Error loading directory: {}", e.what());
+    } catch (const std::exception& e) {
+        // This runs on the loader thread, where an escaping exception takes
+        // the process down instead of failing one directory.
+        spdlog::error("Error loading directory {}: {}", path.string(), e.what());
+    } catch (...) {
+        spdlog::error("Unknown error loading directory {}", path.string());
     }
     loading_complete = true;
     current_path = path;
@@ -554,9 +591,6 @@ void Navigator::load_from_song_list(const fs::path& path, const BoxDef& box_def,
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path()));
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
-        // The text file is the order: most recent first for RECENT, the
-        // order they were added for FAVORITE. Without this the completion
-        // sort alphabetises them and that meaning is lost.
         song->preserve_order = true;
         if (mark_favorite) song->is_favorite = true;
         fs::path genre_folder = find_box_def_folder(song_path);
@@ -629,8 +663,6 @@ void Navigator::add_to_recent(const SongBox* song) {
     promote_recent_box(song);
 }
 
-// The listing keeps back boxes interleaved every 10 songs, so move the song
-// between the song slots only and leave those separators where they are.
 void Navigator::promote_recent_box(const SongBox* song) {
     if (!inline_state.has_value() || pending_inline_folder == nullptr) return;
     if (pending_inline_folder->collection != "RECENT") return;
@@ -663,10 +695,6 @@ void Navigator::promote_recent_box(const SongBox* song) {
 }
 
 void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& box_def) {
-    // Pick from the already-built song index instead of re-walking the whole
-    // library on disk: that recursive scan took seconds on a large library,
-    // and any navigation issued meanwhile stalled on join_loader() until it
-    // finished.
     std::vector<fs::path> all_songs;
     all_songs.reserve(song_files.size());
     for (const auto& [key, song_path] : song_files)
@@ -710,6 +738,11 @@ void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_d
 }
 
 void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
+    if (load_gen4_genre_songs(path, box_def)) {
+        loading_complete = true;
+        return;
+    }
+
     wait_for_song_files();
     int songs_added = 0;
     std::unordered_map<std::string, std::unique_ptr<SongParser>> preparsed;
@@ -962,6 +995,12 @@ void Navigator::load_current_directory(const fs::path path) {
     BoxDef box_def = parse_box_def(path);
     bool has_children = has_child_folders(path);
 
+    if (has_children && root_paths.size() > 1 && !reloading_roots &&
+        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+        load_all_roots();
+        return;
+    }
+
     if (!has_children && !items.empty()) {
         InlineState state;
         state.folder_index     = open_index;
@@ -1133,9 +1172,7 @@ bool Navigator::jump_to_song(const std::string& hash) {
 
 void Navigator::setup_back_box(const fs::path& path, bool has_children) {
     if (has_children) {
-        items.clear();
-        // A root level has no folder to close: the box would point at the
-        // songs dir's parent and selecting it does nothing sensible.
+        if (!reloading_roots) items.clear();
         if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
             return;
         items.push_back(make_back_box(path.parent_path()));
@@ -1148,15 +1185,20 @@ void Navigator::setup_back_box(const fs::path& path, bool has_children) {
 }
 
 bool Navigator::has_child_folders(const fs::path& path) {
-    for (const auto& entry : fs::directory_iterator(path))
+    if (gen4::genre_of_path(path) >= 0) return false;
+    if (is_gen4_root(path)) return true;
+
+    for (const auto& entry : fs::directory_iterator(path)) {
         if (fs::is_directory(entry.path()) && has_def_file(entry.path()) || is_osu_song_folder(entry.path()))
             return true;
+        if (is_gen4_root(entry.path()))
+            return true;
+    }
     return false;
 }
 
 bool Navigator::is_directory(BaseBox* item) {
-    // Not simply "the path is a folder": a gen 4 song is a folder of chart
-    // files, and treating one as a directory opens it instead of playing it.
+    if (dynamic_cast<FolderBox*>(item) != nullptr) return true;
     return !is_song(item) && fs::is_directory(item->path);
 }
 
@@ -1166,9 +1208,98 @@ bool Navigator::is_song_file(const fs::path& path) {
     return ext == ".tja" || ext == ".osu";
 }
 
-// A gen 4 song folder is named after the song id and holds that id's chart
-// files, one per difficulty. It only counts as a song when the game data it
-// belongs to can be read, since the folder alone carries no title or ratings.
+const BoxDef* Navigator::box_def_for_genre(GenreIndex genre) {
+    if (!genre_box_defs_built) {
+        genre_box_defs_built = true;
+        for (const fs::path& root : root_paths) {
+            std::error_code ec;
+            if (!fs::is_directory(root, ec)) continue;
+            for (const auto& entry : fs::directory_iterator(root, ec)) {
+                if (abort_loading) return nullptr;
+                if (!fs::is_directory(entry.path(), ec)) continue;
+                if (!has_def_file(entry.path())) continue;
+                BoxDef def = parse_box_def(entry.path());
+                genre_box_defs.emplace(def.genre_index, def);
+            }
+        }
+    }
+    auto it = genre_box_defs.find(genre);
+    return it != genre_box_defs.end() ? &it->second : nullptr;
+}
+
+bool Navigator::is_gen4_root(const fs::path& path) {
+    std::error_code ec;
+    if (!fs::is_directory(path, ec)) return false;
+    return gen4::find_data_root(path) == path && gen4::library_for(path) != nullptr;
+}
+
+void Navigator::load_gen4_genres(const fs::path& data_root) {
+    const gen4::Library* library = gen4::library_for(data_root);
+    if (!library) return;
+
+    const std::string& lang = global_data.config->general.language;
+    for (int genre_no : gen4::genres_present(*library)) {
+        if (abort_loading) break;
+        GenreIndex genre = (GenreIndex)gen4::genre_index_for(genre_no);
+
+        BoxDef def;
+        if (const BoxDef* like = box_def_for_genre(genre)) {
+            def = *like;
+        } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+            def.texture_index = TextureIndex::NONE;
+            def.back_color    = colors->second[0];
+            def.fore_color    = colors->second[1];
+        }
+        def.name        = gen4::genre_name(genre_no, lang);
+        def.genre_index = genre;
+        auto folder = std::make_unique<FolderBox>(gen4::genre_path(data_root, genre_no),
+                                                  def, song_files);
+        folder->tja_count = 0;
+        for (const gen4::OrderEntry& listing : library->order())
+            if (listing.genre_no == genre_no) folder->tja_count++;
+        enqueue_box(std::move(folder));
+    }
+}
+
+bool Navigator::load_gen4_genre_songs(const fs::path& path, const BoxDef& box_def) {
+    int genre_no = gen4::genre_of_path(path);
+    if (genre_no < 0) return false;
+
+    fs::path data_root = gen4::find_data_root(path);
+    const gen4::Library* library = gen4::library_for(data_root);
+    if (!library) return false;
+
+    GenreIndex genre = (GenreIndex)gen4::genre_index_for(genre_no);
+
+    BoxDef def = box_def;
+    if (const BoxDef* like = box_def_for_genre(genre)) {
+        def = *like;
+    } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+        def.texture_index = TextureIndex::NONE;
+        def.back_color    = colors->second[0];
+        def.fore_color    = colors->second[1];
+    }
+    def.name        = box_def.name;
+    def.genre_index = genre;
+
+    int songs_added = 0;
+    for (const gen4::OrderEntry& listing : library->order()) {
+        if (abort_loading) break;
+        if (listing.genre_no != genre_no) continue;
+        fs::path song_folder = data_root / "fumen" / listing.id;
+        std::error_code ec;
+        if (!fs::is_directory(song_folder, ec)) continue;
+        if (songs_added > 0 && songs_added % 10 == 0)
+            enqueue_inline_box(make_back_box(data_root));
+        auto box = make_song_box(song_folder, def, SongParser(song_folder));
+        box->preserve_order = true;
+        box->fade_in(266);
+        enqueue_inline_box(std::move(box));
+        songs_added++;
+    }
+    return true;
+}
+
 bool Navigator::is_gen4_song_folder(const fs::path& path) {
 #ifdef SUPPORT_FUMEN
     std::error_code ec;

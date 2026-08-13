@@ -2,13 +2,6 @@
 #include "../parsers/tja.h"
 #include "gen4.h"
 
-// The chart format of the gen 4 arcade games. A song is a folder of up to five
-// chart files, one per difficulty, and everything else about it -- title, star
-// ratings, which difficulties exist -- comes from the game's datatable rather
-// than from the charts themselves.
-//
-// A path to a single chart file also works, for looking at one chart on its
-// own; there is no metadata to be had that way.
 class FumenParser {
 public:
     fs::path   file_path;
@@ -16,7 +9,7 @@ public:
     TJAEXData   ex_data;
 
     FumenParser() = default;
-    explicit FumenParser(const fs::path& path);
+    explicit FumenParser(const fs::path& path, int start_delay = 0);
     void get_metadata() {}
     std::string get_difficulty_name() { return ""; }
 
@@ -32,6 +25,7 @@ public:
 private:
     const gen4::Library* library = nullptr;
     std::string          song_id;
+    double               start_delay = 0.0;
 
     int      cached_diff = -1;
     NoteList cached_notes;

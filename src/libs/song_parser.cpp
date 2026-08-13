@@ -6,11 +6,11 @@ SongParser::SongParser(const fs::path& path, int start_delay, PlayerNum player_n
 #ifdef SUPPORT_FUMEN
     std::error_code dir_ec;
     if (fs::is_directory(path, dir_ec))
-        impl = FumenParser(path);
+        impl = FumenParser(path, start_delay);
     else if (path.extension() == ".osu")
         impl = OsuParser(path);
     else if (path.extension() == ".bin")
-        impl = FumenParser(path);
+        impl = FumenParser(path, start_delay);
     else
         impl = TJAParser(path, start_delay, player_num);
 #else

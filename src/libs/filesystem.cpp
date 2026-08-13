@@ -1,5 +1,6 @@
 #include "filesystem.h"
 #include "miniz/miniz.h"
+#include "gen4.h"
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <unistd.h>
@@ -104,12 +105,24 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
 
         // Second pass: collect .tja and .osu files
         try {
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(
-                     path, std::filesystem::directory_options::skip_permission_denied | std::filesystem::directory_options::follow_directory_symlink)) {
-                auto ext = entry.path().extension();
-                if (ext == ".tja" || ext == ".osu" || ext == ".bin") {
-                    songs.push_back(entry.path());
+            auto it = std::filesystem::recursive_directory_iterator(
+                path, std::filesystem::directory_options::skip_permission_denied | std::filesystem::directory_options::follow_directory_symlink);
+            for (; it != std::filesystem::end(it); ++it) {
+                const auto& entry = *it;
+
+                // A game data root is walked by the song wheel itself, which
+                // reads the game's tables. Descending into it here would mean
+                // tens of thousands of files that are chart data and tables
+                // rather than songs, and every one of them opened.
+                if (entry.is_directory() && !gen4::find_data_root(entry.path()).empty() &&
+                    gen4::find_data_root(entry.path()) == entry.path()) {
+                    it.disable_recursion_pending();
+                    continue;
                 }
+
+                auto ext = entry.path().extension();
+                if (ext == ".tja" || ext == ".osu" || ext == ".bin")
+                    songs.push_back(entry.path());
             }
         } catch (const std::filesystem::filesystem_error& e) {
             spdlog::error("Error scanning song directory: {}", e.what());

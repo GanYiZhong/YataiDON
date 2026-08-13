@@ -1,8 +1,5 @@
 #pragma once
 
-// The audio of the gen 4 arcade games: .nus3bank containers holding a BNSF
-// stream tagged IS22, which is ITU-T G.719 (Siren 22) at 48 kHz.
-
 #include <cstdint>
 #include <filesystem>
 #include <vector>
@@ -18,8 +15,6 @@ struct DecodedAudio {
     int frame_count() const { return channels ? (int)(samples.size() / channels) : 0; }
 };
 
-// Decodes the first audio stream of a .nus3bank. Returns false and logs why on
-// a container it cannot read or an unsupported codec tag.
 bool decode_nus3bank(const fs::path& path, DecodedAudio& out);
 
 }  // namespace gen4

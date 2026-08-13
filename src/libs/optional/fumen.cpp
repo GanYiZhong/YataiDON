@@ -1,4 +1,5 @@
 #include "fumen.h"
+#include <algorithm>
 #include <fstream>
 
 #pragma pack(push, 1)
@@ -96,7 +97,8 @@ static bool is_roll(uint32_t t)    { return t == FUMEN_RENDA || t == FUMEN_BIG_R
 static bool is_balloon(uint32_t t) { return t == FUMEN_BALLOON || t == FUMEN_KUSUDAMA; }
 static bool has_renda_padding(uint32_t t) { return t == FUMEN_RENDA || t == FUMEN_BIG_RENDA; }
 
-FumenParser::FumenParser(const fs::path& path) : file_path(path) {
+FumenParser::FumenParser(const fs::path& path, int start_delay)
+    : file_path(path), start_delay(static_cast<double>(start_delay)) {
     metadata = TJAMetadata();
     ex_data  = TJAEXData();
 
@@ -108,8 +110,6 @@ FumenParser::FumenParser(const fs::path& path) : file_path(path) {
 
     const gen4::SongEntry* entry = library ? library->find(song_id) : nullptr;
     if (!entry) {
-        // A bare chart file, or a folder the datatable does not list: all that
-        // can be said about it is its name, and that it has one chart.
         metadata.title["en"] = path.stem().string();
         metadata.course_data[0] = CourseData{};
         return;
@@ -122,8 +122,6 @@ FumenParser::FumenParser(const fs::path& path) : file_path(path) {
     if (metadata.title.find("en") == metadata.title.end())
         metadata.title["en"] = song_id;
 
-    // Only the difficulties that actually ship a chart, so the wheel does not
-    // offer one that cannot be played.
     for (int d = 0; d < 5; d++) {
         if (!library->has_difficulty(song_id, d)) continue;
         CourseData course;
@@ -139,9 +137,6 @@ FumenParser::FumenParser(const fs::path& path) : file_path(path) {
 std::vector<uint8_t> FumenParser::read_chart(int diff) {
     if (library) return library->load_chart(song_id, diff);
 
-    // A chart taken straight from the game data is encrypted; one that has
-    // already been unpacked is not. Trying the key tells the two apart: a
-    // plain file fails its padding check and is then used as it is.
     static const std::vector<uint8_t> key = gen4::derive_key(FUMEN_SEED);
     std::vector<uint8_t> plain = gen4::load_encrypted(file_path, key);
     if (!plain.empty()) return plain;
@@ -185,8 +180,10 @@ void FumenParser::build_notes(int diff) {
         FumenMeasureData mdata{};
         if (!take(&mdata, sizeof(FumenMeasureData))) break;
 
-        double measure_ms = static_cast<double>(mdata.measure_offset);
         double bpm        = static_cast<double>(mdata.bpm);
+
+        double lead_in    = bpm > 0.0 ? 60000.0 / bpm * 4.0 : 0.0;
+        double measure_ms = static_cast<double>(mdata.measure_offset) + lead_in + start_delay;
         bool   gogo       = mdata.is_gogo_time != 0;
         bool   show_bar   = mdata.is_bar_line_visible != 0;
 
@@ -233,8 +230,7 @@ void FumenParser::build_notes(int diff) {
 
                 if (b != 0) continue;
 
-                double hit_ms = static_cast<double>(mdata.measure_offset)
-                                + static_cast<double>(nb.note_offset);
+                double hit_ms = measure_ms + static_cast<double>(nb.note_offset);
                 NoteType nt = map_note_type(nb.type);
 
                 Note note;
@@ -265,7 +261,8 @@ void FumenParser::build_notes(int diff) {
                     cached_notes.notes.push_back(tail);
 
                 } else if (is_balloon(nb.type)) {
-                    note.count = 20;
+                    int hits = (int)(uint16_t)(nb.unknown2 & 0xFFFF);
+                    note.count = hits > 0 ? hits : 20;
                     cached_notes.notes.push_back(note);
 
                     Note tail;
@@ -300,6 +297,11 @@ void FumenParser::build_notes(int diff) {
             }
         }
     }
+
+    std::stable_sort(cached_notes.notes.begin(), cached_notes.notes.end(),
+                     [](const Note& a, const Note& b) { return a.hit_ms < b.hit_ms; });
+    for (size_t i = 0; i < cached_notes.notes.size(); i++)
+        cached_notes.notes[i].index = (int)i;
 
     modifier_moji(cached_notes);
 }

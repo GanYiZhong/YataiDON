@@ -22,7 +22,6 @@ uint32_t read_le32(const uint8_t* p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-// What the BNSF stream says about itself, and where its payload starts.
 struct Bnsf {
     int    channels      = 0;
     int    sample_rate   = 0;
@@ -33,9 +32,6 @@ struct Bnsf {
     size_t data_size     = 0;
 };
 
-// Walks the outer container to the PACK chunk, then reads the first BNSF blob
-// in it. A song bank holds exactly one; effect banks hold several back to back
-// and only the first is wanted here.
 bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
     if (file.size() < 0x18 || memcmp(file.data(), "NUS3", 4) != 0) {
         spdlog::warn("gen4 audio: not a NUS3 container");
