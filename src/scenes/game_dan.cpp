@@ -121,6 +121,41 @@ void DanGameScreen::change_song() {
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
 
+// Songs the course never reached still belong on the result screen: a course
+// lost on its first song is still a three song course. They are listed as
+// every note missed, which is what not playing them amounts to.
+void DanGameScreen::fill_unplayed_songs() {
+    SessionData& sd = global_data.session_data[(int)global_data.player_num];
+    const std::string& lang = global_data.config->general.language;
+
+    for (int i = (int)sd.dan_result_data.songs.size(); i < (int)sd.selected_dan.size(); i++) {
+        const DanSongEntry& entry = sd.selected_dan[i];
+        DanResultSong res;
+        res.genre_index         = entry.genre_index;
+        res.selected_difficulty = entry.difficulty;
+        res.diff_level          = entry.level;
+
+        try {
+            SongParser sp(entry.song_path);
+            const auto& titles = sp.metadata.title;
+            res.song_title = titles.count(lang) ? titles.at(lang)
+                           : titles.count("en")  ? titles.at("en")
+                           : titles.empty()      ? "" : titles.begin()->second;
+
+            auto [notes, branch_m, branch_e, branch_n] = sp.notes_to_position(entry.difficulty);
+            for (const Note& n : notes.notes)
+                if (n.type >= NoteType::DON && n.type <= NoteType::KAT_L) res.bad++;
+            for (auto& sec : branch_m)
+                for (const Note& n : sec.notes)
+                    if (n.type >= NoteType::DON && n.type <= NoteType::KAT_L) res.bad++;
+        } catch (...) {
+            spdlog::warn("Dan result: could not read {}", entry.song_path.string());
+        }
+
+        sd.dan_result_data.songs.push_back(res);
+    }
+}
+
 int DanGameScreen::get_exam_progress(const Exam& exam) {
     Player* p = players[0].get();
     float gauge_pct = (dan_gauge.gauge_max > 0)
@@ -269,6 +304,7 @@ std::optional<Screens> DanGameScreen::update() {
                         sd.dan_result_data.exam_data.push_back(re);
                     }
                 }
+                fill_unplayed_songs();
                 players[0]->spawn_ending_anim();
                 score_saved = true;
             }
