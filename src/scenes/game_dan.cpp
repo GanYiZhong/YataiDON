@@ -177,13 +177,21 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
     return cache;
 }
 
-void DanGameScreen::check_exam_failures() {
+void DanGameScreen::check_exam_failures(bool course_finished) {
     if (!dan_info_cache.has_value()) return;
     const auto& exams = global_data.session_data[(int)global_data.player_num].selected_dan_exam;
     for (int i = 0; i < (int)exams.size(); i++) {
         if (exam_failed[i]) continue;
         const Exam& exam = exams[i];
         int val = get_exam_progress(exam);
+
+        // A "more" condition is only missed once the course is over. Gauge,
+        // hit count and score all climb as it is played, so judging one while
+        // the course runs failed every single one of them on the first frame,
+        // when everything is still zero. "less" conditions are the opposite:
+        // they are lost as soon as the allowance runs out, so they stay per
+        // frame.
+        if (exam.range == "more" && !course_finished) continue;
 
         if (exam.range == "more" && val < exam.red) {
             exam_failed[i] = true;
@@ -194,7 +202,7 @@ void DanGameScreen::check_exam_failures() {
             if (remaining == 0) {
                 exam_failed[i] = true;
                 audio.play_sound("dan_failed", VolumePreset::SOUND);
-                spdlog::info("Dan exam {} ({}) failed: limit reached", i, exam.type);
+                spdlog::info("Dan exam {} ({}) failed: {} of {} used up", i, exam.type, val, exam.red);
             }
         }
     }
@@ -258,6 +266,9 @@ std::optional<Screens> DanGameScreen::update() {
                 sd.dan_result_data.gauge_length= dan_gauge.gauge_length;
                 sd.dan_result_data.max_combo   = players[0]->get_max_combo();
                 sd.dan_result_data.exams       = sd.selected_dan_exam;
+                // Now that the course is over, the "more" conditions can be
+                // judged on their final values.
+                check_exam_failures(true);
                 sd.dan_result_data.exam_data.clear();
                 if (dan_info_cache.has_value()) {
                     for (int i = 0; i < (int)dan_info_cache->exam_data.size(); i++) {
