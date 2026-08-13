@@ -224,6 +224,17 @@ void Navigator::collapse_inline_now() {
     items.erase(items.begin() + state.folder_index);
     items.insert(items.begin() + state.folder_index, std::move(state.saved_folder_box));
     open_index = state.folder_index;
+    // The folder box draws itself invisible while it is entered - the genre
+    // band stands in for it - so it has to be taken back out of that state,
+    // exactly like the animated close does.
+    items[open_index]->exit_box();
+
+    // Anything the loader had queued belongs to the listing that just went
+    // away; it would otherwise be flushed into the next folder opened.
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex);
+        std::queue<std::unique_ptr<BaseBox>>().swap(pending_inline_boxes);
+    }
 
     inline_state.reset();
     pending_inline_folder = nullptr;
