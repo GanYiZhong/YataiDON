@@ -122,11 +122,6 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                         if (is_song_file(it->path())) {
                             SongParser parsed_entry = SongParser(it->path());
                             parsed_entry.get_metadata();
-                            // Dan (course 6) and Tower (course 5) charts are
-                            // played from their own screens, never from a song
-                            // box: they carry no normal difficulty to select,
-                            // so picking one out of a collection breaks. Keep
-                            // them out of the index collections draw from.
                             bool playable = false;
                             for (const auto& [course, data] : parsed_entry.metadata.course_data)
                                 if (course >= 0 && course <= 4) { playable = true; break; }
