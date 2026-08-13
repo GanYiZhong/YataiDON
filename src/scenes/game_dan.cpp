@@ -1,8 +1,8 @@
 #include "game_dan.h"
+#include <algorithm>
 #include "../libs/input.h"
 
 void DanGameScreen::on_screen_start() {
-    // Call the Screen base (loads textures/sounds) but NOT GameScreen::on_screen_start
     Screen::on_screen_start();
     mask_shader   = load_shader("shader/dummy.vs", "shader/mask.fs");
     ms_from_start = 0;
@@ -43,7 +43,6 @@ void DanGameScreen::on_screen_start() {
 void DanGameScreen::init_dan() {
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
 
-    // Count total notes across all songs / 2 (halved per original game logic)
     total_notes = 0;
     for (const auto& entry : sd.selected_dan) {
         try {
@@ -89,7 +88,7 @@ void DanGameScreen::init_dan() {
     hori_name = std::make_unique<OutlinedText>(title, tex.skin_config[SC::DAN_TITLE].font_size, ray::WHITE, ray::BLACK, false);
 
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, first.genre_index);
+    song_info = SongInfo(current_song_title, first.genre_index - 1, 1);
 
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
@@ -115,7 +114,7 @@ void DanGameScreen::change_song() {
 
     const std::string& lang = global_data.config->general.language;
     current_song_title = parser->metadata.title.count(lang) ? parser->metadata.title.at(lang) : parser->metadata.title.at("en");
-    song_info = SongInfo(current_song_title, entry.genre_index);
+    song_info = SongInfo(current_song_title, entry.genre_index - 1, song_index + 1);
 
     //dan_transition.start();
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
@@ -158,17 +157,14 @@ int DanGameScreen::get_exam_progress(const Exam& exam) {
     float gauge_pct = (dan_gauge.gauge_max > 0)
         ? (dan_gauge.gauge_length / dan_gauge.gauge_max) * 100.0f : 0.0f;
 
-    static const std::unordered_map<std::string, std::function<int()>> map = {
-        {"gauge",        [&]{ return (int)gauge_pct; }},
-        {"judgeperfect", [&]{ return p->get_good(); }},
-        {"judgegood",    [&]{ return p->get_ok() + p->get_bad(); }},
-        {"judgebad",     [&]{ return p->get_bad(); }},
-        {"hit",          [&]{ return p->get_good() + p->get_ok() + p->get_total_drumroll(); }},
-        {"score",        [&]{ return p->get_score(); }},
-        {"combo",        [&]{ return p->get_max_combo(); }},
-    };
-    auto it = map.find(exam.type);
-    return it != map.end() ? it->second() : 0;
+    if (exam.type == "gauge")        return (int)gauge_pct;
+    if (exam.type == "judgeperfect") return p->get_good();
+    if (exam.type == "judgegood")    return p->get_ok();
+    if (exam.type == "judgebad")     return p->get_bad();
+    if (exam.type == "hit")          return p->get_good() + p->get_ok() + p->get_total_drumroll();
+    if (exam.type == "score")        return p->get_score();
+    if (exam.type == "combo")        return p->get_max_combo();
+    return 0;
 }
 
 DanInfoCache DanGameScreen::calculate_dan_info() {
@@ -209,13 +205,15 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
     return cache;
 }
 
-void DanGameScreen::check_exam_failures() {
+void DanGameScreen::check_exam_failures(bool course_finished) {
     if (!dan_info_cache.has_value()) return;
     const auto& exams = global_data.session_data[(int)global_data.player_num].selected_dan_exam;
     for (int i = 0; i < (int)exams.size(); i++) {
         if (exam_failed[i]) continue;
         const Exam& exam = exams[i];
         int val = get_exam_progress(exam);
+
+        if (exam.range == "more" && !course_finished) continue;
 
         if (exam.range == "more" && val < exam.red) {
             exam_failed[i] = true;
@@ -226,7 +224,7 @@ void DanGameScreen::check_exam_failures() {
             if (remaining == 0) {
                 exam_failed[i] = true;
                 audio.play_sound("dan_failed", VolumePreset::SOUND);
-                spdlog::info("Dan exam {} ({}) failed: limit reached", i, exam.type);
+                spdlog::info("Dan exam {} ({}) failed: {} of {} used up", i, exam.type, val, exam.red);
             }
         }
     }
@@ -281,7 +279,9 @@ std::optional<Screens> DanGameScreen::update() {
             sd.dan_result_data.songs.push_back(song_res);
         }
 
-        bool is_last = (song_index == (int)sd.selected_dan.size() - 1);
+        bool any_failed = std::any_of(exam_failed.begin(), exam_failed.end(),
+                                      [](bool failed) { return failed; });
+        bool is_last = (song_index == (int)sd.selected_dan.size() - 1) || any_failed;
         if (is_last) {
             if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
                 sd.dan_result_data.dan_color   = dan_color;
@@ -290,6 +290,7 @@ std::optional<Screens> DanGameScreen::update() {
                 sd.dan_result_data.gauge_length= dan_gauge.gauge_length;
                 sd.dan_result_data.max_combo   = players[0]->get_max_combo();
                 sd.dan_result_data.exams       = sd.selected_dan_exam;
+                check_exam_failures(true);
                 sd.dan_result_data.exam_data.clear();
                 if (dan_info_cache.has_value()) {
                     for (int i = 0; i < (int)dan_info_cache->exam_data.size(); i++) {

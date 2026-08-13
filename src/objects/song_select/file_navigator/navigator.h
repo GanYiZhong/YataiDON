@@ -31,6 +31,7 @@ private:
     int open_index;
     bool is_init      = false;
     bool is_preloaded = false;
+    bool built_hide_dan = false;
 
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
@@ -55,6 +56,11 @@ private:
     std::queue<std::unique_ptr<BaseBox>> pending_inline_boxes;
     std::atomic<bool>        loading_complete{false};
     std::atomic<bool>        abort_loading{false};
+
+    // Set when a folder is collapsed on returning from a song, so reopening
+    // that same folder puts the cursor back on the song that was played.
+    std::optional<fs::path>  reopen_folder_path;
+    std::optional<fs::path>  reopen_song_path;
 
     std::optional<fs::path>  recent_folder_path;
     std::optional<fs::path>  favorite_folder_path;
@@ -88,9 +94,10 @@ private:
     void load_collection_recommended(const fs::path& path, const BoxDef& box_def);
     void load_collection_search(const fs::path& path, const BoxDef& box_def);
     void load_songs_inline_async(const fs::path path, BoxDef box_def);
-    // Mirror add_to_recent's reordering in the boxes already on screen, so
-    // coming back to the recent collection doesn't show a stale order.
     void promote_recent_box(const SongBox* song);
+    // Close an open folder immediately, with no fade-out, and leave the
+    // cursor on the folder itself.
+    void collapse_inline_now();
     void flush_pending_boxes();
     void exit_inline();
     void begin_inline_load();
@@ -100,11 +107,7 @@ public:
     ~Navigator();
 
     bool is_processing = false;
-    // True while an inline collection (RECOMMENDED, etc.) is still streaming
-    // boxes in from the loader thread. is_processing is deliberately false
-    // during that window so the flush can finalise, but navigation must stay
-    // blocked: the completion step sorts and repositions items around
-    // open_index, so moving the selection mid-load corrupts the display.
+    bool hide_dan = false;
     bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;
