@@ -20,6 +20,7 @@ void SongSelectScreen::on_screen_start() {
     game_transition.reset();
     dan_transition.reset();
 
+    navigator.hide_dan = hides_dan();
     navigator.init(global_data.config->paths.tja_path);
 #ifndef __EMSCRIPTEN__
     stats_future = std::async(std::launch::async, [this]() {

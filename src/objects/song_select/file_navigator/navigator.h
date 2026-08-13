@@ -31,6 +31,7 @@ private:
     int open_index;
     bool is_init      = false;
     bool is_preloaded = false;
+    bool built_hide_dan = false;
 
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
@@ -100,6 +101,8 @@ public:
     ~Navigator();
 
     bool is_processing = false;
+    // Set before init to keep the dan dojo out of the listing.
+    bool hide_dan = false;
     // True while an inline collection (RECOMMENDED, etc.) is still streaming
     // boxes in from the loader thread. is_processing is deliberately false
     // during that window so the flush can finalise, but navigation must stay
