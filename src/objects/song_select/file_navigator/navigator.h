@@ -89,8 +89,6 @@ private:
     void load_collection_recommended(const fs::path& path, const BoxDef& box_def);
     void load_collection_search(const fs::path& path, const BoxDef& box_def);
     void load_songs_inline_async(const fs::path path, BoxDef box_def);
-    // Mirror add_to_recent's reordering in the boxes already on screen, so
-    // coming back to the recent collection doesn't show a stale order.
     void promote_recent_box(const SongBox* song);
     void flush_pending_boxes();
     void exit_inline();
@@ -101,13 +99,7 @@ public:
     ~Navigator();
 
     bool is_processing = false;
-    // Set before init to keep the dan dojo out of the listing.
     bool hide_dan = false;
-    // True while an inline collection (RECOMMENDED, etc.) is still streaming
-    // boxes in from the loader thread. is_processing is deliberately false
-    // during that window so the flush can finalise, but navigation must stay
-    // blocked: the completion step sorts and repositions items around
-    // open_index, so moving the selection mid-load corrupts the display.
     bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;
