@@ -2,7 +2,6 @@
 #include "../libs/input.h"
 
 void DanGameScreen::on_screen_start() {
-    // Call the Screen base (loads textures/sounds) but NOT GameScreen::on_screen_start
     Screen::on_screen_start();
     mask_shader   = load_shader("shader/dummy.vs", "shader/mask.fs");
     ms_from_start = 0;
@@ -43,7 +42,6 @@ void DanGameScreen::on_screen_start() {
 void DanGameScreen::init_dan() {
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
 
-    // Count total notes across all songs / 2 (halved per original game logic)
     total_notes = 0;
     for (const auto& entry : sd.selected_dan) {
         try {
@@ -126,13 +124,8 @@ int DanGameScreen::get_exam_progress(const Exam& exam) {
     float gauge_pct = (dan_gauge.gauge_max > 0)
         ? (dan_gauge.gauge_length / dan_gauge.gauge_max) * 100.0f : 0.0f;
 
-    // Not a static table of lambdas: capturing p and gauge_pct by reference in
-    // a table built once, on the first call, leaves every later call reading a
-    // stack frame that is long gone.
     if (exam.type == "gauge")        return (int)gauge_pct;
     if (exam.type == "judgeperfect") return p->get_good();
-    // Just the oks: a bad is what the judgebad condition counts, and adding it
-    // here spent both allowances on one miss.
     if (exam.type == "judgegood")    return p->get_ok();
     if (exam.type == "judgebad")     return p->get_bad();
     if (exam.type == "hit")          return p->get_good() + p->get_ok() + p->get_total_drumroll();
@@ -187,12 +180,6 @@ void DanGameScreen::check_exam_failures(bool course_finished) {
         const Exam& exam = exams[i];
         int val = get_exam_progress(exam);
 
-        // A "more" condition is only missed once the course is over. Gauge,
-        // hit count and score all climb as it is played, so judging one while
-        // the course runs failed every single one of them on the first frame,
-        // when everything is still zero. "less" conditions are the opposite:
-        // they are lost as soon as the allowance runs out, so they stay per
-        // frame.
         if (exam.range == "more" && !course_finished) continue;
 
         if (exam.range == "more" && val < exam.red) {
@@ -268,8 +255,6 @@ std::optional<Screens> DanGameScreen::update() {
                 sd.dan_result_data.gauge_length= dan_gauge.gauge_length;
                 sd.dan_result_data.max_combo   = players[0]->get_max_combo();
                 sd.dan_result_data.exams       = sd.selected_dan_exam;
-                // Now that the course is over, the "more" conditions can be
-                // judged on their final values.
                 check_exam_failures(true);
                 sd.dan_result_data.exam_data.clear();
                 if (dan_info_cache.has_value()) {
