@@ -1017,6 +1017,19 @@ void Navigator::load_current_directory(const fs::path path) {
     bool has_children = has_child_folders(path);
 
     if (!has_children && !items.empty()) {
+        // Opening a folder while another is expanded: close that one first.
+        // Overwriting inline_state instead left its songs in the wheel for
+        // good and dropped its folder box, stranding the back box that had
+        // taken its place.
+        if (inline_state.has_value()) {
+            collapse_inline_now();
+            // collapse_inline_now parks the cursor on the folder it closed;
+            // move it to the one actually being opened.
+            for (int i = 0; i < (int)items.size(); i++)
+                if (items[i]->path == path) { open_index = i; break; }
+            set_positions(true, 0);
+        }
+
         InlineState state;
         state.folder_index     = open_index;
         state.first_song_index = open_index + 1;
