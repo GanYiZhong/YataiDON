@@ -126,17 +126,17 @@ int DanGameScreen::get_exam_progress(const Exam& exam) {
     float gauge_pct = (dan_gauge.gauge_max > 0)
         ? (dan_gauge.gauge_length / dan_gauge.gauge_max) * 100.0f : 0.0f;
 
-    static const std::unordered_map<std::string, std::function<int()>> map = {
-        {"gauge",        [&]{ return (int)gauge_pct; }},
-        {"judgeperfect", [&]{ return p->get_good(); }},
-        {"judgegood",    [&]{ return p->get_ok() + p->get_bad(); }},
-        {"judgebad",     [&]{ return p->get_bad(); }},
-        {"hit",          [&]{ return p->get_good() + p->get_ok() + p->get_total_drumroll(); }},
-        {"score",        [&]{ return p->get_score(); }},
-        {"combo",        [&]{ return p->get_max_combo(); }},
-    };
-    auto it = map.find(exam.type);
-    return it != map.end() ? it->second() : 0;
+    // Not a static table of lambdas: capturing p and gauge_pct by reference in
+    // a table built once, on the first call, leaves every later call reading a
+    // stack frame that is long gone.
+    if (exam.type == "gauge")        return (int)gauge_pct;
+    if (exam.type == "judgeperfect") return p->get_good();
+    if (exam.type == "judgegood")    return p->get_ok() + p->get_bad();
+    if (exam.type == "judgebad")     return p->get_bad();
+    if (exam.type == "hit")          return p->get_good() + p->get_ok() + p->get_total_drumroll();
+    if (exam.type == "score")        return p->get_score();
+    if (exam.type == "combo")        return p->get_max_combo();
+    return 0;
 }
 
 DanInfoCache DanGameScreen::calculate_dan_info() {
