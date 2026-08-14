@@ -1355,12 +1355,21 @@ void Navigator::load_gen4_genres(const fs::path& data_root) {
         BoxDef def;
         if (const BoxDef* like = box_def_for_genre(genre)) {
             def = *like;
-        } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
-            // Nothing in the library uses this genre, so fall back to the
-            // built-in colours.
-            def.texture_index = TextureIndex::NONE;
-            def.back_color    = colors->second[0];
-            def.fore_color    = colors->second[1];
+        } else {
+            // Nothing in the library defines this genre - a game on its own,
+            // with no TJA songs beside it - so the look a box.def would give
+            // it is spelled out here instead: the same colours, and the same
+            // texture, which is the plain genre art for everything except
+            // vocaloid, which has art of its own.
+            // NONE means "tint the plain box with these colours", which is
+            // what gives each genre its own look; vocaloid is the one genre
+            // the skin has art for, and its box.def uses that instead.
+            def.texture_index = (genre == GenreIndex::VOCALOID)
+                              ? TextureIndex::VOCALOID : TextureIndex::NONE;
+            if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+                def.back_color = colors->second[0];
+                def.fore_color = colors->second[1];
+            }
         }
         def.name        = gen4::genre_name(genre_no, lang);
         def.genre_index = genre;
@@ -1387,10 +1396,13 @@ bool Navigator::load_gen4_genre_songs(const fs::path& path, const BoxDef& box_de
     if (const BoxDef* like = box_def_for_genre(genre)) {
         def = *like;
     } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
-        // NONE means "tint the plain box art with these colours", which is what
-        // a box.def genre does to its songs; any other value draws fixed art
-        // and ignores the colours.
-        def.texture_index = TextureIndex::NONE;
+        // NONE means "tint the plain box art with these colours", which is
+        // what a box.def genre does to its songs. Vocaloid is the exception:
+        // it has no colour to tint to, only art of its own, and asking for a
+        // tint that cannot happen leaves the untinted art showing through -
+        // which is a green box under a genre that is not green.
+        def.texture_index = (genre == GenreIndex::VOCALOID)
+                          ? TextureIndex::VOCALOID : TextureIndex::NONE;
         def.back_color    = colors->second[0];
         def.fore_color    = colors->second[1];
     }
