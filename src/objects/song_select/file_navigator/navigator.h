@@ -62,6 +62,7 @@ private:
 
     std::optional<fs::path>  reopen_folder_path;
     std::optional<fs::path>  reopen_song_path;
+    std::optional<fs::path>  restore_cursor_path;
 
     std::optional<fs::path>  recent_folder_path;
     std::optional<fs::path>  favorite_folder_path;
@@ -82,6 +83,7 @@ private:
     bool is_gen4_song_folder(const fs::path& path);
     bool is_gen4_root(const fs::path& path);
     bool is_gen3_root(const fs::path& path);
+    fs::path gen3_root_at(const fs::path& path);
     bool is_gen3_song_folder(const fs::path& path);
     void load_gen3_genres(const fs::path& data_root);
     bool load_gen3_genre_songs(const fs::path& genre_path, const BoxDef& box_def);

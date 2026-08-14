@@ -1,4 +1,8 @@
 #include "dan_select.h"
+#ifdef SUPPORT_FUMEN
+#include "../libs/optional/gen4.h"
+#include "../libs/optional/gen3.h"
+#endif
 #include "../libs/song_parser.h"
 #include "../libs/input.h"
 #include "../objects/song_select/file_navigator/navigator.h"
@@ -89,8 +93,21 @@ void DanNavigator::init(const std::vector<fs::path>& song_paths) {
     selected_index = 0;
 
     for (const fs::path& root_path : song_paths) {
+        // A path at or inside a game's data holds no dan.json, only tens of
+        // thousands of chart files this walk would crawl through.
+        if (!gen4::find_data_root(root_path).empty() ||
+            !gen3::find_data_root(root_path).empty()) continue;
         try {
-            for (const auto& entry : fs::recursive_directory_iterator(root_path)) {
+            auto it = fs::recursive_directory_iterator(
+                root_path, fs::directory_options::skip_permission_denied);
+            for (; it != fs::end(it); ++it) {
+                const auto& entry = *it;
+                if (entry.is_directory() &&
+                    (gen4::find_data_root(entry.path()) == entry.path() ||
+                     gen3::find_data_root(entry.path()) == entry.path())) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
                 if (entry.path().filename() == "dan.json") {
                     if (auto box = load_dan_box(entry.path())) {
                         boxes.push_back(std::move(box));

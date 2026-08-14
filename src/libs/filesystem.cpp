@@ -97,11 +97,18 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
             continue;
 #endif
 
-        // First pass: extract any .osz archives
         try {
             std::vector<fs::path> osz_files;
-            for (const auto& entry : fs::recursive_directory_iterator(
-                     path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink)) {
+            auto it = fs::recursive_directory_iterator(
+                path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink);
+            for (; it != fs::end(it); ++it) {
+                const auto& entry = *it;
+                if (entry.is_directory() &&
+                    (gen4::find_data_root(entry.path()) == entry.path() ||
+                     gen3::find_data_root(entry.path()) == entry.path())) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
                 if (entry.path().extension() == ".osz")
                     osz_files.push_back(entry.path());
             }
