@@ -1299,10 +1299,13 @@ void Navigator::load_gen4_genres(const fs::path& data_root) {
         BoxDef def;
         if (const BoxDef* like = box_def_for_genre(genre)) {
             def = *like;
-        } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
-            def.texture_index = TextureIndex::NONE;
-            def.back_color    = colors->second[0];
-            def.fore_color    = colors->second[1];
+        } else {
+            def.texture_index = (genre == GenreIndex::VOCALOID)
+                              ? TextureIndex::VOCALOID : TextureIndex::NONE;
+            if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+                def.back_color = colors->second[0];
+                def.fore_color = colors->second[1];
+            }
         }
         def.name        = gen4::genre_name(genre_no, lang);
         def.genre_index = genre;
@@ -1329,7 +1332,8 @@ bool Navigator::load_gen4_genre_songs(const fs::path& path, const BoxDef& box_de
     if (const BoxDef* like = box_def_for_genre(genre)) {
         def = *like;
     } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
-        def.texture_index = TextureIndex::NONE;
+        def.texture_index = (genre == GenreIndex::VOCALOID)
+                          ? TextureIndex::VOCALOID : TextureIndex::NONE;
         def.back_color    = colors->second[0];
         def.fore_color    = colors->second[1];
     }
