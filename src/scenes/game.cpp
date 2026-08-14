@@ -52,7 +52,7 @@ void GameScreen::on_screen_start() {
     init_tja(session_data.selected_song);
     spdlog::info("TJA initialized for song: {}", session_data.selected_song.string());
     load_hitsounds();
-    song_info = SongInfo(session_data.song_title, session_data.genre_index);
+    song_info = SongInfo(session_data.song_title, session_data.genre_index, global_data.songs_played + 1);
     result_transition = ResultTransition(global_data.player_num);
     bpm = parser->metadata.bpm;
     scene_preset = parser->metadata.scene_preset;
@@ -94,9 +94,6 @@ Screens GameScreen::on_screen_end(Screens next_screen) {
         spdlog::info("Background unloaded");
     }
     transition.reset();
-    // Let an in-flight song load land before the base class unloads all
-    // sounds, otherwise the worker inserts an orphaned "song" entry after
-    // the cleanup and its buffer leaks on the next load.
     if (pending_song_load.valid()) pending_song_load.wait();
     pending_song_load = {};
     song_music.reset();
@@ -153,8 +150,6 @@ void GameScreen::poll_pending_song() {
     if (name.empty()) return;
     song_music = name;
 
-    // If the chart already passed its start point while the audio was still
-    // decoding, join in progress at the right position.
     if (song_started && !paused) {
         audio.play_sound(*song_music, VolumePreset::MUSIC);
         double audio_ms = ms_from_start
@@ -208,10 +203,6 @@ void GameScreen::restart_song() {
     paused = false;
     pause_time = 0;
     last_resync_ms = 0;
-    // Reset the chart clock the same way on_screen_start does. With the
-    // stale start_ms, ms_from_start was already far past the start
-    // threshold, so the song began the very next frame instead of after
-    // the usual lead-in (#83).
     start_ms = get_current_ms() - parser->metadata.offset*1000 - (double)global_data.config->general.audio_offset;
     ms_from_start = get_current_ms() - start_ms;
 }
@@ -242,6 +233,10 @@ void GameScreen::update_background(double current_ms) {
 }
 
 void GameScreen::save_score(int player_id, PlayerNum player_num) {
+    for (const auto& player : players)
+        if (player && player->player_num == player_num && player->is_auto_play())
+            return;
+
     Score score;
     SessionData& session_data = global_data.session_data[(int)player_num];
     std::string hash = session_data.song_hash;
@@ -279,7 +274,6 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     }
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score);
     network.submit_score(hash, session_data.selected_difficulty, global_data.config->general.access_code, score);
-    global_data.songs_played += 1;
 }
 
 void GameScreen::resync_song(double current_ms) {
@@ -306,12 +300,11 @@ void GameScreen::resync_song(double current_ms) {
 void GameScreen::end_song() {
     if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
         global_data.session_data[(int)players[0]->player_num].result_data = players[0]->get_result_score();
-        if (!players[0]->is_auto_play()) {
-            save_score(global_data.config->general.player_1_id, players[0]->player_num);
-        }
+        save_score(global_data.config->general.player_1_id, players[0]->player_num);
         for (auto& player : players) {
             player->spawn_ending_anim();
         }
+        global_data.songs_played += 1;
         score_saved = true;
     }
     if (ms_from_start >= players[0]->end_time + 8533.34) {

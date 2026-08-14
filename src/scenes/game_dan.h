@@ -49,7 +49,8 @@ private:
 
     DanInfoCache calculate_dan_info();
     int get_exam_progress(const Exam& exam);
-    void check_exam_failures();
+    void fill_unplayed_songs();
+    void check_exam_failures(bool course_finished = false);
 
     void draw_dan_info();
     void draw_digit_counter(const std::string& digits, float margin_x, TexID tex_id, int index, float y, float x_offset = 0);
