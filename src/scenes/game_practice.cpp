@@ -115,6 +115,9 @@ void PracticeGameScreen::pause_song_practice() {
             // runway: seeking to the scrobbled bar drops their notes from
             // both the hit queues and the draw path.
             practice_player->seek_to(resume_time);
+            // A fresh attempt: score, combo and the judgement tallies all
+            // start over rather than keeping the last run's numbers.
+            practice_player->reset_performance();
         }
 
         pause_time = (int)start_time;
