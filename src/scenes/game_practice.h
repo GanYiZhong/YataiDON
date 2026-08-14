@@ -1,5 +1,6 @@
 #pragma once
 #include "game.h"
+#include "../libs/input.h"
 
 class PracticeDrumHitEffect : public DrumHitEffect {
     int player_index;
@@ -28,6 +29,29 @@ public:
         : Player(parser_ref, player_num_param, difficulty_param, is_2p_param, modifiers_param) {
         gauge.reset();
         judge_counter = JudgeCounter();
+    }
+
+    // While paused, don't consume drum presses as hit attempts: input
+    // arrives from the polling thread mid-frame, so a resume press landing
+    // between global_keys_practice() and this player's update was eaten
+    // here and the player had to press again.
+    void handle_input(double ms_from_start, double current_ms, std::optional<Background>& background) override {
+        if (paused) return;
+        if (is_auto_play()) {
+            // Auto judges the notes itself and the base handler exits without
+            // reading the drums, so this player's presses pile up in the
+            // event queue - and the stale dons instantly resumed the next
+            // pause. Drain them here, with drum feedback but no judgement.
+            while (true) {
+                if      (is_l_don_pressed(player_num)) spawn_hit_effects(DrumType::DON, Side::LEFT);
+                else if (is_r_don_pressed(player_num)) spawn_hit_effects(DrumType::DON, Side::RIGHT);
+                else if (is_l_kat_pressed(player_num)) spawn_hit_effects(DrumType::KAT, Side::LEFT);
+                else if (is_r_kat_pressed(player_num)) spawn_hit_effects(DrumType::KAT, Side::RIGHT);
+                else break;
+            }
+            return;
+        }
+        Player::handle_input(ms_from_start, current_ms, background);
     }
 
     void spawn_hit_effects(DrumType drum_type, Side side) {
@@ -73,8 +97,29 @@ private:
     TextureResizeAnimation* speed_l_kat_anim;
     TextureResizeAnimation* speed_r_kat_anim;
 
+    // The pause menu (issue #41): opened with the second drum's don while
+    // paused, stepped through with kat, confirmed with don.
+    bool menu_open  = false;
+    int  menu_index = 0;
+    int  jump_bar   = -1;   // the bar registered as the jump point, -1 = none
+    std::vector<std::unique_ptr<OutlinedText>> menu_text;
+
+    // Sub-dialogs opened from the menu bars (auto ON/OFF toggle and the
+    // arcade's はい/いいえ confirms): kat picks a side, don confirms.
+    enum class MenuDialog { NONE, AUTO, RESTART, ANOTHER, END };
+    MenuDialog menu_dialog = MenuDialog::NONE;
+    int  dialog_sel = 0;    // 0 = left option, 1 = right option
+    std::unique_ptr<OutlinedText> dlg_title, dlg_left, dlg_right;
+
     void init_tja_practice(const fs::path& song);
     void pause_song_practice();
+    void restart_practice();
+    void build_menu_text();
+    void open_menu_dialog(MenuDialog which);
+    std::optional<Screens> dialog_confirm();
+    std::optional<Screens> menu_action(int index);
+    void draw_practice_menu() const;
+    void draw_menu_dialog() const;
     std::optional<Screens> global_keys_practice();
 
     float get_scrobble_position_x(const Note& note, double current_ms) const;

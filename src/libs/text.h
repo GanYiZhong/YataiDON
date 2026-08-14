@@ -24,6 +24,9 @@ private:
     std::string text;
     float font_size;
     float outline_thickness;
+    // Vertical-text line advance multiplier (<1 packs characters tighter,
+    // the way the arcade fits long labels onto a fixed-height bar).
+    float v_advance = 1.0f;
 
     ray::Font worker_font;
 
@@ -49,7 +52,8 @@ public:
                  ray::Color color, ray::Color outline_color,
                  bool is_vertical,
                  int outline_thickness = 5,
-                 float spacing = 2.0f);
+                 float spacing = 2.0f,
+                 float v_advance = 1.0f);
 
     ~OutlinedText();
 

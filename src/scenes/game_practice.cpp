@@ -1,5 +1,6 @@
 #include "game_practice.h"
 #include "../libs/input.h"
+#include <cmath>
 
 void PracticeGameScreen::on_screen_start() {
     GameScreen::on_screen_start();
@@ -20,6 +21,12 @@ void PracticeGameScreen::on_screen_start() {
 Screens PracticeGameScreen::on_screen_end(Screens next_screen) {
     scrobble_index = 0;
     scrobble_time = 0;
+    menu_open  = false;
+    menu_index = 0;
+    jump_bar   = -1;
+    menu_text.clear();
+    menu_dialog = MenuDialog::NONE;
+    dlg_title.reset(); dlg_left.reset(); dlg_right.reset();
     scrobble_move = std::make_unique<MoveAnimation>(200.0, 0);
     bars.clear();
     scrobble_note_list.clear();
@@ -44,7 +51,11 @@ void PracticeGameScreen::init_tja_practice(const fs::path& song) {
     // Extract bars and note list for scrobbling from the already-parsed TJA
     int difficulty = global_data.session_data[(int)global_data.player_num].selected_difficulty;
     auto [notes, bm, be, bn] = parser->notes_to_position(difficulty);
-    std::get<TJAParser>(parser->impl).scroll_disabled = true;
+    // Only a TJA has scroll commands to disable; asking the variant for one
+    // when an arcade chart is loaded threw and kept practice mode out of
+    // those songs entirely.
+    if (auto* tja = std::get_if<TJAParser>(&parser->impl))
+        tja->scroll_disabled = true;
     apply_modifiers(notes, get_player_modifiers(global_data.player_num));
 
     bars.clear();
@@ -106,7 +117,13 @@ void PracticeGameScreen::pause_song_practice() {
         double start_time  = bars[previous_bar_index].hit_ms - first_bar_time + start_delay;
 
         if (practice_player) {
+            // The lead-in bars before the scrobbled bar stay an empty
+            // runway: seeking to the scrobbled bar drops their notes from
+            // both the hit queues and the draw path.
             practice_player->seek_to(resume_time);
+            // A fresh attempt: score, combo and the judgement tallies all
+            // start over rather than keeping the last run's numbers.
+            practice_player->reset_performance();
         }
 
         pause_time = (int)start_time;
@@ -119,20 +136,301 @@ void PracticeGameScreen::pause_song_practice() {
         }
         song_started = true;
         start_ms = get_current_ms() - pause_time;
+        // update() computed ms_from_start at the top of this frame while we
+        // were still paused, so it holds the stale pause position. The player
+        // update later this frame would sweep the freshly seeked queues with
+        // that stale clock - instantly missing the notes right after the
+        // resume point and pair-popping drumrolls between the scrobble target
+        // and wherever the pause happened.
+        ms_from_start = start_time;
     }
+}
+
+void PracticeGameScreen::restart_practice() {
+    if (song_music.has_value()) {
+        audio.stop_sound(song_music.value());
+    }
+    players.clear();
+    init_tja(global_data.session_data[(int)global_data.player_num].selected_song);
+    init_tja_practice(global_data.session_data[(int)global_data.player_num].selected_song);
+    audio.play_sound("restart", VolumePreset::SOUND);
+    song_started = false;
+    paused       = false;
+    menu_open    = false;
+    // Reset the chart clock the same way on_screen_start does; with the
+    // stale start_ms the opening notes were already past the sweep and
+    // could never be hit (same clock as the base game's restart, #83).
+    last_resync_ms = 0;
+    start_ms = get_current_ms() - parser->metadata.offset * 1000
+             - (double)global_data.config->general.audio_offset;
+    ms_from_start = get_current_ms() - start_ms;
+}
+
+void PracticeGameScreen::build_menu_text() {
+    menu_text.clear();
+    bool auto_on = practice_player && practice_player->is_auto_play();
+
+    // Follows the language the config picked, the same way the rest of the
+    // interface does: Japanese, Chinese (either script setting) or English.
+    const std::string& lang = global_data.config->general.language;
+    int col = lang == "ja" ? 0 : (lang.rfind("zh", 0) == 0 ? 1 : 2);
+
+    // Visual order left to right, as the arcade lays its bars out; the
+    // rightmost one, closing the menu, is where the cursor starts.
+    struct Row { const char* ja; const char* zh; const char* en; };
+    static const Row ROWS[] = {
+        { "\u30b2\u30fc\u30e0\u7d42\u4e86",
+          "\u7d50\u675f\u904a\u6232",
+          "End Game" },
+        { "\u307b\u304b\u306e\u66f2\u3092\u6f14\u594f",
+          "\u9078\u5176\u4ed6\u6b4c\u66f2",
+          "Another Song" },
+        { "\u6700\u521d\u304b\u3089\u6f14\u594f",
+          "\u5f9e\u982d\u6f14\u594f",
+          "From the Top" },
+        { "\u30aa\u30fc\u30c8\u6f14\u594f\u8a2d\u5b9a",
+          "\u81ea\u52d5\u6f14\u594f\u8a2d\u5b9a",
+          "Auto Play" },
+        { "\u30b8\u30e3\u30f3\u30d7\u30dd\u30a4\u30f3\u30c8\u3078",
+          "\u8df3\u81f3\u8df3\u8f49\u9ede",
+          "To Jump Point" },
+        { "\u30b8\u30e3\u30f3\u30d7\u30dd\u30a4\u30f3\u30c8\u8a2d\u5b9a",
+          "\u8a2d\u5b9a\u8df3\u8f49\u9ede",
+          "Set Jump Point" },
+        { "\u30e1\u30cb\u30e5\u30fc\u3092\u3068\u3058\u308b",
+          "\u95dc\u9589\u9078\u55ae",
+          "Close Menu" },
+    };
+
+    for (const Row& r : ROWS) {
+        std::string label = col == 0 ? r.ja : col == 1 ? r.zh : r.en;
+        // The arcade keeps the glyphs big and packs the line tighter instead
+        // of shrinking the font: squeeze the vertical advance down to 0.7,
+        // and only then reduce the font size for still-longer labels.
+        int chars = 0;
+        for (unsigned char c : label)
+            if ((c & 0xC0) != 0x80) chars++;
+        int   fs    = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+        float avail = 350 * tex.screen_scale;
+        float v     = 1.0f;
+        if (chars > 1) {
+            v = (avail / fs - 1.0f) / (chars - 1);
+            if (v < 0.7f) {
+                v  = 0.7f;
+                fs = (int)(avail / (1.0f + (chars - 1) * 0.7f));
+            } else if (v > 1.0f) {
+                v = 1.0f;
+            }
+        }
+        menu_text.push_back(std::make_unique<OutlinedText>(label, fs,
+            ray::WHITE, ray::BLACK, true, 5, 2.0f, v));
+    }
+    (void)auto_on;
+}
+
+void PracticeGameScreen::open_menu_dialog(MenuDialog which) {
+    menu_dialog = which;
+
+    const std::string& lang = global_data.config->general.language;
+    int col = lang == "ja" ? 0 : (lang.rfind("zh", 0) == 0 ? 1 : 2);
+    struct Tri { const char* ja; const char* zh; const char* en; };
+    auto pick = [col](const Tri& t) -> std::string {
+        return col == 0 ? t.ja : col == 1 ? t.zh : t.en;
+    };
+
+    Tri title;
+    Tri left  = { "はい",   "是", "Yes" };  // はい
+    Tri right = { "いいえ", "否", "No" };  // いいえ
+    switch (which) {
+        case MenuDialog::AUTO:
+            title = { "オート演奏を設定するドン！",
+                      "設定自動演奏咚！",
+                      "Set Auto Play!" };
+            left  = { "ON",  "ON",  "ON"  };
+            right = { "OFF", "OFF", "OFF" };
+            dialog_sel = (practice_player && practice_player->is_auto_play()) ? 0 : 1;
+            break;
+        case MenuDialog::RESTART:
+            title = { "最初から演奏しますカッ？",
+                      "要從頭演奏嗎鏘？",
+                      "Restart from the top?" };
+            dialog_sel = 0;
+            break;
+        case MenuDialog::ANOTHER:
+            title = { "ほかの曲を演奏しますカッ？",
+                      "要選其他歌曲嗎鏘？",
+                      "Play another song?" };
+            dialog_sel = 0;
+            break;
+        case MenuDialog::END:
+            title = { "特訓モードを終了しますカッ？",
+                      "要結束特訓模式嗎鏘？",
+                      "End practice mode?" };
+            dialog_sel = 0;
+            break;
+        default: return;
+    }
+
+    int fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+    dlg_title = std::make_unique<OutlinedText>(pick(title), fs, ray::WHITE, ray::BLACK, false);
+    dlg_left  = std::make_unique<OutlinedText>(pick(left),  fs, ray::WHITE, ray::BLACK, false);
+    dlg_right = std::make_unique<OutlinedText>(pick(right), fs, ray::WHITE, ray::BLACK, false);
+}
+
+std::optional<Screens> PracticeGameScreen::dialog_confirm() {
+    MenuDialog which = menu_dialog;
+    bool left = (dialog_sel == 0);
+    menu_dialog = MenuDialog::NONE;
+
+    switch (which) {
+        case MenuDialog::AUTO:
+            if (practice_player) practice_player->set_auto_play(left);
+            menu_open = false;
+            return std::nullopt;
+        case MenuDialog::RESTART:
+            if (left) restart_practice();
+            return std::nullopt;
+        case MenuDialog::ANOTHER:
+            if (left) {
+                if (song_music.has_value()) audio.stop_sound(song_music.value());
+                return on_screen_end(Screens::PRACTICE_SELECT);
+            }
+            return std::nullopt;
+        case MenuDialog::END:
+            if (left) {
+                if (song_music.has_value()) audio.stop_sound(song_music.value());
+                return on_screen_end(Screens::ENTRY);
+            }
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::optional<Screens> PracticeGameScreen::menu_action(int index) {
+    switch (index) {
+        case 0:   // leave practice altogether
+            open_menu_dialog(MenuDialog::END);
+            return std::nullopt;
+        case 1:   // pick another song
+            open_menu_dialog(MenuDialog::ANOTHER);
+            return std::nullopt;
+        case 2:   // restart from the top
+            open_menu_dialog(MenuDialog::RESTART);
+            return std::nullopt;
+        case 3:   // auto play ON/OFF dialog
+            open_menu_dialog(MenuDialog::AUTO);
+            return std::nullopt;
+        case 4:   // move the scrobble cursor to the jump point
+            if (jump_bar >= 0 && jump_bar < (int)bars.size()) {
+                scrobble_index = jump_bar;
+                scrobble_time  = bars[scrobble_index].hit_ms;
+                scrobble_move  = std::make_unique<MoveAnimation>(200.0, 0);
+                menu_open = false;
+            }
+            return std::nullopt;
+        case 5:   // register the current bar as the jump point
+            jump_bar = scrobble_index;
+            return std::nullopt;
+        case 6:   // close the menu, stay paused
+            menu_open = false;
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+void PracticeGameScreen::draw_practice_menu() const {
+    int n = (int)menu_text.size();
+    if (n == 0) return;
+
+    // The arcade's purple panel and wooden bars (tokkun_enso_menu assets,
+    // authored on the 1280x720 canvas: panel 940x460, bars 92x378).
+    float scale   = tex.screen_scale;
+    float bar_w   = 92 * scale;
+    float bar_h   = 378 * scale;
+    float gap     = 36 * scale;
+    float panel_w = 940 * scale;
+    float panel_h = 460 * scale;
+    float panel_x = (tex.screen_width - panel_w) / 2.0f;
+    float panel_y = 48 * scale;
+    float pad     = (panel_w - n * bar_w - (n - 1) * gap) / 2.0f;
+
+    tex.draw_texture(PRACTICE::MENU_PANEL, {.scale = scale, .x = panel_x, .y = panel_y});
+
+    for (int i = 0; i < n; i++) {
+        float x = panel_x + pad + i * (bar_w + gap);
+        float y = panel_y + (panel_h - bar_h) / 2.0f;
+        bool selected = (i == menu_index);
+
+        tex.draw_texture(selected ? PRACTICE::MENU_BAR_SELECTED : PRACTICE::MENU_BAR,
+                         {.scale = scale, .x = x, .y = y});
+
+        OutlinedText* text = menu_text[i].get();
+        float tx = x + (bar_w - text->width) / 2.0f;
+        float ty = y + 16 * scale;   // top-aligned like the arcade, not centred
+        text->draw({.x = tx, .y = ty});
+    }
+}
+
+void PracticeGameScreen::draw_menu_dialog() const {
+    float scale   = tex.screen_scale;
+    float panel_w = 940 * scale, panel_h = 460 * scale;
+    float panel_x = (tex.screen_width - panel_w) / 2.0f;
+    float panel_y = 48 * scale;
+
+    tex.draw_texture(PRACTICE::MENU_PANEL, {.scale = scale, .x = panel_x, .y = panel_y});
+
+    // The auto dialog stacks a label chip and the toggle row below its
+    // title, so the title sits high; the yes/no confirms sit lower.
+    float title_y = (menu_dialog == MenuDialog::AUTO) ? 56 : 100;
+    if (dlg_title)
+        dlg_title->draw({.x = panel_x + (panel_w - dlg_title->width) / 2.0f,
+                         .y = panel_y + title_y * scale});
+
+    float btn_w = 212 * scale, btn_h = 102 * scale;
+    float left_x, right_x, row_y;
+
+    if (menu_dialog == MenuDialog::AUTO) {
+        // Don chip above an ON | slider | OFF row, like the arcade's.
+        float label_w = 290 * scale;
+        tex.draw_texture(PRACTICE::MENU_AUTO_LABEL,
+                         {.scale = scale,
+                          .x = panel_x + (panel_w - label_w) / 2.0f,
+                          .y = panel_y + 150 * scale});
+        float tog_w = 240 * scale;
+        float gap   = 40 * scale;
+        float total = btn_w * 2 + tog_w + gap * 2;
+        left_x  = panel_x + (panel_w - total) / 2.0f;
+        right_x = left_x + btn_w + gap + tog_w + gap;
+        row_y   = panel_y + 280 * scale;
+        // The red knob slides toward whichever side is picked.
+        tex.draw_texture(PRACTICE::MENU_TOGGLE,
+                         {.scale  = scale,
+                          .mirror = dialog_sel == 1 ? Mirror::HORIZONTAL : Mirror::NONE,
+                          .x = left_x + btn_w + gap, .y = row_y + 6 * scale});
+    } else {
+        left_x  = panel_x + 160 * scale;
+        right_x = panel_x + panel_w - 160 * scale - btn_w;
+        row_y   = panel_y + 240 * scale;
+    }
+
+    tex.draw_texture(dialog_sel == 0 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
+                     {.scale = scale, .x = left_x, .y = row_y});
+    tex.draw_texture(dialog_sel == 1 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
+                     {.scale = scale, .x = right_x, .y = row_y});
+
+    if (dlg_left)
+        dlg_left->draw({.x = left_x + (btn_w - dlg_left->width) / 2.0f,
+                        .y = row_y + (btn_h - dlg_left->height) / 2.0f});
+    if (dlg_right)
+        dlg_right->draw({.x = right_x + (btn_w - dlg_right->width) / 2.0f,
+                         .y = row_y + (btn_h - dlg_right->height) / 2.0f});
+    (void)panel_h;
 }
 
 std::optional<Screens> PracticeGameScreen::global_keys_practice() {
     if (ray::IsKeyPressed(global_data.config->keys.restart_key)) {
-        if (song_music.has_value()) {
-            audio.stop_sound(song_music.value());
-        }
-        players.clear();
-        init_tja(global_data.session_data[(int)global_data.player_num].selected_song);
-        init_tja_practice(global_data.session_data[(int)global_data.player_num].selected_song);
-        audio.play_sound("restart", VolumePreset::SOUND);
-        song_started = false;
-        paused = false;
+        restart_practice();
         return std::nullopt;
     }
 
@@ -159,6 +457,49 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
             practice_player->spawn_scrobble_effect(DrumType::DON, Side::LEFT, other_idx);
         }
     } else {
+        if (menu_open) {
+            // The menu swallows the drums: kat steps, don confirms.
+            bool step_l = is_l_kat_pressed(global_data.player_num) || is_l_kat_pressed(other_player);
+            bool step_r = is_r_kat_pressed(global_data.player_num) || is_r_kat_pressed(other_player);
+            bool don    = is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num) ||
+                          is_l_don_pressed(other_player) || is_r_don_pressed(other_player);
+
+            if (menu_dialog != MenuDialog::NONE) {
+                // A sub-dialog is up: kat flips between the two options.
+                if (step_l || step_r) {
+                    audio.play_sound("kat", VolumePreset::SOUND);
+                    dialog_sel = 1 - dialog_sel;
+                }
+                if (don) {
+                    audio.play_sound("don", VolumePreset::SOUND);
+                    auto next = dialog_confirm();
+                    if (next.has_value()) return next;
+                }
+                return std::nullopt;
+            }
+
+            if (step_l || step_r) {
+                audio.play_sound("kat", VolumePreset::SOUND);
+                int n = (int)menu_text.size();
+                menu_index = ((menu_index + (step_r ? 1 : -1)) % n + n) % n;
+            }
+            if (don) {
+                audio.play_sound("don", VolumePreset::SOUND);
+                auto next = menu_action(menu_index);
+                if (next.has_value()) return next;
+            }
+            return std::nullopt;
+        }
+
+        if (is_l_don_pressed(other_player) || is_r_don_pressed(other_player)) {
+            audio.play_sound("don", VolumePreset::SOUND);
+            menu_don_anim->start();
+            menu_open  = true;
+            build_menu_text();
+            menu_index = (int)menu_text.size() - 1;
+            return std::nullopt;
+        }
+
         if (is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num)) {
             pause_song_practice();
             resume_don_anim->start();
@@ -225,6 +566,7 @@ std::optional<Screens> PracticeGameScreen::update() {
             ms_from_start = current_ms - start_ms;
         }
     }
+    poll_pending_song();
     if (transition->is_finished()) {
         start_song(current_ms);
         global_data.input_locked = 0;
@@ -414,8 +756,12 @@ void PracticeGameScreen::draw() {
         tex.draw_texture(PRACTICE::SKIP_L_KAT,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
         tex.draw_texture(PRACTICE::SKIP_R_KAT,  {.scale = skip_r_kat_anim  ? (float)skip_r_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2 + 1});
         tex.draw_texture(PRACTICE::MENU_DON,    {.scale = menu_don_anim    ? (float)menu_don_anim->attribute    : 1.0f, .center = true, .index = other_idx});
-        tex.draw_texture(PRACTICE::SPEED_L_KAT, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
-        tex.draw_texture(PRACTICE::SPEED_R_KAT, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
+        // The skin's speed_l_kat sprite reads 速 (faster) and speed_r_kat reads
+        // 遅 (slower), but left kat lowers the tempo and right kat raises it
+        // (matching measure skip: left = back, right = forward). Draw the
+        // sprites swapped so the icons match what the keys actually do (#89).
+        tex.draw_texture(PRACTICE::SPEED_R_KAT, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
+        tex.draw_texture(PRACTICE::SPEED_L_KAT, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
     }
 
     if (!paused) {
@@ -493,6 +839,10 @@ void PracticeGameScreen::draw() {
 
     if (paused) {
         tex.draw_texture(PRACTICE::PAUSED, {.fade = 0.5});
+        if (menu_open) {
+            if (menu_dialog != MenuDialog::NONE) draw_menu_dialog();
+            else                                 draw_practice_menu();
+        }
     }
 
     draw_overlay();
