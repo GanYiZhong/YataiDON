@@ -419,6 +419,21 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     setup_back_box(path, true);
 
+    // A song path pointing into a game - at its data root, or at the fumen
+    // folder inside it - lists that game's genres straight away.
+    fs::path own_root = gen4::find_data_root(path);
+    if (!own_root.empty() && own_root != path && gen4::library_for(own_root) &&
+        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+        try {
+            load_gen4_genres(own_root);
+        } catch (const std::exception& e) {
+            spdlog::error("Error listing gen4 genres of {}: {}", own_root.string(), e.what());
+        }
+        loading_complete = true;
+        current_path = path;
+        return;
+    }
+
     // A data root lists its own genres and nothing else, so the songs of this
     // game replace the ones that were on the wheel until the back box is used.
     if (is_gen4_root(path)) {
@@ -462,6 +477,10 @@ void Navigator::load_current_directory_async(const fs::path path) {
                     continue;
                 }
                 if (is_gen4_root(curr_path)) {
+                    if (only_gen4_songs()) {
+                        load_gen4_genres(curr_path);
+                        continue;
+                    }
                     BoxDef gen4_def = box_def;
                     gen4_def.name        = curr_path.filename().string();
                     gen4_def.genre_index = GenreIndex::DEFAULT;
@@ -1279,6 +1298,25 @@ bool Navigator::is_gen4_root(const fs::path& path) {
     std::error_code ec;
     if (!fs::is_directory(path, ec)) return false;
     return gen4::find_data_root(path) == path && gen4::library_for(path) != nullptr;
+}
+
+// True when the song paths hold nothing but game data. There is then nothing
+// to switch back to, so the genres of that game are the top of the wheel
+// rather than sitting inside a folder of their own.
+bool Navigator::only_gen4_songs() {
+    bool found_gen4 = false;
+    std::error_code ec;
+    for (const fs::path& root : root_paths) {
+        if (!gen4::find_data_root(root).empty()) { found_gen4 = true; continue; }
+        if (!fs::is_directory(root, ec)) continue;
+        for (const auto& entry : fs::directory_iterator(root, ec)) {
+            if (is_gen4_root(entry.path())) { found_gen4 = true; continue; }
+            // Anything else at all - a genre folder, an osu folder, a loose
+            // chart - means the wheel has somewhere else to go.
+            return false;
+        }
+    }
+    return found_gen4;
 }
 
 void Navigator::load_gen4_genres(const fs::path& data_root) {

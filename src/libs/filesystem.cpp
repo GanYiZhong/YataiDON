@@ -121,8 +121,19 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
                 }
 
                 auto ext = entry.path().extension();
-                if (ext == ".tja" || ext == ".osu" || ext == ".bin")
+                if (ext == ".tja" || ext == ".osu") {
                     songs.push_back(entry.path());
+                } else if (ext == ".bin") {
+                    // Charts only ever live under a fumen folder. Everywhere
+                    // else .bin is the extension of the games' data tables,
+                    // and trying to read one as a chart is just noise.
+                    bool under_fumen = false;
+                    for (fs::path dir = entry.path().parent_path();
+                         !dir.empty() && dir != dir.parent_path(); dir = dir.parent_path()) {
+                        if (dir.filename() == "fumen") { under_fumen = true; break; }
+                    }
+                    if (under_fumen) songs.push_back(entry.path());
+                }
             }
         } catch (const std::filesystem::filesystem_error& e) {
             spdlog::error("Error scanning song directory: {}", e.what());

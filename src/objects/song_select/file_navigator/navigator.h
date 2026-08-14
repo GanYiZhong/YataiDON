@@ -77,6 +77,7 @@ private:
     bool is_osu_song_folder(const fs::path& path);
     bool is_gen4_song_folder(const fs::path& path);
     bool is_gen4_root(const fs::path& path);
+    bool only_gen4_songs();
     const BoxDef* box_def_for_genre(GenreIndex genre);
     void load_gen4_genres(const fs::path& data_root);
     bool load_gen4_genre_songs(const fs::path& genre_path, const BoxDef& box_def);
