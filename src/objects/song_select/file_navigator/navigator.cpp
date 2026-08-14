@@ -419,11 +419,31 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     setup_back_box(path, true);
 
-    // A song path pointing into a game - at its data root, or at the fumen
-    // folder inside it - lists that game's genres straight away.
+    // A song path pointing at a game, either at its data root or at the fumen
+    // folder inside it. While the roots are being walked this is a level of
+    // the wheel like any other, so it gets a box to open - unless the game is
+    // all there is, when its genres are the wheel itself. Opening that box
+    // comes back here with reloading_roots clear and lists the genres.
     fs::path own_root = gen4::find_data_root(path);
-    if (!own_root.empty() && own_root != path && gen4::library_for(own_root) &&
-        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+    bool is_a_root = std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end();
+    if (!own_root.empty() && is_a_root && gen4::library_for(own_root)) {
+        if (reloading_roots && !only_gen4_songs()) {
+            BoxDef gen4_def = box_def;
+            gen4_def.name        = own_root.filename().string();
+            gen4_def.genre_index = GenreIndex::DEFAULT;
+            enqueue_box(std::make_unique<FolderBox>(own_root, gen4_def, song_files));
+            loading_complete = true;
+            current_path = path;
+            return;
+        }
+        // setup_back_box gives a root level no way out, since a root has no
+        // folder above it. This one does: the rest of the library. The box
+        // points at another root, and opening a root rebuilds them all.
+        for (const fs::path& root : root_paths) {
+            if (!gen4::find_data_root(root).empty()) continue;
+            items.push_back(make_back_box(root));
+            break;
+        }
         try {
             load_gen4_genres(own_root);
         } catch (const std::exception& e) {
@@ -1046,7 +1066,11 @@ void Navigator::load_current_directory(const fs::path path) {
     // wheel is all of them, and each load cancels the one before it, so
     // reloading just this one would leave only its own songs on the wheel.
     if (has_children && root_paths.size() > 1 && !reloading_roots &&
-        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end() &&
+        // A song path can point straight at a game, and then its box carries
+        // that same path. Opening it is going in, not coming back out, so it
+        // must not be read as a return to the top of the wheel.
+        gen4::find_data_root(path).empty()) {
         load_all_roots();
         return;
     }
