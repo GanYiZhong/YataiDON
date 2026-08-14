@@ -45,6 +45,7 @@ public:
     std::vector<Difficulty> get_diffs();
 
     void refresh_scores();
+    std::string hash_for(int difficulty);
 
     const char* lua_kind() const override { return "song"; }
     OutlinedText* horizontal_subtitle() {

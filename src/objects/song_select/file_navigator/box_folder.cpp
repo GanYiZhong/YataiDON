@@ -49,7 +49,7 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
     std::set<int> disqualified;
 
     auto update_crown = [&](const fs::path& file_path) {
-        auto& hashes = scores_manager.get_hashes(file_path);
+        auto hashes = scores_manager.get_hashes(file_path);
         for (int diff = 0; diff < 5; diff++) {
             if (hashes[diff].empty()) continue;
             auto score = scores_manager.get_score(hashes[diff], diff, global_data.config->general.player_1_id);

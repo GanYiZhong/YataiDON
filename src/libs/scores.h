@@ -2,6 +2,7 @@
 
 #include "global_data.h"
 #include <sqlite3.h>
+#include <mutex>
 
 struct PlayerData {
     int player_id;
@@ -43,6 +44,7 @@ struct Score {
 class ScoresManager {
 private:
     sqlite3* db_fsd;
+    mutable std::mutex maps_mutex;
     std::unordered_map<fs::path, std::array<std::string, 5>> path_to_hashes;
     std::unordered_map<std::string, fs::path> single_hash_to_path;
     std::unordered_map<std::string, fs::path> diff_hash_to_path;
@@ -59,7 +61,7 @@ public:
     std::optional<Score> get_score(std::string& hash, int difficulty, int player_id);
     Score save_score(std::string& hash, int difficulty, int player_id, Score score);
     void add_path_binding(const fs::path& path, const std::array<std::string, 5>& hashes);
-    std::array<std::string, 5>& get_hashes(const fs::path& path);
+    std::array<std::string, 5> get_hashes(const fs::path& path);
     std::string get_single_hash(const fs::path& path);
     std::optional<fs::path> get_path_by_hash(const std::string& single_hash);
     std::optional<fs::path> get_path_by_diff_hash(const std::string& diff_hash);
