@@ -24,6 +24,11 @@ struct SongEntry {
     std::string genre;       // the genre's own name, e.g. "ナムコオリジナル"
     bool        secret = false;
     int         stars[5] = {};   // easy..ura, 0 when tuning.bin has no entry
+    // Which difficulties ship a chart, from tuning.bin's active slots - the
+    // wheel asks this for every song of a genre, and asking the disk instead
+    // is thousands of lookups on what may be a slow mount.
+    bool        has_chart[5] = {};
+    bool        charts_known = false;   // false when tuning.bin was absent
 };
 
 // The library of one game data root, ie. the USRDIR/data folder holding
@@ -36,6 +41,10 @@ public:
 
     bool loaded() const { return is_loaded; }
     const fs::path& root() const { return data_root; }
+
+    // What the game calls itself, from its PARAM.SFO - "Taiko no Tatsujin
+    // (ST91)" and the like - falling back to the folder name above USRDIR.
+    const std::string& game_name() const { return name; }
 
     const SongEntry* find(const std::string& id) const;
     const std::vector<SongEntry>& songs() const { return entries; }
@@ -50,6 +59,7 @@ public:
 private:
     bool                   is_loaded = false;
     fs::path               data_root;
+    std::string            name;
     std::vector<SongEntry> entries;
 
     void load_tuning(const fs::path& path);
