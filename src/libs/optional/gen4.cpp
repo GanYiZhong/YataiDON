@@ -532,12 +532,25 @@ int genre_of_path(const fs::path& path) {
     }
 }
 
-fs::path find_data_root(const fs::path& path) {
+static bool is_root_dir(const fs::path& dir) {
+    static std::mutex               mutex;
+    static std::map<fs::path, bool> cache;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = cache.find(dir);
+        if (it != cache.end()) return it->second;
+    }
     std::error_code ec;
+    bool ok = fs::exists(dir / "datatable" / "musicinfo.bin", ec) &&
+              fs::is_directory(dir / "fumen", ec);
+    std::lock_guard<std::mutex> lock(mutex);
+    cache[dir] = ok;
+    return ok;
+}
+
+fs::path find_data_root(const fs::path& path) {
     for (fs::path dir = path; !dir.empty(); dir = dir.parent_path()) {
-        if (fs::exists(dir / "datatable" / "musicinfo.bin", ec) &&
-            fs::is_directory(dir / "fumen", ec))
-            return dir;
+        if (is_root_dir(dir)) return dir;
         if (dir == dir.parent_path()) break;
     }
     return {};
