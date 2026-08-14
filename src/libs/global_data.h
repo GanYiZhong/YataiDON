@@ -122,6 +122,9 @@ struct CameraConfig {
 
 struct GlobalData {
     int songs_played = 0;
+    // Set when a song was played through to its results, cleared when song
+    // select acts on it. Leaving a song early does not set it.
+    bool returned_from_result = false;
     CameraConfig camera;
     Config* config = nullptr;  // Using pointer, initialize appropriately
     int total_songs = 0;
