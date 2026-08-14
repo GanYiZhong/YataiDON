@@ -1218,12 +1218,18 @@ void Navigator::load_current_directory(const fs::path path) {
         // that same path. Opening it is going in, not coming back out, so it
         // must not be read as a return to the top of the wheel.
         gen4::find_data_root(path).empty() && green::find_data_root(path).empty()) {
-        // The rebuild empties the wheel, so remember which box the cursor
-        // was on: the folder that was just closed, the game that was just
-        // left, or wherever it stood.
-        if (inline_state.has_value() && inline_state->saved_folder_box) {
-            restore_cursor_path = inline_state->saved_folder_box->path;
-        } else {
+        // A folder was open on a wheel that is otherwise already showing the
+        // top level: fold the listing shut and leave every box standing,
+        // rather than rebuilding the whole wheel just to show what is
+        // already there.
+        if (inline_state.has_value()) {
+            collapse_inline_now();
+            return;
+        }
+
+        // The wheel really was replaced (a game's genres were up), so it has
+        // to be rebuilt; remember which box the cursor should come back to.
+        {
             fs::path game = gen4::find_data_root(current_path);
             if (game.empty()) game = green::find_data_root(current_path);
             if (!game.empty())
