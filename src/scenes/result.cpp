@@ -15,7 +15,7 @@ void ResultScreen::on_screen_start() {
         background.emplace(global_data.player_num, tex.screen_width);
     }
     player_1.emplace(global_data.player_num, false, false);
-    song_num = std::make_unique<SongNum>(global_data.songs_played);
+    song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
 }
 
 Screens ResultScreen::on_screen_end(Screens next_screen) {

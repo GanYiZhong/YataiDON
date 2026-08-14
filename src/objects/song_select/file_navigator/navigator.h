@@ -34,6 +34,7 @@ private:
     bool reloading_roots = false;
     bool genre_box_defs_built = false;
     std::map<GenreIndex, BoxDef> genre_box_defs;
+    bool built_hide_dan = false;
 
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
@@ -58,6 +59,9 @@ private:
     std::queue<std::unique_ptr<BaseBox>> pending_inline_boxes;
     std::atomic<bool>        loading_complete{false};
     std::atomic<bool>        abort_loading{false};
+
+    std::optional<fs::path>  reopen_folder_path;
+    std::optional<fs::path>  reopen_song_path;
 
     std::optional<fs::path>  recent_folder_path;
     std::optional<fs::path>  favorite_folder_path;
@@ -99,6 +103,7 @@ private:
     void load_collection_search(const fs::path& path, const BoxDef& box_def);
     void load_songs_inline_async(const fs::path path, BoxDef box_def);
     void promote_recent_box(const SongBox* song);
+    void collapse_inline_now();
     void flush_pending_boxes();
     void exit_inline();
     void begin_inline_load();
@@ -108,6 +113,7 @@ public:
     ~Navigator();
 
     bool is_processing = false;
+    bool hide_dan = false;
     bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;
