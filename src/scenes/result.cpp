@@ -58,6 +58,7 @@ std::optional<Screens> ResultScreen::update() {
                 global_data.songs_played = 0;
                 return on_screen_end(Screens::GAME_OVER);
             }
+            global_data.returned_from_result = true;
             return on_screen_end(Screens::SONG_SELECT);
         }
     }

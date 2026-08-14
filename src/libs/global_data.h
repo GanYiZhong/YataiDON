@@ -122,6 +122,7 @@ struct CameraConfig {
 
 struct GlobalData {
     int songs_played = 0;
+    bool returned_from_result = false;
     CameraConfig camera;
     Config* config = nullptr;  // Using pointer, initialize appropriately
     int total_songs = 0;
