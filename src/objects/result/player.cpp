@@ -50,6 +50,7 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
         sol::state& lua = *script_manager.lua;
         auto preload = [&](const char* cls, const char* script) {
             if (lua[cls].valid()) return;
+            if (!script_manager.has_lua_script(script)) return;
             auto result = lua.script_file(script_manager.get_lua_script_path(script));
             if (!result.valid()) {
                 sol::error err = result;

@@ -5,6 +5,10 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
     sol::state& lua = *script_manager.lua;
 
     if (!lua["Background"].valid()) {
+        if (!script_manager.has_lua_script("background")) {
+            spdlog::error("No background script in this skin or its parent");
+            return;
+        }
         std::string script_path = script_manager.get_lua_script_path("background");
         auto result = lua.script_file(script_path);
         if (!result.valid()) {
