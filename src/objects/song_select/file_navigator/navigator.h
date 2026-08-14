@@ -64,6 +64,9 @@ private:
     // that same folder puts the cursor back on the song that was played.
     std::optional<fs::path>  reopen_folder_path;
     std::optional<fs::path>  reopen_song_path;
+    // Where the cursor was when the whole wheel had to be rebuilt, so coming
+    // back out of a folder or a game does not dump it on the first box.
+    std::optional<fs::path>  restore_cursor_path;
 
     std::optional<fs::path>  recent_folder_path;
     std::optional<fs::path>  favorite_folder_path;
@@ -84,10 +87,7 @@ private:
     bool is_gen4_song_folder(const fs::path& path);
     bool is_gen4_root(const fs::path& path);
     bool is_green_root(const fs::path& path);
-    bool is_green_song_folder(const fs::path& path);
-    void load_green_genres(const fs::path& data_root);
-    bool load_green_genre_songs(const fs::path& genre_path, const BoxDef& box_def);
-    bool is_green_root(const fs::path& path);
+    fs::path green_root_at(const fs::path& path);
     bool is_green_song_folder(const fs::path& path);
     void load_green_genres(const fs::path& data_root);
     bool load_green_genre_songs(const fs::path& genre_path, const BoxDef& box_def);

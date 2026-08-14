@@ -96,11 +96,21 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
         if (!gen4::find_data_root(path).empty() || !green::find_data_root(path).empty())
             continue;
 
-        // First pass: extract any .osz archives
+        // First pass: extract any .osz archives. Game data roots are stepped
+        // over here just like below - there are no .osz files inside one,
+        // only tens of thousands of chart files to crawl through.
         try {
             std::vector<fs::path> osz_files;
-            for (const auto& entry : fs::recursive_directory_iterator(
-                     path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink)) {
+            auto it = fs::recursive_directory_iterator(
+                path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink);
+            for (; it != fs::end(it); ++it) {
+                const auto& entry = *it;
+                if (entry.is_directory() &&
+                    (gen4::find_data_root(entry.path()) == entry.path() ||
+                     green::find_data_root(entry.path()) == entry.path())) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
                 if (entry.path().extension() == ".osz")
                     osz_files.push_back(entry.path());
             }
