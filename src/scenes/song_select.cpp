@@ -20,6 +20,7 @@ void SongSelectScreen::on_screen_start() {
     game_transition.reset();
     dan_transition.reset();
 
+    navigator.hide_dan = hides_dan();
     navigator.init(global_data.config->paths.tja_path);
 #ifndef __EMSCRIPTEN__
     stats_future = std::async(std::launch::async, [this]() {
@@ -32,7 +33,7 @@ void SongSelectScreen::on_screen_start() {
     player->script = script.get();
 
     indicator = std::make_unique<Indicator>(Indicator::State::SELECT);
-    song_num = std::make_unique<SongNum>(global_data.songs_played);
+    song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
     select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { player->select_song(); });
     diff_select_timer = nullptr;
 }
