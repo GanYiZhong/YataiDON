@@ -3,6 +3,8 @@
 #include "box_base.h"
 #include "score_history.h"
 #include "../../../libs/song_parser.h"
+#include "../../../libs/audio.h"
+#include <atomic>
 #include <cmath>
 
 class SongBox : public BaseBox {
@@ -17,6 +19,19 @@ public:
     std::unique_ptr<OutlinedText> bpm_text;
     std::optional<ray::Texture2D> preimage;
     bool music_playing = false;
+    // Decoding a .nus3bank preview takes over a second, so it runs on its own
+    // thread; the box polls this in update and starts the stream when it is
+    // ready. Dropping the pointer abandons a load whose result is not wanted
+    // any more - the worker holds its own reference and finishes harmlessly.
+    struct PreviewLoad {
+        std::atomic<bool>       done{false};
+        bool                    ok = false;
+        AudioEngine::PreparedPCM pcm;
+    };
+    std::shared_ptr<PreviewLoad> preview_load;
+    // One decode per opening: a failed bank would otherwise be retried every
+    // frame for as long as the cursor sits on it.
+    bool preview_attempted = false;
     std::unique_ptr<ScoreHistory> score_history;
     double box_opened_at = 0.0;
     FadeAnimation* diff_fade_in;

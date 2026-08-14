@@ -19,6 +19,9 @@ namespace gen4 {
 struct DecodedAudio {
     int                channels    = 0;
     int                sample_rate = 0;
+    // Where the song-select preview starts, from the bank's TONE chunk, or 0
+    // when the bank does not carry one.
+    int                preview_ms  = 0;
     std::vector<float> samples;    // interleaved, -1..1
     int frame_count() const { return channels ? (int)(samples.size() / channels) : 0; }
 };

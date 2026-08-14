@@ -29,11 +29,31 @@ struct Bnsf {
     int    channels      = 0;
     int    sample_rate   = 0;
     int    num_samples   = 0;
+    int    preview_ms    = 0;   // from the TONE chunk, 0 when absent
     int    block_size    = 0;   // bytes per frame, all channels together
     int    block_samples = 0;   // samples per frame per channel, 960 for G.719
     size_t data_offset   = 0;
     size_t data_size     = 0;
 };
+
+// The tone entry carries the song-select preview point in milliseconds, laid
+// out as [preview u32][-1][sample rate][channel count]. The offset moves with
+// the length of the tone's name, so the row is found by its shape rather than
+// at a fixed place. (Established against TaikoNus3bankMake's templates, which
+// write the preview at exactly this spot.)
+int find_preview_ms(const uint8_t* tone, size_t size) {
+    if (size < 16) return 0;
+    for (size_t i = 4; i + 12 <= size; i += 4) {
+        if (read_le32(tone + i) != 0xFFFFFFFFu) continue;
+        uint32_t rate = read_le32(tone + i + 4);
+        uint32_t ch   = read_le32(tone + i + 8);
+        if (rate < 8000 || rate > 192000 || ch < 1 || ch > 8) continue;
+        uint32_t preview = read_le32(tone + i - 4);
+        if (preview > 30u * 60u * 1000u) continue;   // half an hour: not a time
+        return (int)preview;
+    }
+    return 0;
+}
 
 // Walks the outer container to the PACK chunk, then reads the first BNSF blob
 // in it. A song bank holds exactly one; effect banks hold several back to back
@@ -54,6 +74,9 @@ bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
     size_t pack = 0, pack_size = 0;
     while (pos + 8 <= file.size()) {
         uint32_t size = read_le32(file.data() + pos + 4);
+        if (memcmp(file.data() + pos, "TONE", 4) == 0 && pos + 8 + size <= file.size()) {
+            out.preview_ms = find_preview_ms(file.data() + pos + 8, size);
+        }
         if (memcmp(file.data() + pos, "PACK", 4) == 0) {
             pack      = pos + 8;
             pack_size = size;
@@ -157,6 +180,7 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
 
     out.channels    = info.channels;
     out.sample_rate = info.sample_rate;
+    out.preview_ms  = info.preview_ms;
     out.samples.clear();
     out.samples.reserve((size_t)info.num_samples * info.channels);
 
