@@ -45,7 +45,8 @@ void PracticeGameScreen::init_tja_practice(const fs::path& song) {
     // Extract bars and note list for scrobbling from the already-parsed TJA
     int difficulty = global_data.session_data[(int)global_data.player_num].selected_difficulty;
     auto [notes, bm, be, bn] = parser->notes_to_position(difficulty);
-    std::get<TJAParser>(parser->impl).scroll_disabled = true;
+    if (auto* tja = std::get_if<TJAParser>(&parser->impl))
+        tja->scroll_disabled = true;
     apply_modifiers(notes, get_player_modifiers(global_data.player_num));
 
     bars.clear();
@@ -120,12 +121,6 @@ void PracticeGameScreen::pause_song_practice() {
         }
         song_started = true;
         start_ms = get_current_ms() - pause_time;
-        // update() computed ms_from_start at the top of this frame while we
-        // were still paused, so it holds the stale pause position. The player
-        // update later this frame would sweep the freshly seeked queues with
-        // that stale clock - instantly missing the notes right after the
-        // resume point and pair-popping drumrolls between the scrobble target
-        // and wherever the pause happened.
         ms_from_start = start_time;
     }
 }
@@ -423,10 +418,6 @@ void PracticeGameScreen::draw() {
         tex.draw_texture(PRACTICE::SKIP_L_KAT,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
         tex.draw_texture(PRACTICE::SKIP_R_KAT,  {.scale = skip_r_kat_anim  ? (float)skip_r_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2 + 1});
         tex.draw_texture(PRACTICE::MENU_DON,    {.scale = menu_don_anim    ? (float)menu_don_anim->attribute    : 1.0f, .center = true, .index = other_idx});
-        // The skin's speed_l_kat sprite reads 速 (faster) and speed_r_kat reads
-        // 遅 (slower), but left kat lowers the tempo and right kat raises it
-        // (matching measure skip: left = back, right = forward). Draw the
-        // sprites swapped so the icons match what the keys actually do (#89).
         tex.draw_texture(PRACTICE::SPEED_R_KAT, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
         tex.draw_texture(PRACTICE::SPEED_L_KAT, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
     }
