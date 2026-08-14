@@ -163,10 +163,6 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
                 load_current_directory(root_path);
             }
         } else {
-            // A song played through to its results comes back to closed
-            // folders, cursor on the folder that was open, and remembers the
-            // song so reopening it lands there. Leaving a song early is not
-            // finishing with it, so that case keeps the folder open.
             bool from_result = global_data.returned_from_result;
             global_data.returned_from_result = false;
             if (from_result && inline_state.has_value()) {
