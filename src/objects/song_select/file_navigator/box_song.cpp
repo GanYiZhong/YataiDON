@@ -30,16 +30,32 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
 
 void SongBox::refresh_scores() {
     hashes = scores_manager.get_hashes(path);
+    // An arcade chart's hash means parsing and digesting the whole chart, and
+    // this runs for every difficulty of every box a genre opens - hundreds of
+    // file reads for a wheel that is just being looked at. No stored hash
+    // means the song was never played, so there is no score to find anyway;
+    // playing it once computes and records the real hash.
+    bool cheap_hash = !std::holds_alternative<FumenParser>(parser.impl);
     for (const auto& [course, course_data] : parser.metadata.course_data) {
         if (course < 0 || course >= static_cast<int>(hashes.size()))
             continue;
-        if (hashes[course].empty())
+        if (hashes[course].empty() && cheap_hash)
             hashes[course] = parser.get_diff_hash(course);
     }
     for (int i = 0; i < 5; i++) {
         scores[i] = scores_manager.get_score(hashes[i], i, global_data.config->general.player_1_id);
     }
     score_history.reset();
+}
+
+std::string SongBox::hash_for(int difficulty) {
+    if (difficulty < 0 || difficulty >= (int)hashes.size()) return "";
+    if (hashes[difficulty].empty()) {
+        hashes[difficulty] = parser.get_diff_hash(difficulty);
+        if (!hashes[difficulty].empty())
+            scores_manager.add_path_binding(path, hashes);
+    }
+    return hashes[difficulty];
 }
 
 void SongBox::reset() {

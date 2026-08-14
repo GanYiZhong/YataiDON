@@ -55,6 +55,11 @@ public:
     std::vector<Difficulty> get_diffs();
 
     void refresh_scores();
+    // The chart hash for one difficulty, computed on first use. Arcade charts
+    // skip hashing when the box is built (it means parsing the whole chart),
+    // so the moment a song is actually picked the hash is filled in here and
+    // recorded, and every later lookup finds it stored.
+    std::string hash_for(int difficulty);
 
     const char* lua_kind() const override { return "song"; }
     OutlinedText* horizontal_subtitle() {
