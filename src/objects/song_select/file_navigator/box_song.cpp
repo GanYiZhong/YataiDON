@@ -1,11 +1,10 @@
 #include "box_song.h"
 #include "../../../libs/audio.h"
+#include <thread>
 
 SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     : BaseBox(path, box_def)
 {
-    // Same as the box's genre unless this is a collection listing, where
-    // apply_song_genre overrides it with the folder the song lives in.
     song_genre_index = genre_index;
 
     parser.get_metadata();
@@ -16,10 +15,6 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     auto& subtitles = parser.metadata.subtitle;
     text_subtitle = subtitles.count(lang) ? subtitles.at(lang) : subtitles.count("en") ? subtitles.at("en") : subtitles.empty() ? "" : subtitles.begin()->second;
 
-    // Move, don't copy: the parser holds every line of the chart file, and
-    // the copy showed up hard when a big folder builds hundreds of boxes.
-    // Moving after get_metadata() also means the member actually carries the
-    // parsed metadata.
     this->parser = std::move(parser);
 
     is_favorite = false;
@@ -48,6 +43,8 @@ void SongBox::reset() {
         audio.unload_music_stream("preview");
     }
     music_playing = false;
+    preview_load.reset();
+    preview_attempted = false;
     score_history.reset();
     box_opened_at = 0.0;
 }
@@ -84,13 +81,44 @@ void SongBox::update(double current_time) {
     BaseBox::update(current_time);
     diff_fade_in->update(current_time);
 
-    if (yellow_box.has_value() && (yellow_box->left_out != nullptr) && yellow_box->left_out->is_finished && fs::exists(parser.metadata.wave) && !music_playing) {
+    bool is_bank = parser.metadata.wave.extension() == ".nus3bank";
+
+    if (is_bank && yellow_box.has_value() && !music_playing && !preview_load &&
+        !preview_attempted && get_current_ms() - bar_open_started_at > 250 &&
+        fs::exists(parser.metadata.wave)) {
+        preview_attempted = true;
+        preview_load = std::make_shared<PreviewLoad>();
+        std::thread([state = preview_load, wave = parser.metadata.wave] {
+            state->ok = audio.prepare_nus3bank_pcm(wave, state->pcm, true);
+            state->done.store(true, std::memory_order_release);
+        }).detach();
+    }
+
+    if (!is_bank && yellow_box.has_value() && (yellow_box->left_out != nullptr) && yellow_box->left_out->is_finished && fs::exists(parser.metadata.wave) && !music_playing) {
         music_playing = true;
         audio.stop_sound("bgm");
         audio.load_music_stream(parser.metadata.wave, "preview");
         if (audio.is_music_stream_valid("preview")) {
             audio.play_music_stream("preview", VolumePreset::MUSIC);
             audio.seek_music_stream("preview", parser.metadata.demostart);
+        }
+    }
+
+    if (preview_load && preview_load->done.load(std::memory_order_acquire) &&
+        yellow_box.has_value() && (yellow_box->left_out != nullptr) &&
+        yellow_box->left_out->is_finished && !music_playing) {
+        auto state = std::move(preview_load);
+        if (state->ok) {
+            music_playing = true;
+            audio.stop_sound("bgm");
+            float demo_start = state->pcm.preview_ms > 0
+                             ? state->pcm.preview_ms / 1000.0f
+                             : parser.metadata.demostart;
+            audio.load_music_stream_prepared(std::move(state->pcm), "preview");
+            if (audio.is_music_stream_valid("preview")) {
+                audio.play_music_stream("preview", VolumePreset::MUSIC);
+                audio.seek_music_stream("preview", demo_start);
+            }
         }
     }
 
@@ -115,6 +143,8 @@ void SongBox::expand_box() {
 void SongBox::close_box() {
     BaseBox::close_box();
     box_opened_at = 0.0;
+    preview_load.reset();
+    preview_attempted = false;
     if (music_playing) {
         if (audio.is_music_stream_valid("preview")) {
             audio.stop_music_stream("preview");

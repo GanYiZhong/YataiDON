@@ -649,7 +649,8 @@ std::string AudioEngine::path_to_string(const fs::path& path) const {
 // updated in place.
 static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
                                 unsigned int& frames, unsigned int& rate,
-                                double target_rate) {
+                                double target_rate,
+                                int converter = SRC_SINC_FASTEST) {
     float* data = new float[samples.size()];
     std::memcpy(data, samples.data(), samples.size() * sizeof(float));
 
@@ -662,7 +663,7 @@ static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
     sd.data_in = data;          sd.input_frames = frames;
     sd.data_out = resampled;    sd.output_frames = out_frames;
     sd.src_ratio = ratio;       sd.end_of_input = 1;
-    int err = src_simple(&sd, SRC_SINC_FASTEST, channels);
+    int err = src_simple(&sd, converter, channels);
     delete[] data;
     if (err) {
         delete[] resampled;
@@ -1045,6 +1046,58 @@ void AudioEngine::seek_sound(const std::string& name, float position) {
     }
 }
 
+bool AudioEngine::prepare_nus3bank_pcm(const fs::path& file_path, PreparedPCM& out,
+                                       bool quick_resample) {
+    gen4::DecodedAudio decoded;
+    if (!gen4::decode_nus3bank(file_path, decoded)) return false;
+
+    unsigned int frames = (unsigned int)decoded.frame_count();
+    unsigned int rate   = (unsigned int)decoded.sample_rate;
+    float* data = adopt_decoded_pcm(decoded.samples, decoded.channels,
+                                    frames, rate, target_sample_rate,
+                                    quick_resample ? SRC_LINEAR : SRC_SINC_FASTEST);
+    if (!data) return false;
+
+    out.data.reset(data);
+    out.frames      = frames;
+    out.rate        = rate;
+    out.channels    = decoded.channels;
+    out.preview_ms  = decoded.preview_ms;
+    out.source_path = file_path.string();
+    return true;
+}
+
+std::string AudioEngine::load_music_stream_prepared(PreparedPCM&& pcm, const std::string& name) {
+    if (!pcm.data || pcm.frames == 0 || pcm.channels <= 0) return "";
+
+    music mus{};
+    mus.file_handle        = nullptr;
+    mus.file_info.channels = pcm.channels;
+    mus.file_info.samplerate = (int)pcm.rate;
+    mus.file_path          = pcm.source_path;
+    mus.pcm_data           = pcm.data.release();
+    mus.pcm_total_frames   = pcm.frames;
+    mus.buffer_size        = 4096;
+    mus.stream_buffer      = new float[mus.buffer_size * pcm.channels];
+    mus.buffer_position    = 0;
+    mus.frames_in_buffer   = 0;
+    mus.is_playing         = false;
+    mus.current_frame      = 0;
+    mus.loop               = false;
+    mus.volume             = 1.0f;
+    mus.pan                = 0.5f;
+    mus.pitch              = 1.0f;
+    mus.resampler          = nullptr;
+    mus.resample_buffer    = nullptr;
+    {
+        std::unique_lock<std::shared_mutex> guard(rw_lock);
+        music_streams[name] = mus;
+    }
+    spdlog::info("Loaded music stream (G.719): {} ({} frames, {} Hz, {} ch)",
+                 name, pcm.frames, pcm.rate, pcm.channels);
+    return name;
+}
+
 std::string AudioEngine::load_music_stream(const fs::path& file_path, const std::string& name) {
     try {
         // As in load_sound: G.719 is decoded here, and the result is kept in
@@ -1052,41 +1105,9 @@ std::string AudioEngine::load_music_stream(const fs::path& file_path, const std:
         // from once it has been decoded.
 #ifdef SUPPORT_FUMEN
         if (file_path.extension() == ".nus3bank") {
-            gen4::DecodedAudio decoded;
-            if (!gen4::decode_nus3bank(file_path, decoded)) return "";
-
-            unsigned int frames = (unsigned int)decoded.frame_count();
-            unsigned int rate   = (unsigned int)decoded.sample_rate;
-            float* data = adopt_decoded_pcm(decoded.samples, decoded.channels,
-                                            frames, rate, target_sample_rate);
-            if (!data) return "";
-
-            music mus{};
-            mus.file_handle        = nullptr;
-            mus.file_info.channels = decoded.channels;
-            mus.file_info.samplerate = (int)rate;
-            mus.file_path          = file_path.string();
-            mus.pcm_data           = data;
-            mus.pcm_total_frames   = frames;
-            mus.buffer_size        = 4096;
-            mus.stream_buffer      = new float[mus.buffer_size * decoded.channels];
-            mus.buffer_position    = 0;
-            mus.frames_in_buffer   = 0;
-            mus.is_playing         = false;
-            mus.current_frame      = 0;
-            mus.loop               = false;
-            mus.volume             = 1.0f;
-            mus.pan                = 0.5f;
-            mus.pitch              = 1.0f;
-            mus.resampler          = nullptr;
-            mus.resample_buffer    = nullptr;
-            {
-                std::unique_lock<std::shared_mutex> guard(rw_lock);
-                music_streams[name] = mus;
-            }
-            spdlog::info("Loaded music stream (G.719): {} ({} frames, {} Hz, {} ch)",
-                         name, frames, rate, decoded.channels);
-            return name;
+            PreparedPCM pcm;
+            if (!prepare_nus3bank_pcm(file_path, pcm)) return "";
+            return load_music_stream_prepared(std::move(pcm), name);
         }
 #endif
 
