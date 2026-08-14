@@ -130,8 +130,16 @@ FetchContent_MakeAvailable(sol2)
 if(NOT ANDROID AND NOT EMSCRIPTEN)
   set(ZLIB_USE_STATIC_LIBS ON)
   if(WIN32)
-    set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "" FORCE)
-    set(CPPTRACE_UNWIND_WITH_DBGHELP        ON CACHE BOOL "" FORCE)
+    # dbghelp, not addr2line: with addr2line on the PATH its location is baked
+    # into a define whose quoting does not survive this toolchain, and dbghelp
+    # resolves mingw symbols fine.
+    set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE OFF CACHE BOOL "" FORCE)
+    # dbghelp resolves the system DLLs' pdb symbols, libdwarf resolves our own
+    # mingw DWARF ones - without it a crash inside the game prints bare
+    # addresses for exactly the frames that matter.
+    set(CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF  ON  CACHE BOOL "" FORCE)
+    set(CPPTRACE_GET_SYMBOLS_WITH_DBGHELP   ON  CACHE BOOL "" FORCE)
+    set(CPPTRACE_UNWIND_WITH_DBGHELP        ON  CACHE BOOL "" FORCE)
   endif()
   FetchContent_Declare(
       cpptrace
