@@ -1,6 +1,7 @@
 #include "gen4_audio.h"
 
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 
@@ -29,7 +30,6 @@ struct Bnsf {
     int    channels      = 0;
     int    sample_rate   = 0;
     int    num_samples   = 0;
-    int    preview_ms    = 0;   // from the TONE chunk, 0 when absent
     int    block_size    = 0;   // bytes per frame, all channels together
     int    block_samples = 0;   // samples per frame per channel, 960 for G.719
     size_t data_offset   = 0;
@@ -55,10 +55,10 @@ int find_preview_ms(const uint8_t* tone, size_t size) {
     return 0;
 }
 
-// Walks the outer container to the PACK chunk, then reads the first BNSF blob
-// in it. A song bank holds exactly one; effect banks hold several back to back
-// and only the first is wanted here.
-bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
+// Walks the outer container to the PACK chunk, picking the preview point out
+// of TONE on the way. A song bank holds exactly one stream.
+bool find_pack(const std::vector<uint8_t>& file, size_t& pack, size_t& pack_size,
+               int& preview_ms) {
     if (file.size() < 0x18 || memcmp(file.data(), "NUS3", 4) != 0) {
         spdlog::warn("gen4 audio: not a NUS3 container");
         return false;
@@ -71,11 +71,11 @@ bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
     // The chunks follow the table of contents, each one named and sized, so
     // the table itself does not have to be understood to find PACK.
     size_t pos = 0x14 + read_le32(file.data() + 0x10);
-    size_t pack = 0, pack_size = 0;
+    pack = 0; pack_size = 0;
     while (pos + 8 <= file.size()) {
         uint32_t size = read_le32(file.data() + pos + 4);
         if (memcmp(file.data() + pos, "TONE", 4) == 0 && pos + 8 + size <= file.size()) {
-            out.preview_ms = find_preview_ms(file.data() + pos + 8, size);
+            preview_ms = find_preview_ms(file.data() + pos + 8, size);
         }
         if (memcmp(file.data() + pos, "PACK", 4) == 0) {
             pack      = pos + 8;
@@ -88,7 +88,13 @@ bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
         spdlog::warn("gen4 audio: no PACK chunk");
         return false;
     }
+    return true;
+}
 
+// Reads the BNSF blob at the start of PACK (the G.719 stream of the Chinese
+// builds).
+bool parse_container(const std::vector<uint8_t>& file, size_t pack, size_t pack_size,
+                     Bnsf& out) {
     const uint8_t* p = file.data() + pack;
     if (pack_size < 0x2C || memcmp(p, "BNSF", 4) != 0) {
         spdlog::warn("gen4 audio: PACK does not start with a BNSF stream");
@@ -137,6 +143,97 @@ bool parse_container(const std::vector<uint8_t>& file, Bnsf& out) {
     return true;
 }
 
+// The IDSP stream of the Japanese builds: Nintendo DSP-ADPCM, one standard
+// 0x60-byte channel header each (coefficients at +0x1C), the channels'
+// 8-byte frames interleaved block by block. Decoded here directly - it is
+// plain integer ADPCM, fourteen samples to a frame.
+struct IdspChannel {
+    int16_t coef[16] = {};
+    int16_t hist1 = 0, hist2 = 0;
+};
+
+void idsp_decode_frame(const uint8_t* frame, IdspChannel& ch, int16_t* out14) {
+    int scale = 1 << (frame[0] & 0x0F);
+    int ci    = ((frame[0] >> 4) & 0x07) * 2;
+    int c1 = ch.coef[ci], c2 = ch.coef[ci + 1];
+    for (int i = 0; i < 14; i++) {
+        int nib = frame[1 + i / 2];
+        nib = (i & 1) ? (nib & 0x0F) : (nib >> 4);
+        if (nib > 7) nib -= 16;
+        int sample = (((nib * scale) << 11) + 1024 + c1 * ch.hist1 + c2 * ch.hist2) >> 11;
+        if (sample >  32767) sample =  32767;
+        if (sample < -32768) sample = -32768;
+        ch.hist2 = ch.hist1;
+        ch.hist1 = (int16_t)sample;
+        out14[i] = ch.hist1;
+    }
+}
+
+bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size,
+                 DecodedAudio& out) {
+    if (pack_size < 0x40) return false;
+    const uint8_t* p = file.data() + pack;
+
+    auto be = [&](size_t off) { return read_be32(p + off); };
+    int      channels   = (int)be(0x08);
+    int      rate       = (int)be(0x0C);
+    uint32_t samples    = be(0x10);
+    uint32_t interleave = be(0x1C);
+    uint32_t hdr_off    = be(0x20);
+    uint32_t hdr_size   = be(0x24);
+    uint32_t data_off   = be(0x28);
+    uint32_t data_size  = be(0x2C);   // per channel
+
+    if (channels < 1 || channels > 2 || rate <= 0 || samples == 0 ||
+        (size_t)hdr_off + (size_t)channels * hdr_size > pack_size ||
+        (size_t)data_off + (size_t)channels * data_size > pack_size) {
+        spdlog::warn("gen4 audio: IDSP stream shape not understood");
+        return false;
+    }
+    if (interleave == 0) interleave = data_size;   // planar: one block each
+
+    std::vector<IdspChannel> chans(channels);
+    for (int c = 0; c < channels; c++) {
+        const uint8_t* h = p + hdr_off + (size_t)c * hdr_size;
+        for (int i = 0; i < 16; i++)
+            chans[c].coef[i] = (int16_t)read_be16(h + 0x1C + i * 2);
+        chans[c].hist1 = (int16_t)read_be16(h + 0x40);
+        chans[c].hist2 = (int16_t)read_be16(h + 0x42);
+    }
+
+    out.channels    = channels;
+    out.sample_rate = rate;
+    out.samples.clear();
+    out.samples.reserve((size_t)samples * channels);
+
+    // Per-channel decode buffers, filled block by block and merged.
+    const uint32_t frames_per_block  = interleave / 8;
+    const uint32_t samples_per_block = frames_per_block * 14;
+    std::vector<std::vector<int16_t>> pcm(channels,
+                                          std::vector<int16_t>(samples_per_block));
+
+    uint32_t blocks = (data_size + interleave - 1) / interleave;
+    for (uint32_t b = 0; b < blocks; b++) {
+        uint32_t block_bytes = std::min<uint32_t>(interleave, data_size - b * interleave);
+        uint32_t block_frames = block_bytes / 8;
+        for (int c = 0; c < channels; c++) {
+            const uint8_t* src = p + data_off +
+                ((size_t)b * channels + c) * interleave;
+            for (uint32_t f = 0; f < block_frames; f++)
+                idsp_decode_frame(src + f * 8, chans[c], pcm[c].data() + f * 14);
+        }
+        for (uint32_t s = 0; s < block_frames * 14; s++)
+            for (int c = 0; c < channels; c++)
+                out.samples.push_back((float)pcm[c][s] / 32768.0f);
+    }
+
+    // The header's sample count is the real length; the rest is frame padding.
+    if ((size_t)samples * channels < out.samples.size())
+        out.samples.resize((size_t)samples * channels);
+
+    return !out.samples.empty();
+}
+
 }  // namespace
 
 bool audio_supported() {
@@ -148,12 +245,6 @@ bool audio_supported() {
 }
 
 bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
-#ifndef YATAIDON_G719
-    (void)path; (void)out;
-    spdlog::warn("gen4 audio: {} needs G.719 support, which this build does not have",
-                 path.filename().string());
-    return false;
-#else
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         spdlog::warn("gen4 audio: cannot open {}", path.string());
@@ -162,8 +253,29 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
     std::vector<uint8_t> file((std::istreambuf_iterator<char>(f)),
                               std::istreambuf_iterator<char>());
 
+    size_t pack = 0, pack_size = 0;
+    int    preview_ms = 0;
+    if (!find_pack(file, pack, pack_size, preview_ms)) return false;
+    out.preview_ms = preview_ms;
+
+    // The Japanese builds pack IDSP; the Chinese ones BNSF/G.719.
+    if (pack_size >= 4 && memcmp(file.data() + pack, "IDSP", 4) == 0) {
+        if (!decode_idsp(file, pack, pack_size, out)) {
+            spdlog::warn("gen4 audio: {} decoded to nothing", path.filename().string());
+            return false;
+        }
+        spdlog::debug("gen4 audio: {} decoded (IDSP), {} frames, {} Hz, {} ch",
+                      path.filename().string(), out.frame_count(), out.sample_rate, out.channels);
+        return true;
+    }
+
+#ifndef YATAIDON_G719
+    spdlog::warn("gen4 audio: {} needs G.719 support, which this build does not have",
+                 path.filename().string());
+    return false;
+#else
     Bnsf info;
-    if (!parse_container(file, info)) return false;
+    if (!parse_container(file, pack, pack_size, info)) return false;
 
     // One decoder per channel, each fed its own frames: the channels are
     // interleaved a whole frame at a time, not sample by sample.
@@ -180,7 +292,6 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
 
     out.channels    = info.channels;
     out.sample_rate = info.sample_rate;
-    out.preview_ms  = info.preview_ms;
     out.samples.clear();
     out.samples.reserve((size_t)info.num_samples * info.channels);
 
