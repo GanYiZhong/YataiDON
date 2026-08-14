@@ -92,7 +92,8 @@ void SongBox::update(double current_time) {
     BaseBox::update(current_time);
     diff_fade_in->update(current_time);
 
-    bool is_bank = parser.metadata.wave.extension() == ".nus3bank";
+    auto wave_ext = parser.metadata.wave.extension();
+    bool is_bank = wave_ext == ".nus3bank" || wave_ext == ".nub";
 
     if (is_bank && yellow_box.has_value() && !music_playing && !preview_load &&
         !preview_attempted && get_current_ms() - bar_open_started_at > 250 &&

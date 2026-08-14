@@ -97,6 +97,48 @@ static bool is_roll(uint32_t t)    { return t == FUMEN_RENDA || t == FUMEN_BIG_R
 static bool is_balloon(uint32_t t) { return t == FUMEN_BALLOON || t == FUMEN_KUSUDAMA; }
 static bool has_renda_padding(uint32_t t) { return t == FUMEN_RENDA || t == FUMEN_BIG_RENDA; }
 
+static uint32_t bswap32(uint32_t v) {
+    return (v >> 24) | ((v >> 8) & 0xFF00u) | ((v << 8) & 0xFF0000u) | (v << 24);
+}
+static void swap32(void* p, size_t words) {
+    uint32_t* w = static_cast<uint32_t*>(p);
+    for (size_t i = 0; i < words; i++) w[i] = bswap32(w[i]);
+}
+static void swap16(void* p) {
+    uint16_t* h = static_cast<uint16_t*>(p);
+    *h = (uint16_t)((*h >> 8) | (*h << 8));
+}
+
+static bool chart_is_big_endian(const std::vector<uint8_t>& data) {
+    if (data.size() < 520) return false;
+    uint32_t le;
+    memcpy(&le, data.data() + offsetof(FumenHeader, number_of_measures), 4);
+    uint32_t be = bswap32(le);
+    bool le_ok = le > 0 && le <= 100000;
+    bool be_ok = be > 0 && be <= 100000;
+    if (le_ok != be_ok) return be_ok;
+    float f;
+    memcpy(&f, data.data(), 4);
+    return !(f > 0.1f && f < 10000.0f);
+}
+
+static void swap_header(FumenHeader& h) {
+    swap32(&h, sizeof(FumenHeader) / 4);   // floats and u32/s32 all round-trip
+}
+static void swap_measure(FumenMeasureData& m) {
+    swap32(&m.bpm, 2);
+    swap16(&m.padding1);
+    swap32(&m.in_normal_to_advanced, 7);
+}
+static void swap_note(FumenNoteBase& n) {
+    swap32(&n.type, 3);
+    swap16(&n.initial_score_value);
+    swap16(&n.score_diff_times4);
+    swap16(&n.unknown2);
+    swap16(reinterpret_cast<uint16_t*>(&n.unknown2) + 1);
+    swap32(&n.length, 1);
+}
+
 FumenParser::FumenParser(const fs::path& path, int start_delay)
     : file_path(path), start_delay(static_cast<double>(start_delay)) {
     metadata = TJAMetadata();
@@ -109,6 +151,24 @@ FumenParser::FumenParser(const fs::path& path, int start_delay)
     }
 
     const gen4::SongEntry* entry = library ? library->find(song_id) : nullptr;
+    if (!entry && !song_id.empty()) {
+        gen3_library = gen3::library_for(file_path);
+        const gen3::SongEntry* ge = gen3_library ? gen3_library->find(song_id) : nullptr;
+        if (ge) {
+            // The XML is Japanese-only, so the title is the title everywhere.
+            metadata.title["ja"] = ge->title;
+            metadata.title["en"] = ge->title;
+            for (int d = 0; d < 5; d++) {
+                if (!gen3_library->has_difficulty(song_id, d)) continue;
+                CourseData course;
+                course.level = ge->stars[d];
+                metadata.course_data[d] = course;
+            }
+            metadata.wave = gen3_library->sound_path(song_id);
+            return;
+        }
+        gen3_library = nullptr;
+    }
     if (!entry) {
         metadata.title["en"] = path.stem().string();
         metadata.course_data[0] = CourseData{};
@@ -137,6 +197,13 @@ FumenParser::FumenParser(const fs::path& path, int start_delay)
 std::vector<uint8_t> FumenParser::read_chart(int diff) {
     if (library) return library->load_chart(song_id, diff);
 
+    if (gen3_library) {
+        std::ifstream f(gen3_library->chart_path(song_id, diff), std::ios::binary);
+        if (!f) return {};
+        return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)),
+                                    std::istreambuf_iterator<char>());
+    }
+
     static const std::vector<uint8_t> key = gen4::derive_key(FUMEN_SEED);
     std::vector<uint8_t> plain = gen4::load_encrypted(file_path, key);
     if (!plain.empty()) return plain;
@@ -164,9 +231,16 @@ void FumenParser::build_notes(int diff) {
         return true;
     };
 
+    bool big_endian = chart_is_big_endian(data);
+
     FumenHeader hdr{};
-    if (!take(&hdr, sizeof(FumenHeader)) ||
-        hdr.number_of_measures == 0 || hdr.number_of_measures > 100000) {
+    if (!take(&hdr, sizeof(FumenHeader))) {
+        spdlog::warn("FumenParser: no readable chart in {} difficulty {}",
+                     file_path.string(), diff);
+        return;
+    }
+    if (big_endian) swap_header(hdr);
+    if (hdr.number_of_measures == 0 || hdr.number_of_measures > 100000) {
         spdlog::warn("FumenParser: no readable chart in {} difficulty {}",
                      file_path.string(), diff);
         return;
@@ -179,6 +253,7 @@ void FumenParser::build_notes(int diff) {
     for (uint32_t m = 0; m < hdr.number_of_measures; m++) {
         FumenMeasureData mdata{};
         if (!take(&mdata, sizeof(FumenMeasureData))) break;
+        if (big_endian) swap_measure(mdata);
 
         double bpm        = static_cast<double>(mdata.bpm);
 
@@ -216,12 +291,18 @@ void FumenParser::build_notes(int diff) {
             if (!take(&note_count, sizeof(note_count)) ||
                 !take(&branch_unk, sizeof(branch_unk)) ||
                 !take(&scroll,     sizeof(scroll))) break;
+            if (big_endian) {
+                swap16(&note_count);
+                swap16(&branch_unk);
+                swap32(&scroll, 1);
+            }
 
             if (b == 0) normal_scroll = scroll;
 
             for (uint16_t n = 0; n < note_count; n++) {
                 FumenNoteBase nb{};
                 if (!take(&nb, sizeof(FumenNoteBase))) break;
+                if (big_endian) swap_note(nb);
 
                 if (has_renda_padding(nb.type)) {
                     uint32_t extra[2]{};

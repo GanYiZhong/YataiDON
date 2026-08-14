@@ -1,6 +1,9 @@
 #include "filesystem.h"
 #include "miniz/miniz.h"
-#include "gen4.h"
+#ifdef SUPPORT_FUMEN
+#include "optional/gen3.h"
+#include "optional/gen4.h"
+#endif
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <unistd.h>
@@ -89,6 +92,11 @@ void extract_osz(const fs::path& osz_path) {
 std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
     std::vector<fs::path> songs;
     for (const fs::path& path : root_path) {
+#ifdef SUPPORT_FUMEN
+        if (!gen4::find_data_root(path).empty() || !gen3::find_data_root(path).empty())
+            continue;
+#endif
+
         // First pass: extract any .osz archives
         try {
             std::vector<fs::path> osz_files;
@@ -110,23 +118,19 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
             for (; it != std::filesystem::end(it); ++it) {
                 const auto& entry = *it;
 
-                // A game data root is walked by the song wheel itself, which
-                // reads the game's tables. Descending into it here would mean
-                // tens of thousands of files that are chart data and tables
-                // rather than songs, and every one of them opened.
-                if (entry.is_directory() && !gen4::find_data_root(entry.path()).empty() &&
-                    gen4::find_data_root(entry.path()) == entry.path()) {
+#ifdef SUPPORT_FUMEN
+                if (entry.is_directory() &&
+                    (gen4::find_data_root(entry.path()) == entry.path() ||
+                     gen3::find_data_root(entry.path()) == entry.path())) {
                     it.disable_recursion_pending();
                     continue;
                 }
+#endif
 
                 auto ext = entry.path().extension();
                 if (ext == ".tja" || ext == ".osu") {
                     songs.push_back(entry.path());
                 } else if (ext == ".bin") {
-                    // Charts only ever live under a fumen folder. Everywhere
-                    // else .bin is the extension of the games' data tables,
-                    // and trying to read one as a chart is just noise.
                     bool under_fumen = false;
                     for (fs::path dir = entry.path().parent_path();
                          !dir.empty() && dir != dir.parent_path(); dir = dir.parent_path()) {

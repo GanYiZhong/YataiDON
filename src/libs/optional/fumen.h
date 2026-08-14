@@ -1,6 +1,7 @@
 #pragma once
 #include "../parsers/tja.h"
 #include "gen4.h"
+#include "gen3.h"
 
 class FumenParser {
 public:
@@ -19,11 +20,12 @@ public:
     std::string get_song_hash();
     std::string get_diff_hash(int difficulty);
 
-    // True when the path was a song folder that the datatable knows about.
-    bool is_library_song() const { return library != nullptr; }
+    // True when the path was a song folder that a game's tables know about.
+    bool is_library_song() const { return library != nullptr || gen3_library != nullptr; }
 
 private:
-    const gen4::Library* library = nullptr;
+    const gen4::Library*  library       = nullptr;
+    const gen3::Library* gen3_library = nullptr;
     std::string          song_id;
     double               start_delay = 0.0;
 

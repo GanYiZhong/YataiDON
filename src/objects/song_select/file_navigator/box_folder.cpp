@@ -1,16 +1,13 @@
 #include "box_folder.h"
-#include "../../../libs/gen4.h"
+#ifdef SUPPORT_FUMEN
+#include "../../../libs/optional/gen4.h"
+#include "../../../libs/optional/gen3.h"
+#endif
 #include "../../../libs/filesystem.h"
 #include "../../../libs/scores.h"
 #include "../../../libs/audio.h"
 #include <mutex>
 
-// The crown/count scan below walks the folder's whole subtree and runs a
-// score query per chart. Every FolderBox at a directory level does this when
-// the level loads (each genre box at the root scans its entire genre), so
-// cache the result per folder until scores or song lists change - otherwise
-// every back-navigation repeats seconds of I/O and the main thread hitches
-// on join_loader() waiting for it.
 namespace {
 struct FolderScan {
     std::map<int, Crown> crown;
@@ -69,8 +66,7 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         }
     };
 
-    // A game data root holds thousands of files that are not songs, and its
-    // song count is known without looking at the disk at all.
+#ifdef SUPPORT_FUMEN
     if (const gen4::Library* library = gen4::library_for(path)) {
         int genre_no = gen4::genre_of_path(path);
         for (const gen4::OrderEntry& listing : library->order())
@@ -79,6 +75,15 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         scan_cache[path] = {crown, tja_count};
         return;
     }
+    if (const gen3::Library* library = gen3::library_for(path)) {
+        std::string genre = gen3::genre_of_path(path);
+        for (const gen3::SongEntry& e : library->songs())
+            if (genre.empty() || e.genre == genre) tja_count++;
+        std::lock_guard<std::mutex> lock(scan_cache_mutex);
+        scan_cache[path] = {crown, tja_count};
+        return;
+    }
+#endif
 
     // Errors are stepped over rather than thrown: one unreadable entry deep in
     // a tree should not take the folder box down with it.

@@ -1,8 +1,21 @@
 #include "audio.h"
 #ifdef SUPPORT_FUMEN
 #include "optional/nus3bank.h"
+#include "optional/nub.h"
+#include "optional/gen4.h"
 #endif
 #include "texture.h"
+
+// Both arcade bank formats decode to the same shape; the extension says which
+// era the container is from.
+static bool is_bank_file(const fs::path& p) {
+    auto ext = p.extension();
+    return ext == ".nus3bank" || ext == ".nub";
+}
+static bool decode_bank(const fs::path& p, gen4::DecodedAudio& out) {
+    return p.extension() == ".nub" ? gen3::decode_nub(p, out)
+                                   : gen4::decode_nus3bank(p, out);
+}
 #ifdef __ANDROID__
 extern "C" {
 #include <libavformat/avformat.h>
@@ -677,12 +690,9 @@ static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
 
 std::string AudioEngine::load_sound(const fs::path& file_path, const std::string& name) {
     try {
-        // The gen 4 arcade banks hold G.719, which neither libsndfile nor
-        // FFmpeg reads, so they are decoded here before the usual path.
-#ifdef SUPPORT_FUMEN
-        if (file_path.extension() == ".nus3bank") {
+        if (is_bank_file(file_path)) {
             gen4::DecodedAudio decoded;
-            if (!gen4::decode_nus3bank(file_path, decoded)) return "";
+            if (!decode_bank(file_path, decoded)) return "";
 
             unsigned int frames = (unsigned int)decoded.frame_count();
             unsigned int rate   = (unsigned int)decoded.sample_rate;
@@ -712,7 +722,6 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
                          name, frames, rate, snd.channels);
             return name;
         }
-#endif
 
         SF_INFO file_info;
         std::memset(&file_info, 0, sizeof(SF_INFO));
@@ -1049,7 +1058,7 @@ void AudioEngine::seek_sound(const std::string& name, float position) {
 bool AudioEngine::prepare_nus3bank_pcm(const fs::path& file_path, PreparedPCM& out,
                                        bool quick_resample) {
     gen4::DecodedAudio decoded;
-    if (!gen4::decode_nus3bank(file_path, decoded)) return false;
+    if (!decode_bank(file_path, decoded)) return false;
 
     unsigned int frames = (unsigned int)decoded.frame_count();
     unsigned int rate   = (unsigned int)decoded.sample_rate;
@@ -1100,16 +1109,11 @@ std::string AudioEngine::load_music_stream_prepared(PreparedPCM&& pcm, const std
 
 std::string AudioEngine::load_music_stream(const fs::path& file_path, const std::string& name) {
     try {
-        // As in load_sound: G.719 is decoded here, and the result is kept in
-        // memory rather than streamed, since there is no file handle to read
-        // from once it has been decoded.
-#ifdef SUPPORT_FUMEN
-        if (file_path.extension() == ".nus3bank") {
+        if (is_bank_file(file_path)) {
             PreparedPCM pcm;
             if (!prepare_nus3bank_pcm(file_path, pcm)) return "";
             return load_music_stream_prepared(std::move(pcm), name);
         }
-#endif
 
         SF_INFO file_info;
         std::memset(&file_info, 0, sizeof(SF_INFO));

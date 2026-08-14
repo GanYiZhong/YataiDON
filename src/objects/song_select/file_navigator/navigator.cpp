@@ -6,6 +6,7 @@
 #include "../../../libs/filesystem.h"
 #ifdef SUPPORT_FUMEN
 #include "../../../libs/optional/gen4.h"
+#include "../../../libs/optional/gen3.h"
 #endif
 #include <random>
 #include <cmath>
@@ -405,8 +406,17 @@ void Navigator::load_current_directory_async(const fs::path path) {
     setup_back_box(path, true);
 
     fs::path own_root = gen4::find_data_root(path);
+    bool own_root_is_gen3 = false;
+    if (own_root.empty() || !gen4::library_for(own_root)) {
+        fs::path gen3_root = gen3::find_data_root(path);
+        if (!gen3_root.empty() && gen3::library_for(gen3_root)) {
+            own_root = gen3_root;
+            own_root_is_gen3 = true;
+        }
+    }
     bool is_a_root = std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end();
-    if (!own_root.empty() && is_a_root && gen4::library_for(own_root)) {
+    if (!own_root.empty() && is_a_root &&
+        (own_root_is_gen3 || gen4::library_for(own_root))) {
         if (reloading_roots && !only_gen4_songs()) {
             BoxDef gen4_def = box_def;
             gen4_def.name        = own_root.filename().string();
@@ -422,9 +432,10 @@ void Navigator::load_current_directory_async(const fs::path path) {
             break;
         }
         try {
-            load_gen4_genres(own_root);
+            if (own_root_is_gen3) load_gen3_genres(own_root);
+            else                   load_gen4_genres(own_root);
         } catch (const std::exception& e) {
-            spdlog::error("Error listing gen4 genres of {}: {}", own_root.string(), e.what());
+            spdlog::error("Error listing arcade genres of {}: {}", own_root.string(), e.what());
         }
         loading_complete = true;
         current_path = path;
@@ -433,7 +444,8 @@ void Navigator::load_current_directory_async(const fs::path path) {
 
     if (is_gen4_root(path)) {
         try {
-            load_gen4_genres(path);
+            if (is_gen3_root(path)) load_gen3_genres(path);
+            else                     load_gen4_genres(path);
         } catch (const std::exception& e) {
             spdlog::error("Error listing gen4 genres of {}: {}", path.string(), e.what());
         } catch (...) {
@@ -469,15 +481,20 @@ void Navigator::load_current_directory_async(const fs::path path) {
                         enqueue_box(make_song_box(curr_path, box_def, take_parser(preparsed, curr_path)));
                     continue;
                 }
-                if (is_gen4_root(curr_path)) {
+                if (is_gen4_root(curr_path) || is_gen3_root(curr_path)) {
                     if (only_gen4_songs()) {
-                        load_gen4_genres(curr_path);
+                        if (is_gen3_root(curr_path)) load_gen3_genres(curr_path);
+                        else                          load_gen4_genres(curr_path);
                         continue;
                     }
                     BoxDef gen4_def = box_def;
                     gen4_def.name        = curr_path.filename().string();
                     gen4_def.genre_index = GenreIndex::DEFAULT;
                     enqueue_box(std::make_unique<FolderBox>(curr_path, gen4_def, song_files));
+                    continue;
+                }
+                if (is_gen3_song_folder(curr_path)) {
+                    enqueue_box(make_song_box(curr_path, box_def, SongParser(curr_path)));
                     continue;
                 }
                 if (is_gen4_song_folder(curr_path)) {
@@ -773,6 +790,10 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
         loading_complete = true;
         return;
     }
+    if (load_gen3_genre_songs(path, box_def)) {
+        loading_complete = true;
+        return;
+    }
 
     wait_for_song_files();
     int songs_added = 0;
@@ -1028,10 +1049,7 @@ void Navigator::load_current_directory(const fs::path path) {
 
     if (has_children && root_paths.size() > 1 && !reloading_roots &&
         std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end() &&
-        // A song path can point straight at a game, and then its box carries
-        // that same path. Opening it is going in, not coming back out, so it
-        // must not be read as a return to the top of the wheel.
-        gen4::find_data_root(path).empty()) {
+        gen4::find_data_root(path).empty() && gen3::find_data_root(path).empty()) {
         load_all_roots();
         return;
     }
@@ -1221,12 +1239,13 @@ void Navigator::setup_back_box(const fs::path& path, bool has_children) {
 
 bool Navigator::has_child_folders(const fs::path& path) {
     if (gen4::genre_of_path(path) >= 0) return false;
-    if (is_gen4_root(path)) return true;
+    if (!gen3::genre_of_path(path).empty()) return false;
+    if (is_gen4_root(path) || is_gen3_root(path)) return true;
 
     for (const auto& entry : fs::directory_iterator(path)) {
         if (fs::is_directory(entry.path()) && has_def_file(entry.path()) || is_osu_song_folder(entry.path()))
             return true;
-        if (is_gen4_root(entry.path()))
+        if (is_gen4_root(entry.path()) || is_gen3_root(entry.path()))
             return true;
     }
     return false;
@@ -1268,19 +1287,15 @@ bool Navigator::is_gen4_root(const fs::path& path) {
     return gen4::find_data_root(path) == path && gen4::library_for(path) != nullptr;
 }
 
-// True when the song paths hold nothing but game data. There is then nothing
-// to switch back to, so the genres of that game are the top of the wheel
-// rather than sitting inside a folder of their own.
 bool Navigator::only_gen4_songs() {
     bool found_gen4 = false;
     std::error_code ec;
     for (const fs::path& root : root_paths) {
-        if (!gen4::find_data_root(root).empty()) { found_gen4 = true; continue; }
+        if (!gen4::find_data_root(root).empty() ||
+            !gen3::find_data_root(root).empty()) { found_gen4 = true; continue; }
         if (!fs::is_directory(root, ec)) continue;
         for (const auto& entry : fs::directory_iterator(root, ec)) {
-            if (is_gen4_root(entry.path())) { found_gen4 = true; continue; }
-            // Anything else at all - a genre folder, an osu folder, a loose
-            // chart - means the wheel has somewhere else to go.
+            if (is_gen4_root(entry.path()) || is_gen3_root(entry.path())) { found_gen4 = true; continue; }
             return false;
         }
     }
@@ -1350,6 +1365,89 @@ bool Navigator::load_gen4_genre_songs(const fs::path& path, const BoxDef& box_de
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(data_root));
         auto box = make_song_box(song_folder, def, SongParser(song_folder));
+        box->preserve_order = true;
+        box->fade_in(266);
+        enqueue_inline_box(std::move(box));
+        songs_added++;
+    }
+    return true;
+}
+
+bool Navigator::is_gen3_root(const fs::path& path) {
+    std::error_code ec;
+    if (!fs::is_directory(path, ec)) return false;
+    return gen3::find_data_root(path) == path && gen3::library_for(path) != nullptr;
+}
+
+bool Navigator::is_gen3_song_folder(const fs::path& path) {
+    if (path.parent_path().filename() != "fumen") return false;
+    const gen3::Library* library = gen3::library_for(path);
+    return library && library->find(path.filename().string()) != nullptr;
+}
+
+void Navigator::load_gen3_genres(const fs::path& data_root) {
+    const gen3::Library* library = gen3::library_for(data_root);
+    if (!library) return;
+
+    for (const std::string& genre_name : gen3::genres_present(*library)) {
+        if (abort_loading) break;
+        GenreIndex genre = (GenreIndex)gen3::genre_index_for(genre_name);
+
+        BoxDef def;
+        if (const BoxDef* like = box_def_for_genre(genre)) {
+            def = *like;
+        } else {
+            def.texture_index = (genre == GenreIndex::VOCALOID)
+                              ? TextureIndex::VOCALOID : TextureIndex::NONE;
+            if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+                def.back_color = colors->second[0];
+                def.fore_color = colors->second[1];
+            }
+        }
+        def.name        = genre_name;
+        def.genre_index = genre;
+        auto folder = std::make_unique<FolderBox>(gen3::genre_path(data_root, genre_name),
+                                                  def, song_files);
+        folder->tja_count = 0;
+        for (const gen3::SongEntry& e : library->songs())
+            if (e.genre == genre_name) folder->tja_count++;
+        enqueue_box(std::move(folder));
+    }
+}
+
+bool Navigator::load_gen3_genre_songs(const fs::path& path, const BoxDef& box_def) {
+    std::string genre_name = gen3::genre_of_path(path);
+    if (genre_name.empty()) return false;
+
+    fs::path data_root = gen3::find_data_root(path);
+    const gen3::Library* library = gen3::library_for(data_root);
+    if (!library) return false;
+
+    GenreIndex genre = (GenreIndex)gen3::genre_index_for(genre_name);
+
+    BoxDef def = box_def;
+    if (const BoxDef* like = box_def_for_genre(genre)) {
+        def = *like;
+    } else if (auto colors = DEFAULT_COLORS.find(genre); colors != DEFAULT_COLORS.end()) {
+        def.texture_index = (genre == GenreIndex::VOCALOID)
+                          ? TextureIndex::VOCALOID : TextureIndex::NONE;
+        def.back_color    = colors->second[0];
+        def.fore_color    = colors->second[1];
+    }
+    def.name        = box_def.name;
+    def.genre_index = genre;
+
+    int songs_added = 0;
+    for (const gen3::SongEntry& listing : library->songs()) {
+        if (abort_loading) break;
+        if (listing.genre != genre_name) continue;
+        fs::path song_folder = data_root / "fumen" / listing.id;
+        std::error_code ec;
+        if (!fs::is_directory(song_folder, ec)) continue;
+        if (songs_added > 0 && songs_added % 10 == 0)
+            enqueue_inline_box(make_back_box(data_root));
+        auto box = make_song_box(song_folder, def, SongParser(song_folder));
+        // The file's own order is the game's order.
         box->preserve_order = true;
         box->fade_in(266);
         enqueue_inline_box(std::move(box));
