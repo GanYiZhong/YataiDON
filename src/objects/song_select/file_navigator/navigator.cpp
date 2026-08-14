@@ -1166,9 +1166,12 @@ void Navigator::load_current_directory(const fs::path path) {
     if (has_children && root_paths.size() > 1 && !reloading_roots &&
         std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end() &&
         gen4::find_data_root(path).empty() && gen3::find_data_root(path).empty()) {
-        if (inline_state.has_value() && inline_state->saved_folder_box) {
-            restore_cursor_path = inline_state->saved_folder_box->path;
-        } else {
+        if (inline_state.has_value()) {
+            collapse_inline_now();
+            return;
+        }
+
+        {
             fs::path game = gen4::find_data_root(current_path);
             if (game.empty()) game = gen3::find_data_root(current_path);
             if (!game.empty())
