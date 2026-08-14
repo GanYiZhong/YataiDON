@@ -14,10 +14,6 @@ static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef
     return std::make_unique<SongBox>(path, box_def, std::move(parser));
 }
 
-// Parse many charts concurrently. Reading and line-parsing the chart file is
-// the dominant cost when a big folder opens, and it is embarrassingly
-// parallel, so pre-parse on a small pool and let the loader thread consume
-// the results in directory order.
 static std::unordered_map<std::string, std::unique_ptr<SongParser>>
 parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abort_flag) {
     std::vector<std::unique_ptr<SongParser>> parsed(paths.size());
@@ -44,8 +40,6 @@ parse_songs_parallel(const std::vector<fs::path>& paths, std::atomic<bool>& abor
     return out;
 }
 
-// Move a pre-parsed parser out of the map, or parse on the spot when the
-// pre-pass missed the file (fallback only - should not happen).
 static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<SongParser>>& preparsed,
                               const fs::path& path) {
     auto it = preparsed.find(path.string());
@@ -66,9 +60,6 @@ static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
     return std::make_unique<BackBox>(parent_path, d);
 }
 
-// Case-insensitive comparison so the wheel sorts alphabetically instead of
-// by raw byte value ('Z' < 'a' in ASCII put all lowercase titles last).
-// Bytes outside ASCII (UTF-8 continuations etc.) compare unchanged.
 static bool alpha_less(const std::string& a, const std::string& b) {
     size_t n = std::min(a.size(), b.size());
     for (size_t i = 0; i < n; i++) {
@@ -150,7 +141,11 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                         if (is_song_file(it->path())) {
                             SongParser parsed_entry = SongParser(it->path());
                             parsed_entry.get_metadata();
-                            song_files[{parsed_entry.metadata.title["en"], parsed_entry.metadata.subtitle["en"]}] = it->path();
+                            bool playable = false;
+                            for (const auto& [course, data] : parsed_entry.metadata.course_data)
+                                if (course >= 0 && course <= 4) { playable = true; break; }
+                            if (playable)
+                                song_files[{parsed_entry.metadata.title["en"], parsed_entry.metadata.subtitle["en"]}] = it->path();
                         }
                     } catch (const std::exception& inner) {
                         spdlog::warn("Skipping song during scan: {}", inner.what());
@@ -182,6 +177,22 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    if (is_init && hide_dan != built_hide_dan) {
+        join_loader();
+        is_inline = false;
+        inline_state.reset();
+        pending_inline_path.reset();
+        pending_inline_folder = nullptr;
+        genre_bg.reset();
+        genre_bg_end_pos.reset();
+        awaiting_diff_sort = false;
+        diff_sort_filter.reset();
+        items.clear();
+        open_index = 0;
+        is_init = false;
+    }
+    built_hide_dan = hide_dan;
+
     if (!is_init) {
         if (!is_preloaded) {
             preload(songs_paths);
@@ -203,6 +214,20 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
                 load_current_directory(root_path);
             }
         } else {
+            // A song was played (or the screen was left) with a folder open:
+            // come back to closed folders, cursor on the folder that was
+            // open, and remember the song so reopening it lands there.
+            if (inline_state.has_value()) {
+                if (open_index >= 0 && open_index < (int)items.size()) {
+                    if (dynamic_cast<SongBox*>(items[open_index].get()))
+                        reopen_song_path = items[open_index]->path;
+                }
+                reopen_folder_path = inline_state->saved_folder_box
+                                   ? std::optional<fs::path>(inline_state->saved_folder_box->path)
+                                   : std::nullopt;
+                if (!reopen_folder_path) reopen_song_path.reset();
+                collapse_inline_now();
+            }
             for (auto& item : items) {
                 item->reset();
                 item->fade_in(0);
@@ -221,6 +246,40 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
     bg_genre_index = items.empty() ? GenreIndex::TUTORIAL : items[open_index]->genre_index;
     last_bg_genre_index = bg_genre_index;
     if (genre_bg.has_value()) genre_bg->fade_in();
+}
+
+void Navigator::collapse_inline_now() {
+    if (!inline_state.has_value()) return;
+    join_loader();
+
+    InlineState& state = *inline_state;
+    int end = state.first_song_index + state.songs_count;
+    if (state.first_song_index < 0 || end > (int)items.size() ||
+        state.folder_index < 0 || state.folder_index >= (int)items.size() ||
+        !state.saved_folder_box) {
+        return;
+    }
+
+    items.erase(items.begin() + state.first_song_index, items.begin() + end);
+    items.erase(items.begin() + state.folder_index);
+    items.insert(items.begin() + state.folder_index, std::move(state.saved_folder_box));
+    open_index = state.folder_index;
+    items[open_index]->exit_box();
+
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex);
+        std::queue<std::unique_ptr<BaseBox>>().swap(pending_inline_boxes);
+    }
+
+    inline_state.reset();
+    pending_inline_folder = nullptr;
+    pending_inline_path.reset();
+    genre_bg.reset();
+    genre_bg_end_pos.reset();
+    is_inline = false;
+    is_processing = false;
+    inline_streaming = false;
+    loading_complete = false;
 }
 
 void Navigator::join_loader() {
@@ -348,8 +407,6 @@ void Navigator::flush_pending_boxes() {
         } else if (items.size() > 1) {
             std::vector<int> sortable_indices;
             std::vector<std::unique_ptr<BaseBox>> sortable;
-            // Skip index 0 only when it actually is the level's back box
-            // (root levels no longer have one).
             int first_sortable = dynamic_cast<BackBox*>(items[0].get()) ? 1 : 0;
             for (int i = first_sortable; i < (int)items.size(); i++) {
                 if (!items[i]->preserve_order) {
@@ -364,6 +421,19 @@ void Navigator::flush_pending_boxes() {
             for (int j = 0; j < (int)sortable_indices.size(); j++)
                 items[sortable_indices[j]] = std::move(sortable[j]);
         }
+        if (inline_state.has_value() && reopen_song_path && reopen_folder_path) {
+            const auto& folder = inline_state->saved_folder_box;
+            if (folder && folder->path == *reopen_folder_path) {
+                int first = inline_state->first_song_index;
+                int end   = std::min(first + inline_state->songs_count, (int)items.size());
+                for (int i = first; i < end; i++) {
+                    if (items[i]->path == *reopen_song_path) { open_index = i; break; }
+                }
+            }
+            reopen_folder_path.reset();
+            reopen_song_path.reset();
+        }
+
         set_positions(false, 800);
         if (!items.empty()) items[open_index]->expand_box();
         is_processing = false;
@@ -513,6 +583,11 @@ void Navigator::load_current_directory_async(const fs::path path) {
                 }
                 if (has_def_file(curr_path)) {
                     BoxDef entry_box_def = parse_box_def(curr_path);
+                    // Practice has no dan mode to enter, so the dojo is left
+                    // out of the wheel rather than leading somewhere that
+                    // cannot honour it.
+                    if (hide_dan && entry_box_def.genre_index == GenreIndex::DAN)
+                        continue;
                     auto folder = std::make_unique<FolderBox>(curr_path, entry_box_def, song_files);
                     if (entry_box_def.collection == "RECOMMENDED")
                         folder->tja_count = 10;
@@ -724,8 +799,6 @@ void Navigator::add_to_recent(const SongBox* song) {
     promote_recent_box(song);
 }
 
-// The listing keeps back boxes interleaved every 10 songs, so move the song
-// between the song slots only and leave those separators where they are.
 void Navigator::promote_recent_box(const SongBox* song) {
     if (!inline_state.has_value() || pending_inline_folder == nullptr) return;
     if (pending_inline_folder->collection != "RECENT") return;
@@ -758,10 +831,6 @@ void Navigator::promote_recent_box(const SongBox* song) {
 }
 
 void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& box_def) {
-    // Pick from the already-built song index instead of re-walking the whole
-    // library on disk: that recursive scan took seconds on a large library,
-    // and any navigation issued meanwhile stalled on join_loader() until it
-    // finished.
     std::vector<fs::path> all_songs;
     all_songs.reserve(song_files.size());
     for (const auto& [key, song_path] : song_files)
@@ -852,8 +921,6 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
         return;
     }
 
-    // Pre-pass: gather the song files this loop will visit (same filters as
-    // below) and parse them on a worker pool before streaming the boxes in.
     std::vector<fs::path> song_paths;
     try {
         for (const fs::directory_entry& entry : fs::directory_iterator(path)) {
@@ -1076,6 +1143,15 @@ void Navigator::load_current_directory(const fs::path path) {
     }
 
     if (!has_children && !items.empty()) {
+        if (inline_state.has_value()) {
+            collapse_inline_now();
+            items[open_index]->close_box();
+            // Now move the cursor to the folder actually being opened.
+            for (int i = 0; i < (int)items.size(); i++)
+                if (items[i]->path == path) { open_index = i; break; }
+            set_positions(true, 0);
+        }
+
         InlineState state;
         state.folder_index     = open_index;
         state.first_song_index = open_index + 1;
