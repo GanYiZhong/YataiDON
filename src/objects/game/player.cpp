@@ -1172,9 +1172,15 @@ void Player::drumroll_counter_manager(double current_ms) {
 
 void Player::balloon_counter_manager(double current_ms) {
     if (!is_balloon && balloon_counter.has_value()) {
+        // A balloon that ran out of note is only a failure if it was not
+        // filled. Popping it on the last frame of the note ends both at once,
+        // and reading this as "the note ended" alone put the miss face on a
+        // balloon the player had just burst.
+        bool popped = balloon_counter->is_finished();
         balloon_counter.reset();
         chara->set_anim(AnimIndex::DON_NORMAL);
-        chara->set_anim(AnimIndex::DON_BALLOON_FAILURE);
+        chara->set_anim(popped ? AnimIndex::DON_BALLOON_SUCCESS
+                               : AnimIndex::DON_BALLOON_FAILURE);
     }
     if (balloon_counter.has_value()) {
         balloon_counter->update(current_ms, curr_balloon_count);
