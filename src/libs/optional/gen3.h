@@ -17,6 +17,8 @@ struct SongEntry {
     std::string genre;
     bool        secret = false;
     int         stars[5] = {};
+    bool        has_chart[5] = {};
+    bool        charts_known = false;
 };
 
 class Library {
@@ -25,6 +27,8 @@ public:
 
     bool loaded() const { return is_loaded; }
     const fs::path& root() const { return data_root; }
+
+    const std::string& game_name() const { return name; }
 
     const SongEntry* find(const std::string& id) const;
     const std::vector<SongEntry>& songs() const { return entries; }
@@ -37,6 +41,7 @@ public:
 private:
     bool                   is_loaded = false;
     fs::path               data_root;
+    std::string            name;
     std::vector<SongEntry> entries;
 
     void load_tuning(const fs::path& path);
@@ -53,4 +58,4 @@ const Library* library_for(const fs::path& path);
 
 fs::path find_data_root(const fs::path& path);
 
-}  // namespace green
+}  // namespace gen3
