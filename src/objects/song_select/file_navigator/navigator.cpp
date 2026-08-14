@@ -405,8 +405,22 @@ void Navigator::load_current_directory_async(const fs::path path) {
     setup_back_box(path, true);
 
     fs::path own_root = gen4::find_data_root(path);
-    if (!own_root.empty() && own_root != path && gen4::library_for(own_root) &&
-        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+    bool is_a_root = std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end();
+    if (!own_root.empty() && is_a_root && gen4::library_for(own_root)) {
+        if (reloading_roots && !only_gen4_songs()) {
+            BoxDef gen4_def = box_def;
+            gen4_def.name        = own_root.filename().string();
+            gen4_def.genre_index = GenreIndex::DEFAULT;
+            enqueue_box(std::make_unique<FolderBox>(own_root, gen4_def, song_files));
+            loading_complete = true;
+            current_path = path;
+            return;
+        }
+        for (const fs::path& root : root_paths) {
+            if (!gen4::find_data_root(root).empty()) continue;
+            items.push_back(make_back_box(root));
+            break;
+        }
         try {
             load_gen4_genres(own_root);
         } catch (const std::exception& e) {
@@ -1013,7 +1027,11 @@ void Navigator::load_current_directory(const fs::path path) {
     bool has_children = has_child_folders(path);
 
     if (has_children && root_paths.size() > 1 && !reloading_roots &&
-        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end()) {
+        std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end() &&
+        // A song path can point straight at a game, and then its box carries
+        // that same path. Opening it is going in, not coming back out, so it
+        // must not be read as a return to the top of the wheel.
+        gen4::find_data_root(path).empty()) {
         load_all_roots();
         return;
     }
