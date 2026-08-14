@@ -42,8 +42,10 @@ public:
     std::unique_ptr<sol::state> lua;
 
     void init(fs::path script_path);
+    bool has_lua_script(const std::string& script_name) const;
     void shutdown();
     std::string get_lua_script_path(const std::string& script_name);
+    void index_scripts(const fs::path& script_path);
     void register_lua_bindings();
 };
 
@@ -55,6 +57,9 @@ bool LuaScript::load(const std::string& class_name, const std::string& script_na
     sol::state& lua = *script_manager.lua;
 
     if (!lua[class_name].valid()) {
+        // A skin that scripts some screens but not this one simply has no
+        // script here; that is a plain "not scripted", not an error.
+        if (!script_manager.has_lua_script(script_name)) return false;
         auto result = lua.script_file(script_manager.get_lua_script_path(script_name));
         if (!result.valid()) {
             sol::error err = result;

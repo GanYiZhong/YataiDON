@@ -51,33 +51,54 @@ static DrawTextureParams parse_draw_params(sol::optional<sol::table> params_tabl
     return params;
 }
 
+// Index every script under one Scripts folder. Names already present are
+// kept: the skin's own scripts are indexed first, and a parent skin only
+// fills the gaps, the same way its graphics do.
+void ScriptManager::index_scripts(const fs::path& script_path) {
+    std::error_code ec;
+    for (const auto& script : fs::directory_iterator(script_path, ec)) {
+        fs::path p = script.path();
+        if (fs::is_directory(p)) {
+            fs::path lua_file = p / (p.stem().string() + ".lua");
+            if (fs::exists(lua_file) && !scripts.count(p.stem().string())) {
+                scripts[p.stem().string()] = lua_file.string();
+            }
+            for (const auto& sub : fs::directory_iterator(p)) {
+                fs::path sub_p = sub.path();
+                if (!fs::is_directory(sub_p) && sub_p.extension() == ".lua" && sub_p.stem() != p.stem() &&
+                    !scripts.count(sub_p.stem().string())) {
+                    scripts[sub_p.stem().string()] = sub_p.string();
+                }
+            }
+        } else if (p.extension() == ".lua" && !scripts.count(p.stem().string())) {
+            scripts[p.stem().string()] = p.string();
+        }
+    }
+}
+
 void ScriptManager::init(fs::path script_path) {
     lua = std::make_unique<sol::state>();
     lua->open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
                         sol::lib::math, sol::lib::table);
 
-    std::string skin_scripts_dir = script_path.string();
-        std::string package_path = skin_scripts_dir + "/?.lua;" +
-                                   skin_scripts_dir + "/?/init.lua";
-        (*lua)["package"]["path"] = package_path;
+    // A partial skin scripts only some screens and leans on its parent for
+    // the rest, exactly like its graphics.
+    fs::path parent_scripts;
+    if (global_tex.has_parent_skin())
+        parent_scripts = global_tex.parent_root() / "Scripts";
 
-    for (const auto& script : fs::directory_iterator(script_path)) {
-        fs::path p = script.path();
-        if (fs::is_directory(p)) {
-            fs::path lua_file = p / (p.stem().string() + ".lua");
-            if (fs::exists(lua_file)) {
-                scripts[p.stem().string()] = lua_file.string();
-            }
-            for (const auto& sub : fs::directory_iterator(p)) {
-                fs::path sub_p = sub.path();
-                if (!fs::is_directory(sub_p) && sub_p.extension() == ".lua" && sub_p.stem() != p.stem()) {
-                    scripts[sub_p.stem().string()] = sub_p.string();
-                }
-            }
-        } else if (p.extension() == ".lua") {
-            scripts[p.stem().string()] = p.string();
-        }
+    std::string skin_scripts_dir = script_path.string();
+    std::string package_path = skin_scripts_dir + "/?.lua;" +
+                               skin_scripts_dir + "/?/init.lua";
+    if (!parent_scripts.empty()) {
+        package_path += ";" + parent_scripts.string() + "/?.lua;" +
+                        parent_scripts.string() + "/?/init.lua";
     }
+    (*lua)["package"]["path"] = package_path;
+
+    index_scripts(script_path);
+    if (!parent_scripts.empty()) index_scripts(parent_scripts);
+
     spdlog::debug("Loaded scripts:");
     for (const auto& [name, path] : scripts) {
         spdlog::debug("  {} -> {}", name, path);
@@ -87,6 +108,10 @@ void ScriptManager::init(fs::path script_path) {
     tex.init(script_path.parent_path() / "Graphics");
 
     register_lua_bindings();
+}
+
+bool ScriptManager::has_lua_script(const std::string& script_name) const {
+    return scripts.count(script_name) != 0;
 }
 
 std::string ScriptManager::get_lua_script_path(const std::string& script_name) {
