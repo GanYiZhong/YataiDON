@@ -1,6 +1,7 @@
 #include "filesystem.h"
 #include "miniz/miniz.h"
 #include "gen4.h"
+#include "green.h"
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <unistd.h>
@@ -89,6 +90,12 @@ void extract_osz(const fs::path& osz_path) {
 std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
     std::vector<fs::path> songs;
     for (const fs::path& path : root_path) {
+        // A song path pointing at - or into - a game's data root belongs to
+        // the song wheel, which reads the game's own tables. Scanning it here
+        // walks thousands of files and reads every chart as a loose one.
+        if (!gen4::find_data_root(path).empty() || !green::find_data_root(path).empty())
+            continue;
+
         // First pass: extract any .osz archives
         try {
             std::vector<fs::path> osz_files;
@@ -114,8 +121,9 @@ std::vector<fs::path> get_song_files(std::vector<fs::path> root_path) {
                 // reads the game's tables. Descending into it here would mean
                 // tens of thousands of files that are chart data and tables
                 // rather than songs, and every one of them opened.
-                if (entry.is_directory() && !gen4::find_data_root(entry.path()).empty() &&
-                    gen4::find_data_root(entry.path()) == entry.path()) {
+                if (entry.is_directory() &&
+                    (gen4::find_data_root(entry.path()) == entry.path() ||
+                     green::find_data_root(entry.path()) == entry.path())) {
                     it.disable_recursion_pending();
                     continue;
                 }

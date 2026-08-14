@@ -103,7 +103,8 @@ void SongBox::update(double current_time) {
     BaseBox::update(current_time);
     diff_fade_in->update(current_time);
 
-    bool is_bank = parser.metadata.wave.extension() == ".nus3bank";
+    auto wave_ext = parser.metadata.wave.extension();
+    bool is_bank = wave_ext == ".nus3bank" || wave_ext == ".nub";
 
     // A bank has to be decoded whole, which takes over a second: done on this
     // thread it is a frozen wheel, and started when the box has finished

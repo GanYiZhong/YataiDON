@@ -1,5 +1,7 @@
 #include "box_folder.h"
 #include "../../../libs/gen4.h"
+#include "../../../libs/green.h"
+#include "../../../libs/green.h"
 #include "../../../libs/filesystem.h"
 #include "../../../libs/scores.h"
 #include "../../../libs/audio.h"
@@ -75,6 +77,22 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         int genre_no = gen4::genre_of_path(path);
         for (const gen4::OrderEntry& listing : library->order())
             if (genre_no < 0 || listing.genre_no == genre_no) tja_count++;
+        std::lock_guard<std::mutex> lock(scan_cache_mutex);
+        scan_cache[path] = {crown, tja_count};
+        return;
+    }
+    if (const green::Library* library = green::library_for(path)) {
+        std::string genre = green::genre_of_path(path);
+        for (const green::SongEntry& e : library->songs())
+            if (genre.empty() || e.genre == genre) tja_count++;
+        std::lock_guard<std::mutex> lock(scan_cache_mutex);
+        scan_cache[path] = {crown, tja_count};
+        return;
+    }
+    if (const green::Library* library = green::library_for(path)) {
+        std::string genre = green::genre_of_path(path);
+        for (const green::SongEntry& e : library->songs())
+            if (genre.empty() || e.genre == genre) tja_count++;
         std::lock_guard<std::mutex> lock(scan_cache_mutex);
         scan_cache[path] = {crown, tja_count};
         return;

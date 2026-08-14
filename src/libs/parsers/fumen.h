@@ -1,6 +1,7 @@
 #pragma once
 #include "tja.h"
 #include "../gen4.h"
+#include "../green.h"
 
 // The chart format of the gen 4 arcade games. A song is a folder of up to five
 // chart files, one per difficulty, and everything else about it -- title, star
@@ -26,11 +27,12 @@ public:
     std::string get_song_hash();
     std::string get_diff_hash(int difficulty);
 
-    // True when the path was a song folder that the datatable knows about.
-    bool is_library_song() const { return library != nullptr; }
+    // True when the path was a song folder that a game's tables know about.
+    bool is_library_song() const { return library != nullptr || green_library != nullptr; }
 
 private:
-    const gen4::Library* library = nullptr;
+    const gen4::Library*  library       = nullptr;
+    const green::Library* green_library = nullptr;
     std::string          song_id;
     // The lead-in the game plays before the chart starts. TJA charts carry it
     // in their note times, and the engine starts the music by it, so a chart
