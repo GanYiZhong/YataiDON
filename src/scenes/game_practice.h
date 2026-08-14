@@ -82,8 +82,19 @@ private:
     TextureResizeAnimation* speed_l_kat_anim;
     TextureResizeAnimation* speed_r_kat_anim;
 
+    // The pause menu (issue #41): opened with the second drum's don while
+    // paused, stepped through with kat, confirmed with don.
+    bool menu_open  = false;
+    int  menu_index = 0;
+    int  jump_bar   = -1;   // the bar registered as the jump point, -1 = none
+    std::vector<std::unique_ptr<OutlinedText>> menu_text;
+
     void init_tja_practice(const fs::path& song);
     void pause_song_practice();
+    void restart_practice();
+    void build_menu_text();
+    std::optional<Screens> menu_action(int index);
+    void draw_practice_menu() const;
     std::optional<Screens> global_keys_practice();
 
     float get_scrobble_position_x(const Note& note, double current_ms) const;

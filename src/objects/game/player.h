@@ -63,6 +63,8 @@ public:
     int get_ok()   const { return ok_count; }
     int get_bad()  const { return bad_count; }
     bool is_auto_play() const { return modifiers.auto_play; }
+    // Practice mode toggles auto from its pause menu mid-song.
+    void set_auto_play(bool value) { modifiers.auto_play = value; }
     int get_score() const { return score; }
     int get_max_combo() const { return max_combo; }
     int get_total_drumroll() const { return total_drumroll; }
