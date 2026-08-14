@@ -118,8 +118,6 @@ void ModifierSelector::start_text_animation(int dir) {
     }
 }
 
-// はやさ walks 0.1 to 2.0 by tenths, then jumps 3.0 and 4.0, and wraps round
-// in both directions. Stored in tenths, so 1..20, then 30 and 40.
 static int speed_step(int value, int dir) {
     if (dir > 0) {
         if (value >= 40) return 1;
@@ -137,13 +135,10 @@ void ModifierSelector::left() {
     if (is_confirmed) return;
     const std::string& mod_name = MOD_NAMES[current_mod_index];
 
-    // dir is the on-screen slide direction (see NeiroSelector): pressing left
-    // scrolls the content rightward so the previous value enters from the left.
     if (mod_name == "speed") {
         player->modifier_speed = speed_step(player->modifier_speed, -1);
         start_text_animation(1);
     } else if (mod_name == "random") {
-        // Wraps like right() does: off, backed into, comes around to ??.
         player->modifier_random = (player->modifier_random + 2) % 3;
         start_text_animation(1);
     } else {
