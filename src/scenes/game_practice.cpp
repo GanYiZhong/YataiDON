@@ -21,10 +21,8 @@ void PracticeGameScreen::on_screen_start() {
 Screens PracticeGameScreen::on_screen_end(Screens next_screen) {
     scrobble_index = 0;
     scrobble_time = 0;
-    menu_open  = false;
-    menu_index = 0;
-    jump_bar   = -1;
-    menu_text.clear();
+    jump_bar = -1;
+    menu = PracticeMenu();
     scrobble_move = std::make_unique<MoveAnimation>(200.0, 0);
     bars.clear();
     scrobble_note_list.clear();
@@ -46,12 +44,8 @@ void PracticeGameScreen::init_tja(fs::path song) {
 }
 
 void PracticeGameScreen::init_tja_practice(const fs::path& song) {
-    // Extract bars and note list for scrobbling from the already-parsed TJA
     int difficulty = global_data.session_data[(int)global_data.player_num].selected_difficulty;
     auto [notes, bm, be, bn] = parser->notes_to_position(difficulty);
-    // Only a TJA has scroll commands to disable; asking the variant for one
-    // when an arcade chart is loaded threw and kept practice mode out of
-    // those songs entirely.
     if (auto* tja = std::get_if<TJAParser>(&parser->impl))
         tja->scroll_disabled = true;
     apply_modifiers(notes, get_player_modifiers(global_data.player_num));
@@ -115,12 +109,7 @@ void PracticeGameScreen::pause_song_practice() {
         double start_time  = bars[previous_bar_index].hit_ms - first_bar_time + start_delay;
 
         if (practice_player) {
-            // The lead-in bars before the scrobbled bar stay an empty
-            // runway: seeking to the scrobbled bar drops their notes from
-            // both the hit queues and the draw path.
             practice_player->seek_to(resume_time);
-            // A fresh attempt: score, combo and the judgement tallies all
-            // start over rather than keeping the last run's numbers.
             practice_player->reset_performance();
         }
 
@@ -134,12 +123,6 @@ void PracticeGameScreen::pause_song_practice() {
         }
         song_started = true;
         start_ms = get_current_ms() - pause_time;
-        // update() computed ms_from_start at the top of this frame while we
-        // were still paused, so it holds the stale pause position. The player
-        // update later this frame would sweep the freshly seeked queues with
-        // that stale clock - instantly missing the notes right after the
-        // resume point and pair-popping drumrolls between the scrobble target
-        // and wherever the pause happened.
         ms_from_start = start_time;
     }
 }
@@ -154,135 +137,43 @@ void PracticeGameScreen::restart_practice() {
     audio.play_sound("restart", VolumePreset::SOUND);
     song_started = false;
     paused       = false;
-    menu_open    = false;
-    // Reset the chart clock the same way on_screen_start does; with the
-    // stale start_ms the opening notes were already past the sweep and
-    // could never be hit (same clock as the base game's restart, #83).
+    menu.close();
     last_resync_ms = 0;
     start_ms = get_current_ms() - parser->metadata.offset * 1000
              - (double)global_data.config->general.audio_offset;
     ms_from_start = get_current_ms() - start_ms;
 }
 
-void PracticeGameScreen::build_menu_text() {
-    menu_text.clear();
-    bool auto_on = practice_player && practice_player->is_auto_play();
-
-    // Follows the language the config picked, the same way the rest of the
-    // interface does: Japanese, Chinese (either script setting) or English.
-    const std::string& lang = global_data.config->general.language;
-    int col = lang == "ja" ? 0 : (lang.rfind("zh", 0) == 0 ? 1 : 2);
-
-    // Visual order left to right, as the arcade lays its bars out; the
-    // rightmost one, closing the menu, is where the cursor starts.
-    struct Row { const char* ja; const char* zh; const char* en; };
-    static const Row ROWS[] = {
-        { "\u30b2\u30fc\u30e0\u7d42\u4e86",
-          "\u7d50\u675f\u904a\u6232",
-          "End Game" },
-        { "\u307b\u304b\u306e\u66f2\u3092\u6f14\u594f",
-          "\u9078\u5176\u4ed6\u6b4c\u66f2",
-          "Another Song" },
-        { "\u6700\u521d\u304b\u3089\u6f14\u594f",
-          "\u5f9e\u982d\u6f14\u594f",
-          "From the Top" },
-        { "\u30aa\u30fc\u30c8\u6f14\u594f\u8a2d\u5b9a",
-          "\u81ea\u52d5\u6f14\u594f\u8a2d\u5b9a",
-          "Auto Play" },
-        { "\u30b8\u30e3\u30f3\u30d7\u30dd\u30a4\u30f3\u30c8\u3078",
-          "\u8df3\u81f3\u8df3\u8f49\u9ede",
-          "To Jump Point" },
-        { "\u30b8\u30e3\u30f3\u30d7\u30dd\u30a4\u30f3\u30c8\u8a2d\u5b9a",
-          "\u8a2d\u5b9a\u8df3\u8f49\u9ede",
-          "Set Jump Point" },
-        { "\u30e1\u30cb\u30e5\u30fc\u3092\u3068\u3058\u308b",
-          "\u95dc\u9589\u9078\u55ae",
-          "Close Menu" },
-    };
-
-    for (const Row& r : ROWS) {
-        std::string label = col == 0 ? r.ja : col == 1 ? r.zh : r.en;
-        menu_text.push_back(std::make_unique<OutlinedText>(label,
-            (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size),
-            ray::WHITE, ray::BLACK, true));
-    }
-    (void)auto_on;
-}
-
-std::optional<Screens> PracticeGameScreen::menu_action(int index) {
-    switch (index) {
-        case 0:   // leave practice altogether
+std::optional<Screens> PracticeGameScreen::handle_menu_action(PracticeMenu::Action action) {
+    switch (action) {
+        case PracticeMenu::Action::END_GAME:
             if (song_music.has_value()) audio.stop_sound(song_music.value());
             return on_screen_end(Screens::ENTRY);
-        case 1:   // pick another song
+        case PracticeMenu::Action::ANOTHER_SONG:
             if (song_music.has_value()) audio.stop_sound(song_music.value());
             return on_screen_end(Screens::PRACTICE_SELECT);
-        case 2:   // restart from the top
+        case PracticeMenu::Action::RESTART:
             restart_practice();
             return std::nullopt;
-        case 3:   // toggle auto
-            if (practice_player)
-                practice_player->set_auto_play(!practice_player->is_auto_play());
+        case PracticeMenu::Action::AUTO_ON:
+            if (practice_player) practice_player->set_auto_play(true);
             return std::nullopt;
-        case 4:   // move the scrobble cursor to the jump point
+        case PracticeMenu::Action::AUTO_OFF:
+            if (practice_player) practice_player->set_auto_play(false);
+            return std::nullopt;
+        case PracticeMenu::Action::JUMP_TO_MARK:
             if (jump_bar >= 0 && jump_bar < (int)bars.size()) {
                 scrobble_index = jump_bar;
                 scrobble_time  = bars[scrobble_index].hit_ms;
                 scrobble_move  = std::make_unique<MoveAnimation>(200.0, 0);
-                menu_open = false;
+                menu.close();
             }
             return std::nullopt;
-        case 5:   // register the current bar as the jump point
+        case PracticeMenu::Action::SET_MARK:
             jump_bar = scrobble_index;
             return std::nullopt;
-        case 6:   // close the menu, stay paused
-            menu_open = false;
+        default:
             return std::nullopt;
-    }
-    return std::nullopt;
-}
-
-void PracticeGameScreen::draw_practice_menu() const {
-    int n = (int)menu_text.size();
-    if (n == 0) return;
-
-    float scale   = tex.screen_scale;
-    float bar_w   = 86 * scale;
-    float bar_h   = 380 * scale;
-    float gap     = 42 * scale;
-    float pad     = 48 * scale;
-    float panel_w = n * bar_w + (n - 1) * gap + pad * 2;
-    float panel_h = bar_h + pad * 2;
-    float panel_x = (tex.screen_width - panel_w) / 2.0f;
-    float panel_y = 48 * scale;
-
-    // The arcade's pale blue panel with its white frame.
-    ray::Rectangle panel = { panel_x, panel_y, panel_w, panel_h };
-    ray::DrawRectangleRounded(panel, 0.06f, 8, ray::Color(186, 192, 232, 245));
-    ray::DrawRectangleRoundedLinesEx(panel, 0.06f, 8, 4 * scale, ray::WHITE);
-
-    for (int i = 0; i < n; i++) {
-        float x = panel_x + pad + i * (bar_w + gap);
-        float y = panel_y + pad;
-        bool selected = (i == menu_index);
-
-        // Wooden bars, the chosen one gold - the same language as the wheel.
-        ray::Color face   = selected ? ray::Color(255, 214,  74, 255)
-                                     : ray::Color(166, 106,  44, 255);
-        ray::Color border = selected ? ray::WHITE
-                                     : ray::Color( 74,  46,  16, 255);
-        ray::DrawRectangle((int)x, (int)y, (int)bar_w, (int)bar_h, face);
-        ray::DrawRectangleLinesEx({x, y, bar_w, bar_h}, 4 * scale, border);
-
-        // A darker inner edge gives the bar its bevel.
-        ray::DrawRectangleLinesEx({x + 4 * scale, y + 4 * scale,
-                                   bar_w - 8 * scale, bar_h - 8 * scale},
-                                  2 * scale, ray::Color(0, 0, 0, 40));
-
-        OutlinedText* text = menu_text[i].get();
-        float tx = x + (bar_w - text->width) / 2.0f;
-        float ty = y + std::max(10.0f * scale, (bar_h - text->height) / 2.0f);
-        text->draw({.x = tx, .y = ty});
     }
 }
 
@@ -315,19 +206,23 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
             practice_player->spawn_scrobble_effect(DrumType::DON, Side::LEFT, other_idx);
         }
     } else {
-        if (menu_open) {
+        if (menu.open) {
             // The menu swallows the drums: kat steps, don confirms.
             bool step_l = is_l_kat_pressed(global_data.player_num) || is_l_kat_pressed(other_player);
             bool step_r = is_r_kat_pressed(global_data.player_num) || is_r_kat_pressed(other_player);
+            bool don    = is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num) ||
+                          is_l_don_pressed(other_player) || is_r_don_pressed(other_player);
+
             if (step_l || step_r) {
                 audio.play_sound("kat", VolumePreset::SOUND);
-                int n = (int)menu_text.size();
-                menu_index = ((menu_index + (step_r ? 1 : -1)) % n + n) % n;
+                menu.step(step_r);
             }
-            if (is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num) ||
-                is_l_don_pressed(other_player) || is_r_don_pressed(other_player)) {
+            if (don) {
                 audio.play_sound("don", VolumePreset::SOUND);
-                auto next = menu_action(menu_index);
+                bool in_dialog = menu.dialog != PracticeMenu::Dialog::NONE;
+                auto action = in_dialog ? menu.confirm()
+                                        : menu.activate(practice_player && practice_player->is_auto_play());
+                auto next = handle_menu_action(action);
                 if (next.has_value()) return next;
             }
             return std::nullopt;
@@ -336,9 +231,7 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
         if (is_l_don_pressed(other_player) || is_r_don_pressed(other_player)) {
             audio.play_sound("don", VolumePreset::SOUND);
             menu_don_anim->start();
-            menu_open  = true;
-            build_menu_text();
-            menu_index = (int)menu_text.size() - 1;
+            menu.open_menu();
             return std::nullopt;
         }
 
@@ -598,10 +491,6 @@ void PracticeGameScreen::draw() {
         tex.draw_texture(PRACTICE::SKIP_L_KAT,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
         tex.draw_texture(PRACTICE::SKIP_R_KAT,  {.scale = skip_r_kat_anim  ? (float)skip_r_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2 + 1});
         tex.draw_texture(PRACTICE::MENU_DON,    {.scale = menu_don_anim    ? (float)menu_don_anim->attribute    : 1.0f, .center = true, .index = other_idx});
-        // The skin's speed_l_kat sprite reads 速 (faster) and speed_r_kat reads
-        // 遅 (slower), but left kat lowers the tempo and right kat raises it
-        // (matching measure skip: left = back, right = forward). Draw the
-        // sprites swapped so the icons match what the keys actually do (#89).
         tex.draw_texture(PRACTICE::SPEED_R_KAT, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
         tex.draw_texture(PRACTICE::SPEED_L_KAT, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
     }
@@ -681,7 +570,10 @@ void PracticeGameScreen::draw() {
 
     if (paused) {
         tex.draw_texture(PRACTICE::PAUSED, {.fade = 0.5});
-        if (menu_open) draw_practice_menu();
+        if (menu.open) {
+            if (menu.dialog != PracticeMenu::Dialog::NONE) menu.draw_dialog();
+            else                                           menu.draw();
+        }
     }
 
     draw_overlay();

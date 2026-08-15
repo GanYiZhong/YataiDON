@@ -118,17 +118,21 @@ static float beside_y_offset(const std::string& s, float char_height) {
     return 0.0f;
 }
 
-static bool needs_less_spacing_above(const std::string& s) {
-    static const std::unordered_set<std::string> alphabet = {
-        " ", "a", "c", "e", "g", "m", "n", "o", "p", "q", "r", "s", "u", "v", "w", "x", "y", "z",
-    };
+static bool is_small_kana(const std::string& s) {
     static const std::unordered_set<std::string> sutegana = {
         // Small hiragana
         "ぁ", "ぃ", "ぅ", "ぇ", "ぉ", "っ", "ゃ", "ゅ", "ょ", "ゎ", "ゕ", "ゖ",
         // Small katakana
         "ァ", "ィ", "ゥ", "ェ", "ォ", "ッ", "ャ", "ュ", "ョ", "ヮ", "ヵ", "ヶ",
     };
-    return sutegana.count(s) > 0 || alphabet.count(s) > 0;
+    return sutegana.count(s) > 0;
+}
+
+static bool needs_less_spacing_above(const std::string& s) {
+    static const std::unordered_set<std::string> alphabet = {
+        " ", "a", "c", "e", "g", "m", "n", "o", "p", "q", "r", "s", "u", "v", "w", "x", "y", "z",
+    };
+    return is_small_kana(s) || alphabet.count(s) > 0;
 }
 
 // Consecutive runs of 2+ of these are drawn horizontally side-by-side.
@@ -178,10 +182,12 @@ OutlinedText::OutlinedText(std::string text, int font_size,
                            ray::Color color, ray::Color outline_color,
                            bool is_vertical,
                            int outline_thickness,
-                           float spacing)
+                           float spacing,
+                           float v_advance)
     : text(std::move(text)),
       font_size(static_cast<float>(font_size)),
-      outline_thickness(static_cast<float>(outline_thickness * global_tex.screen_scale))
+      outline_thickness(static_cast<float>(outline_thickness * global_tex.screen_scale)),
+      v_advance(v_advance)
 {
     worker_font = font_manager.copy_font(this->text, font_size);
 
@@ -201,7 +207,7 @@ OutlinedText::OutlinedText(std::string text, int font_size,
         }
         int pad = (int)this->outline_thickness + 2;
         width  = max_char_width + pad * 2;
-        height = char_height * char_count + pad * 2;
+        height = char_height * (1.0f + (char_count - 1) * v_advance) + pad * 2;
     } else {
         float sp = (spacing < 0) ? 0.0f : spacing;
         int pad  = (int)this->outline_thickness + 2;
@@ -365,7 +371,7 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
             advance = char_height * small_char_advance_factor;
         else
             advance = char_height;
-        current_y     += advance;
+        current_y     += advance * v_advance;
         y_positions[i] = current_y;
     }
     int img_h = items.empty()
