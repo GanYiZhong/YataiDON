@@ -2,6 +2,7 @@
 #include "../../libs/texture.h"
 #include "../../libs/input.h"
 #include "../../libs/audio.h"
+#include "../../libs/filesystem.h"
 
 CostumeMenu::CostumeMenu(PlayerNum player_num) : player_num(player_num), is_2p(player_num == PlayerNum::P2) {
     auto& info = tex.skin_config[SC::ENTRY_COSTUME_TEXT];
@@ -21,11 +22,17 @@ CostumeMenu::~CostumeMenu() {
         ray::UnloadTexture(icon);
 }
 
-void CostumeMenu::load_costume_icons() {
-    if (icons_loaded) return;
-    icons_loaded = true;
+void CostumeMenu::load_costume_icons(const std::string& subdir, const std::string& json_key) {
+    for (auto& icon : costume_icons)
+        ray::UnloadTexture(icon);
+    costume_icons.clear();
+    costume_ids.clear();
+    costume_names.clear();
+    costume_name_text.reset();
+    costume_name_text_index = -1;
+    costume_icon_index = 0;
 
-    fs::path dir = tex.resolve_skin_path("Models/costume_icon");
+    fs::path dir = tex.resolve_skin_path(fs::path("Models") / subdir);
     if (!fs::exists(dir)) return;
 
     std::vector<std::pair<int, fs::path>> entries;
@@ -35,10 +42,22 @@ void CostumeMenu::load_costume_icons() {
             catch (...) {}
         }
     }
-    std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     for (auto& [id, path] : entries) {
         costume_ids.push_back(id);
         costume_icons.push_back(ray::LoadTexture(path.string().c_str()));
+    }
+
+    fs::path names_path = tex.resolve_skin_path("Models/costume_names.json");
+    if (fs::exists(names_path)) {
+        try {
+            auto doc = read_json_file(names_path);
+            if (doc.HasMember(json_key.c_str()) && doc[json_key.c_str()].IsObject()) {
+                for (auto& m : doc[json_key.c_str()].GetObject()) {
+                    if (!m.value.HasMember("name") || m.value["name"].IsNull()) continue;
+                    costume_names[std::stoi(m.name.GetString())] = m.value["name"].GetString();
+                }
+            }
+        } catch (...) {}
     }
 }
 
@@ -69,7 +88,13 @@ void CostumeMenu::handle_input() {
                 audio.play_sound("kat", VolumePreset::SOUND);
             }
             if (is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) {
-                confirmed = true;
+                if (pick_stage == CostumePickStage::HEAD) {
+                    picked_head_id = costume_ids[costume_icon_index];
+                    pick_stage = CostumePickStage::BODY;
+                    load_costume_icons("costume_body_icon", "body");
+                } else {
+                    confirmed = true;
+                }
                 audio.play_sound("don", VolumePreset::SOUND);
             }
         }
@@ -83,10 +108,19 @@ void CostumeMenu::handle_input() {
             audio.play_sound("kat", VolumePreset::SOUND);
         }
 
-        if ((is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) && ITEMS[selected_index] == COSTUME_SELECT::COSTUME) {
-            costume_select_mode = true;
-            load_costume_icons();
-            audio.play_sound("don", VolumePreset::SOUND);
+        if (is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) {
+            if (ITEMS[selected_index] == COSTUME_SELECT::COSTUME) {
+                costume_select_mode = true;
+                pick_stage = CostumePickStage::NONE;
+                load_costume_icons("costume_icon", "costume");
+                audio.play_sound("don", VolumePreset::SOUND);
+            } else if (ITEMS[selected_index] == COSTUME_SELECT::HEAD_BODY) {
+                costume_select_mode = true;
+                pick_stage = CostumePickStage::HEAD;
+                picked_head_id = -1;
+                load_costume_icons("costume_head_icon", "head");
+                audio.play_sound("don", VolumePreset::SOUND);
+            }
         }
     }
 }
@@ -94,11 +128,12 @@ void CostumeMenu::handle_input() {
 void CostumeMenu::draw(float x, float y) {
     call(fn_draw_bg, "CostumeMenu:draw_bg", x, y, selected_index, costume_select_mode);
 
+    constexpr float ITEM_W = 80.0f;
+
     if (costume_select_mode && !costume_icons.empty()) {
-        auto& ib    = tex.textures[COSTUME_SELECT::ITEM_BOX_1P];
+        auto& ib = tex.textures[COSTUME_SELECT::ITEM_BOX_1P];
         float base_x = ib->x[0] + x;
         float base_y = ib->y[0] + y;
-        constexpr float ITEM_W = 80.0f;
         int n = (int)costume_icons.size();
         for (int i = 0; i < 5; i++) {
             int idx = ((costume_icon_index - 2 + i) % n + n) % n;
@@ -115,4 +150,20 @@ void CostumeMenu::draw(float x, float y) {
     }
 
     call(fn_draw_fg, "CostumeMenu:draw_fg", x, y);
+
+    if (costume_select_mode && !costume_icons.empty()) {
+        auto it = costume_names.find(costume_ids[costume_icon_index]);
+        if (it != costume_names.end()) {
+            if (costume_name_text_index != costume_icon_index) {
+                costume_name_text_index = costume_icon_index;
+                costume_name_text = std::make_unique<OutlinedText>(it->second, 32, ray::WHITE, ray::BLACK, false);
+            }
+            auto& th = tex.textures[COSTUME_SELECT::TEXT_HIGHLIGHT_1P];
+            float banner_cx = tex.draw_offset_x + th->x[0] + x;
+            float banner_cy = tex.draw_offset_y + th->y[0] + y;
+            float text_x = banner_cx - costume_name_text->width / 2.0f;
+            float text_y = banner_cy - costume_name_text->height / 2.0f;
+            costume_name_text->draw({.x = text_x, .y = text_y});
+        }
+    }
 }

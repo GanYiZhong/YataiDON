@@ -1,6 +1,17 @@
 #include "player.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
+#include <spdlog/spdlog.h>
+
+static void apply_pd_look(Chara3D& chara, PlayerData* pd, PlayerNum player_num) {
+    int player_id = get_player_id(player_num);
+    if (pd) {
+        chara.set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
+        chara.apply_face(pd->chara_face_index);
+    } else {
+        chara.set_don_colors(chara_default_color_1(player_id), chara_default_color_2(player_id), {249, 240, 225, 255});
+    }
+}
 
 EntryPlayer::EntryPlayer(PlayerNum player_num, int side, BoxManager* box_manager)
     : player_num(player_num), side(side), box_manager(box_manager) {
@@ -12,14 +23,9 @@ EntryPlayer::EntryPlayer(PlayerNum player_num, int side, BoxManager* box_manager
         pd ? pd->username : "", pd ? pd->title : "",
         player_num,
         pd ? pd->dan : -1, pd ? pd->gold : false, pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
-    std::string costume_name = pd ? std::to_string(pd->chara_cos_index) : "0";
-    chara = std::make_unique<Chara3D>(costume_name, player_num == PlayerNum::P2);
-    if (pd) {
-        chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
-        chara->apply_face(pd->chara_face_index);
-    } else {
-        chara->set_don_colors(chara_default_color_1(player_id), chara_default_color_2(player_id), {249, 240, 225, 255});
-    }
+    PlayerData* pd_ptr = pd ? &*pd : nullptr;
+    chara = make_chara_from_player_data(pd_ptr, player_num == PlayerNum::P2);
+    apply_pd_look(*chara, pd_ptr, player_num);
 
     if (!load("EntryPlayer", "player", side)) return;
     fn_start_animations   = lua_object["start_animations"];
@@ -83,28 +89,46 @@ void EntryPlayer::handle_input() {
         costume_menu->handle_input();
         if (costume_menu->get_index().has_value()) {
             int selected_index = costume_menu->get_index().value();
-            if (selected_index != chara_index) {
+            CostumePickStage stage = costume_menu->get_pick_stage();
+            if (selected_index != chara_index || stage != chara_pick_stage) {
                 chara_index = selected_index;
-                std::string model_name = costume_menu->get_costume_name();
-                chara = std::make_unique<Chara3D>(model_name, player_num == PlayerNum::P2);
-                {
-                    int player_id = get_player_id(player_num);
-                    if (auto pd = scores_manager.get_player_data(player_id)) {
-                        chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
-                        chara->apply_face(pd->chara_face_index);
-                    } else {
-                        chara->set_don_colors(chara_default_color_1(player_id), chara_default_color_2(player_id), {249, 240, 225, 255});
-                    }
+                chara_pick_stage = stage;
+                bool mirror = player_num == PlayerNum::P2;
+                int player_id = get_player_id(player_num);
+                auto pd = scores_manager.get_player_data(player_id);
+
+                if (stage == CostumePickStage::NONE) {
+                    std::string model_name = costume_menu->get_costume_name();
+                    chara = std::make_unique<Chara3D>(model_name, mirror);
+                } else if (stage == CostumePickStage::HEAD) {
+                    std::string head_name = costume_menu->get_costume_name();
+                    std::string body_name = pd ? std::to_string(pd->chara_body_index) : "0";
+                    chara = std::make_unique<Chara3D>(head_name, body_name, mirror);
+                } else {
+                    std::string head_name = std::to_string(costume_menu->get_picked_head_id());
+                    std::string body_name = costume_menu->get_costume_name();
+                    chara = std::make_unique<Chara3D>(head_name, body_name, mirror);
                 }
+                apply_pd_look(*chara, pd ? &*pd : nullptr, player_num);
             }
         }
         if (costume_menu->confirmed) {
             int player_id = get_player_id(player_num);
             if (auto pd = scores_manager.get_player_data(player_id)) {
-                pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
+                if (costume_menu->get_pick_stage() == CostumePickStage::BODY) {
+                    pd->chara_head_index = costume_menu->get_picked_head_id();
+                    pd->chara_body_index = std::stoi(costume_menu->get_costume_name());
+                    pd->chara_is_costume = false;
+                } else {
+                    pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
+                    pd->chara_is_costume = true;
+                }
                 scores_manager.save_player_data(*pd);
+                spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
+                    pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
             }
             costume_menu.reset();
+            chara_pick_stage = CostumePickStage::NONE;
             audio.play_sound("costume_select_" + std::to_string((int)player_num) + "p", VolumePreset::SOUND);
             chara->set_anim(AnimIndex::DON_BALLOON_SUCCESS);
         }

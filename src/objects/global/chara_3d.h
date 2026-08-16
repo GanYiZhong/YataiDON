@@ -28,15 +28,15 @@ enum class AnimIndex : int {
     DON_MISS                   = 14,
     DON_MISS6                  = 15,
     DON_MISS_NORMAL            = 16,
-    DON_NORM_DOWN              = 17,
-    DON_NORM_LOOP              = 18,
-    DON_NORM_UP                = 19,
+    DON_NORM_DOWN               = 17,
+    DON_NORM_LOOP               = 18,
+    DON_NORM_UP                 = 19,
     DON_NORMAL                 = 20,
     DON_SABI                   = 21,
-    DON_SABI_START             = 22,
-    DON_SELECT_LOOP            = 23,
-    DON_SELECT_PANELDOWN       = 24,
-    DON_SELECT_PANELUP         = 25,
+    DON_SABI_START              = 22,
+    DON_SELECT_LOOP              = 23,
+    DON_SELECT_PANELDOWN         = 24,
+    DON_SELECT_PANELUP           = 25,
     DON_BALLOON_FAILURE_MIRROR = 26,
     DON_BALLOON_LOOP_MIRROR    = 27,
     DON_BALLOON_NOBEAT_MIRROR  = 28,
@@ -67,20 +67,22 @@ enum class AnimIndex : int {
 
 class Chara3D {
 private:
-    ray::Model cos_model;
-    std::unordered_map<std::string, int> material_indices;
-    std::vector<int> recolor_indices;
-    std::vector<int> additive_indices;
-    std::vector<int> force_opaque_indices;
-    int face_material_index = -1;
+    std::vector<ray::Model> parts;
+    std::vector<std::unordered_map<std::string, int>> part_material_indices;
+    std::vector<std::vector<int>> part_recolor_indices;
+    std::vector<std::vector<int>> part_additive_indices;
+    std::vector<std::vector<int>> part_force_opaque_indices;
+    std::vector<int> part_face_material_index;
+    std::vector<ray::ModelAnimation*> part_anims;
+    std::vector<int> part_anim_count;
+
+    void load_part(const fs::path& model_path, const fs::path& anim_path, bool normalize_face_scale = false);
 
     std::vector<ray::Texture2D> face_textures;
     std::unordered_map<int, std::unique_ptr<BaseAnimation>> face_anims;
     BaseAnimation* current_face_anim = nullptr;
     int current_face_index = -1;
 
-    ray::ModelAnimation* anims;
-    int anim_count = 0;
     int anim_frame = 0;
     AnimIndex anim_index = AnimIndex::DON_NORMAL;
 
@@ -121,13 +123,14 @@ private:
     int outline_pass_size_loc = -1;
     int outline_pass_thickness_loc = -1;
 
-    void set_texture(fs::path& texture_path, int material_index);
+    void set_texture(fs::path& texture_path, int part_index, int material_index);
     void load_face_textures(fs::path& face_dir);
     void load_face_anims(fs::path& anim_path);
     void draw_outline(float x, float y);
     void draw_3d(float x, float y);
 public:
     Chara3D(std::string& model_name, bool mirror = false);
+    Chara3D(std::string& head_name, std::string& body_name, bool mirror = false);
 
     ~Chara3D();
 
@@ -146,3 +149,6 @@ public:
 
     void draw(float x, float y);
 };
+
+struct PlayerData;
+std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror = false);

@@ -16,6 +16,7 @@ private:
     std::unique_ptr<Indicator> indicator;
     std::unique_ptr<Chara3D> chara;
     int chara_index = 0;
+    CostumePickStage chara_pick_stage = CostumePickStage::NONE;
 
     sol::protected_function fn_start_animations;
     sol::protected_function fn_update;

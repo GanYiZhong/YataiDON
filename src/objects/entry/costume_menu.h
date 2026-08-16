@@ -2,8 +2,12 @@
 
 #include "../../libs/script.h"
 #include "../../libs/global_data.h"
+#include "../../libs/text.h"
 #include <memory>
 #include <vector>
+#include <unordered_map>
+
+enum class CostumePickStage { NONE, HEAD, BODY };
 
 class CostumeMenu : public LuaScript {
 public:
@@ -23,6 +27,9 @@ public:
     std::optional<int> get_index();
     std::string get_costume_name() const;
 
+    CostumePickStage get_pick_stage() const { return pick_stage; }
+    int get_picked_head_id() const { return picked_head_id; }
+
 private:
     sol::protected_function fn_update;
     sol::protected_function fn_draw_bg;
@@ -30,9 +37,14 @@ private:
 
     std::vector<ray::Texture2D> costume_icons;
     std::vector<int> costume_ids;
-    bool icons_loaded = false;
+    std::unordered_map<int, std::string> costume_names;
+    std::unique_ptr<OutlinedText> costume_name_text;
+    int costume_name_text_index = -1;
 
-    void load_costume_icons();
+    CostumePickStage pick_stage = CostumePickStage::NONE;
+    int picked_head_id = -1;
+
+    void load_costume_icons(const std::string& subdir, const std::string& json_key);
 
     static constexpr int NUM_ITEMS = 7;
     static constexpr std::array<uint32_t, NUM_ITEMS> ITEMS = {

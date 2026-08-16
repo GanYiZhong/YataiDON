@@ -1,4 +1,5 @@
 cache
+.cache
 .env
 dev-config.toml
 latest.log

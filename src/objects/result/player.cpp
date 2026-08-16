@@ -8,8 +8,7 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
     int player_id = get_player_id(player_num);
     auto pd = scores_manager.get_player_data(player_id);
 
-    std::string costume_name = pd ? std::to_string(pd->chara_cos_index) : "0";
-    chara = std::make_unique<Chara3D>(costume_name);
+    chara = make_chara_from_player_data(pd ? &*pd : nullptr);
     if (pd) {
         chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
         chara->apply_face(pd->chara_face_index);

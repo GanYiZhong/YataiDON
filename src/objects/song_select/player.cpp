@@ -27,8 +27,7 @@ SongSelectPlayer::SongSelectPlayer(PlayerNum player_num)
     diff_select_move_right = false;
     last_moved = 0;
 
-    std::string costume_name = std::to_string(player_data.chara_cos_index);
-    chara = std::make_unique<Chara3D>(costume_name, player_num == PlayerNum::P2);
+    chara = make_chara_from_player_data(&player_data, player_num == PlayerNum::P2);
     if (player_data.player_id > 0) {
         chara->set_don_colors(player_data.chara_color_1, player_data.chara_color_2, player_data.chara_color_3);
         chara->apply_face(player_data.chara_face_index);
