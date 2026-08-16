@@ -3,10 +3,42 @@
 #include "color_utils.h"
 #include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
+#include <array>
+#include <cstddef>
 
 NetworkClient network;
 
 #if defined(NETWORK_ENABLED)
+
+namespace {
+
+template <std::size_t N>
+struct ObfuscatedString {
+    std::array<char, N> data{};
+
+    constexpr ObfuscatedString(const char (&str)[N]) {
+        for (std::size_t i = 0; i < N; ++i) data[i] = str[i] ^ key(i);
+    }
+
+    static constexpr char key(std::size_t i) {
+        constexpr char seed[] = __TIME__;
+        return seed[i % (sizeof(seed) - 1)] ^ static_cast<char>(i * 41 + 7);
+    }
+
+    std::string decode() const {
+        std::string out(N - 1, '\0');
+        for (std::size_t i = 0; i < N - 1; ++i) out[i] = data[i] ^ key(i);
+        return out;
+    }
+};
+
+std::string auth_header() {
+    static constexpr ObfuscatedString obfuscated_key(NETWORK_AUTH_KEY);
+    static const std::string key = obfuscated_key.decode();
+    return "Bearer " + key;
+}
+
+}  // namespace
 
 static std::string network_url(const std::string& endpoint) {
     std::string base = NETWORK_URL;
@@ -18,7 +50,7 @@ void NetworkClient::check_heartbeat() {
     if (pending_heartbeat.has_value()) return;
     pending_heartbeat = cpr::GetAsync(
         cpr::Url{network_url("/health")},
-        cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
+        cpr::Header{{"Authorization", auth_header()}},
         cpr::Timeout{2000}
     );
 }
@@ -64,7 +96,7 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
 void NetworkClient::clear_import_flag(const std::string& access_code) {
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/clear_import_flag")},
-        cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
+        cpr::Header{{"Authorization", auth_header()}},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
     );
@@ -76,7 +108,7 @@ void NetworkClient::clear_import_flag(const std::string& access_code) {
 std::string NetworkClient::register_user(const std::string& username) {
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/register_user")},
-        cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
+        cpr::Header{{"Authorization", auth_header()}},
         cpr::Payload{{"username", username}},
         cpr::Timeout{5000}
     );
@@ -90,7 +122,7 @@ std::string NetworkClient::register_user(const std::string& username) {
 void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score) {
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/submit_score")},
-        cpr::Header{{"Authorization", "Bearer " NETWORK_AUTH_KEY}},
+        cpr::Header{{"Authorization", auth_header()}},
         cpr::Parameters{
             {"access_code", access_code},
             {"hash", hash},
