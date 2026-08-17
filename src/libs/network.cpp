@@ -1,6 +1,7 @@
 #include "network.h"
 #include "scores.h"
 #include "color_utils.h"
+#include "sha256.h"
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
@@ -60,50 +61,6 @@ std::string current_timestamp() {
     return std::to_string(secs.count());
 }
 
-std::array<uint8_t, 32> sha256_bytes(const std::string& data) {
-    unsigned int* words = ray::ComputeSHA256(
-        reinterpret_cast<const unsigned char*>(data.data()), static_cast<int>(data.size()));
-    std::array<uint8_t, 32> out;
-    for (int i = 0; i < 8; ++i) {
-        out[i * 4 + 0] = static_cast<uint8_t>(words[i] >> 24);
-        out[i * 4 + 1] = static_cast<uint8_t>(words[i] >> 16);
-        out[i * 4 + 2] = static_cast<uint8_t>(words[i] >> 8);
-        out[i * 4 + 3] = static_cast<uint8_t>(words[i]);
-    }
-    return out;
-}
-
-std::array<uint8_t, 32> hmac_sha256(const std::string& key, const std::string& message) {
-    constexpr size_t block_size = 64;
-    std::array<uint8_t, block_size> key_block{};
-    if (key.size() > block_size) {
-        auto hashed = sha256_bytes(key);
-        std::copy(hashed.begin(), hashed.end(), key_block.begin());
-    } else {
-        std::copy(key.begin(), key.end(), key_block.begin());
-    }
-
-    std::string ipad_msg(key_block.begin(), key_block.end());
-    for (auto& c : ipad_msg) c ^= 0x36;
-    ipad_msg += message;
-    auto inner_hash = sha256_bytes(ipad_msg);
-
-    std::string opad_msg(key_block.begin(), key_block.end());
-    for (auto& c : opad_msg) c ^= 0x5c;
-    opad_msg.append(reinterpret_cast<const char*>(inner_hash.data()), inner_hash.size());
-    return sha256_bytes(opad_msg);
-}
-
-std::string to_hex(const std::array<uint8_t, 32>& bytes) {
-    static constexpr char hex_chars[] = "0123456789abcdef";
-    std::string out(64, '0');
-    for (size_t i = 0; i < bytes.size(); ++i) {
-        out[i * 2] = hex_chars[bytes[i] >> 4];
-        out[i * 2 + 1] = hex_chars[bytes[i] & 0xF];
-    }
-    return out;
-}
-
 cpr::Header signed_headers(const std::string& method, const std::string& path,
                             const std::map<std::string, std::string>& params) {
     std::string timestamp = current_timestamp();
@@ -113,7 +70,7 @@ cpr::Header signed_headers(const std::string& method, const std::string& path,
     for (const auto& [k, v] : params) canonical += k + "=" + v + "&";
     canonical += "\n" + timestamp + "\n" + nonce;
 
-    std::string signature = to_hex(hmac_sha256(secret_key(), canonical));
+    std::string signature = crypto::to_hex(crypto::hmac_sha256(secret_key(), canonical));
 
     return cpr::Header{
         {"X-Timestamp", timestamp},
