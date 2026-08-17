@@ -4,7 +4,11 @@
 #include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
 #include <array>
+#include <chrono>
 #include <cstddef>
+#include <cstdio>
+#include <map>
+#include <random>
 
 NetworkClient network;
 
@@ -32,10 +36,89 @@ struct ObfuscatedString {
     }
 };
 
-std::string auth_header() {
+std::string secret_key() {
     static constexpr ObfuscatedString obfuscated_key(NETWORK_AUTH_KEY);
     static const std::string key = obfuscated_key.decode();
-    return "Bearer " + key;
+    return key;
+}
+
+std::string random_nonce() {
+    static thread_local std::mt19937_64 rng(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist;
+    char buf[33];
+    std::snprintf(buf, sizeof(buf), "%016llx%016llx",
+                  static_cast<unsigned long long>(dist(rng)),
+                  static_cast<unsigned long long>(dist(rng)));
+    return std::string(buf);
+}
+
+std::string current_timestamp() {
+    auto secs = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch());
+    return std::to_string(secs.count());
+}
+
+std::array<uint8_t, 32> sha256_bytes(const std::string& data) {
+    unsigned int* words = ray::ComputeSHA256(
+        reinterpret_cast<const unsigned char*>(data.data()), static_cast<int>(data.size()));
+    std::array<uint8_t, 32> out;
+    for (int i = 0; i < 8; ++i) {
+        out[i * 4 + 0] = static_cast<uint8_t>(words[i] >> 24);
+        out[i * 4 + 1] = static_cast<uint8_t>(words[i] >> 16);
+        out[i * 4 + 2] = static_cast<uint8_t>(words[i] >> 8);
+        out[i * 4 + 3] = static_cast<uint8_t>(words[i]);
+    }
+    return out;
+}
+
+std::array<uint8_t, 32> hmac_sha256(const std::string& key, const std::string& message) {
+    constexpr size_t block_size = 64;
+    std::array<uint8_t, block_size> key_block{};
+    if (key.size() > block_size) {
+        auto hashed = sha256_bytes(key);
+        std::copy(hashed.begin(), hashed.end(), key_block.begin());
+    } else {
+        std::copy(key.begin(), key.end(), key_block.begin());
+    }
+
+    std::string ipad_msg(key_block.begin(), key_block.end());
+    for (auto& c : ipad_msg) c ^= 0x36;
+    ipad_msg += message;
+    auto inner_hash = sha256_bytes(ipad_msg);
+
+    std::string opad_msg(key_block.begin(), key_block.end());
+    for (auto& c : opad_msg) c ^= 0x5c;
+    opad_msg.append(reinterpret_cast<const char*>(inner_hash.data()), inner_hash.size());
+    return sha256_bytes(opad_msg);
+}
+
+std::string to_hex(const std::array<uint8_t, 32>& bytes) {
+    static constexpr char hex_chars[] = "0123456789abcdef";
+    std::string out(64, '0');
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        out[i * 2] = hex_chars[bytes[i] >> 4];
+        out[i * 2 + 1] = hex_chars[bytes[i] & 0xF];
+    }
+    return out;
+}
+
+cpr::Header signed_headers(const std::string& method, const std::string& path,
+                            const std::map<std::string, std::string>& params) {
+    std::string timestamp = current_timestamp();
+    std::string nonce = random_nonce();
+
+    std::string canonical = method + "\n" + path + "\n";
+    for (const auto& [k, v] : params) canonical += k + "=" + v + "&";
+    canonical += "\n" + timestamp + "\n" + nonce;
+
+    std::string signature = to_hex(hmac_sha256(secret_key(), canonical));
+
+    return cpr::Header{
+        {"X-Timestamp", timestamp},
+        {"X-Nonce", nonce},
+        {"X-Signature", signature},
+        {"X-Client-Version", CLIENT_VERSION},
+    };
 }
 
 }  // namespace
@@ -50,7 +133,7 @@ void NetworkClient::check_heartbeat() {
     if (pending_heartbeat.has_value()) return;
     pending_heartbeat = cpr::GetAsync(
         cpr::Url{network_url("/health")},
-        cpr::Header{{"Authorization", auth_header()}},
+        signed_headers("GET", "/health", {}),
         cpr::Timeout{2000}
     );
 }
@@ -96,7 +179,7 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
 void NetworkClient::clear_import_flag(const std::string& access_code) {
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/clear_import_flag")},
-        cpr::Header{{"Authorization", auth_header()}},
+        signed_headers("POST", "/clear_import_flag", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
     );
@@ -108,7 +191,7 @@ void NetworkClient::clear_import_flag(const std::string& access_code) {
 std::string NetworkClient::register_user(const std::string& username) {
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/register_user")},
-        cpr::Header{{"Authorization", auth_header()}},
+        signed_headers("POST", "/register_user", {{"username", username}}),
         cpr::Payload{{"username", username}},
         cpr::Timeout{5000}
     );
@@ -120,21 +203,34 @@ std::string NetworkClient::register_user(const std::string& username) {
 }
 
 void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score) {
+    std::map<std::string, std::string> params{
+        {"access_code", access_code},
+        {"hash", hash},
+        {"difficulty", std::to_string(difficulty)},
+        {"crown", std::to_string(static_cast<int>(score.crown))},
+        {"rank", std::to_string(static_cast<int>(score.rank))},
+        {"score", std::to_string(score.score)},
+        {"good", std::to_string(score.good)},
+        {"ok", std::to_string(score.ok)},
+        {"bad", std::to_string(score.bad)},
+        {"drumroll", std::to_string(score.drumroll)},
+        {"max_combo", std::to_string(score.max_combo)},
+    };
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/submit_score")},
-        cpr::Header{{"Authorization", auth_header()}},
+        signed_headers("POST", "/submit_score", params),
         cpr::Parameters{
-            {"access_code", access_code},
-            {"hash", hash},
-            {"difficulty", std::to_string(difficulty)},
-            {"crown", std::to_string(static_cast<int>(score.crown))},
-            {"rank", std::to_string(static_cast<int>(score.rank))},
-            {"score", std::to_string(score.score)},
-            {"good", std::to_string(score.good)},
-            {"ok", std::to_string(score.ok)},
-            {"bad", std::to_string(score.bad)},
-            {"drumroll", std::to_string(score.drumroll)},
-            {"max_combo", std::to_string(score.max_combo)},
+            {"access_code", params["access_code"]},
+            {"hash", params["hash"]},
+            {"difficulty", params["difficulty"]},
+            {"crown", params["crown"]},
+            {"rank", params["rank"]},
+            {"score", params["score"]},
+            {"good", params["good"]},
+            {"ok", params["ok"]},
+            {"bad", params["bad"]},
+            {"drumroll", params["drumroll"]},
+            {"max_combo", params["max_combo"]},
         },
         cpr::Timeout{5000}
     );
