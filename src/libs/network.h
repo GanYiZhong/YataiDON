@@ -17,6 +17,13 @@
 
 #include <string>
 
+enum class InputLogType {
+    KAT_L = 0,
+    DON_L = 1,
+    DON_R = 2,
+    KAT_R = 3
+};
+
 class NetworkClient {
 public:
     void update(double current_ms);
@@ -24,7 +31,8 @@ public:
     bool is_online() const { return online; }
 
     std::string register_user(const std::string& username);
-    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score);
+    std::string map_to_json(const std::unordered_map<double, InputLogType>& my_map);
+    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::unordered_map<double, InputLogType> input_log);
 
     bool check_import_requested(const std::string& access_code);
     void clear_import_flag(const std::string& access_code);

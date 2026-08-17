@@ -2,6 +2,8 @@
 #include "scores.h"
 #include "color_utils.h"
 #include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 #include <spdlog/spdlog.h>
 #include <array>
 #include <chrono>
@@ -202,7 +204,24 @@ std::string NetworkClient::register_user(const std::string& username) {
     return response.text;
 }
 
-void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score) {
+std::string NetworkClient::map_to_json(const std::unordered_map<double, InputLogType>& my_map) {
+    rapidjson::Document doc;
+    doc.SetObject();
+    rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
+
+    for (const auto& pair : my_map) {
+        rapidjson::Value key(std::to_string(pair.first).c_str(), allocator);
+        doc.AddMember(key, (int)pair.second, allocator);
+    }
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    doc.Accept(writer);
+
+    return buffer.GetString();
+}
+
+void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::unordered_map<double, InputLogType> input_log) {
     std::map<std::string, std::string> params{
         {"access_code", access_code},
         {"hash", hash},
@@ -231,6 +250,7 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
             {"bad", params["bad"]},
             {"drumroll", params["drumroll"]},
             {"max_combo", params["max_combo"]},
+            {"input_log", map_to_json(input_log)},
         },
         cpr::Timeout{5000}
     );

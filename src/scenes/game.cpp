@@ -273,7 +273,7 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
         score.rank = Rank::_WHITE;
     }
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score);
-    network.submit_score(hash, session_data.selected_difficulty, global_data.config->general.access_code, score);
+    network.submit_score(hash, session_data.selected_difficulty, global_data.config->general.access_code, score, players[0]->input_log);
 }
 
 void GameScreen::resync_song(double current_ms) {

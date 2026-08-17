@@ -1232,6 +1232,13 @@ void Player::handle_input(double ms_from_start, double current_ms, std::optional
         while (input.check_func(player_num)) {
             spawn_hit_effects(input.drum_type, input.side);
             audio.play_sound(*input.sound, VolumePreset::HITSOUND);
+            InputLogType log_type;
+            if (input.drum_type == DrumType::DON) {
+                log_type = input.side == Side::LEFT ? InputLogType::DON_L : InputLogType::DON_R;
+            } else {
+                log_type = input.side == Side::LEFT ? InputLogType::KAT_L : InputLogType::KAT_R;
+            }
+            input_log.insert({ms_from_start, log_type});
             check_note(ms_from_start, input.drum_type, current_ms, background);
         }
     }
