@@ -1,5 +1,6 @@
 # Sqlite3
 if(NOT WIN32 AND NOT ANDROID AND NOT EMSCRIPTEN)
+#if(NOT ANDROID AND NOT EMSCRIPTEN)
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
     pkg_check_modules(SQLITE3 QUIET sqlite3)
@@ -65,6 +66,7 @@ set(SUPPORT_FILEFORMAT_JPG ON CACHE BOOL "" FORCE)
 if(ANDROID OR EMSCRIPTEN)
   set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
 endif()
+message(STATUS "Fetching raylib...")
 FetchContent_Declare(
   raylib
   GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -80,6 +82,7 @@ FetchContent_MakeAvailable(raylib)
 set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+message(STATUS "Fetching RapidJSON...")
 FetchContent_Declare(
     rapidjson
     GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
@@ -89,6 +92,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(rapidjson)
 
 # tomlplusplus
+message(STATUS "Fetching tomlplusplus...")
 FetchContent_Declare(
     tomlplusplus
     GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
@@ -98,6 +102,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tomlplusplus)
 
 # spdlog
+message(STATUS "Fetching spdlog...")
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -107,6 +112,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(spdlog)
 
 # Lua
+message(STATUS "Fetching Lua...")
 FetchContent_Declare(
     lua
     GIT_REPOSITORY https://github.com/marovira/lua.git
@@ -117,6 +123,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(lua)
 
 # Sol2
+message(STATUS "Fetching sol2...")
 FetchContent_Declare(
     sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git
@@ -208,7 +215,8 @@ if(ANDROID OR EMSCRIPTEN OR WIN32)
   set(OPUS_INCLUDE_SHIM_DIR "${CMAKE_BINARY_DIR}/opus_include_shim")
   file(MAKE_DIRECTORY "${OPUS_INCLUDE_SHIM_DIR}")
   if(NOT EXISTS "${OPUS_INCLUDE_SHIM_DIR}/opus")
-    file(CREATE_LINK "${opus_SOURCE_DIR}/include" "${OPUS_INCLUDE_SHIM_DIR}/opus" SYMBOLIC)
+    #file(MAKE_DIRECTORY "${OPUS_INCLUDE_SHIM_DIR}/opus")
+    file(COPY "${opus_SOURCE_DIR}/include" DESTINATION "${OPUS_INCLUDE_SHIM_DIR}/opus")
   endif()
   target_include_directories(opus INTERFACE "$<BUILD_INTERFACE:${OPUS_INCLUDE_SHIM_DIR}>")
   set(OPUS_INCLUDE_DIR "${OPUS_INCLUDE_SHIM_DIR}" CACHE PATH "" FORCE)
