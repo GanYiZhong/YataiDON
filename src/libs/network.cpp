@@ -204,7 +204,7 @@ std::string NetworkClient::register_user(const std::string& username) {
     return response.text;
 }
 
-std::string NetworkClient::map_to_json(const std::unordered_map<double, InputLogType>& my_map) {
+std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_map) {
     rapidjson::Document doc;
     doc.SetObject();
     rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
@@ -221,7 +221,7 @@ std::string NetworkClient::map_to_json(const std::unordered_map<double, InputLog
     return buffer.GetString();
 }
 
-void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::unordered_map<double, InputLogType> input_log) {
+void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log) {
     std::map<std::string, std::string> params{
         {"access_code", access_code},
         {"hash", hash},

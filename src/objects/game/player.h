@@ -48,7 +48,7 @@ public:
     float bpm;
     PlayerNum player_num;
     double last_note_hit;
-    std::unordered_map<double, InputLogType> input_log;
+    std::map<double, InputLogType> input_log;
 
     Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param, int difficulty_param,
            bool is_2p_param, const Modifiers& modifiers_param);

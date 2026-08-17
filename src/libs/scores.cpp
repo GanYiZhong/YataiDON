@@ -329,7 +329,7 @@ void ScoresManager::export_to_hiroba(const std::string& access_code, int player_
         s.drumroll  = sqlite3_column_int(stmt, 8);
         s.max_combo = sqlite3_column_int(stmt, 9);
 
-        std::unordered_map<double, InputLogType> input_log;
+        std::map<double, InputLogType> input_log;
         network.submit_score(hash, difficulty, access_code, s, input_log);
         count++;
     }

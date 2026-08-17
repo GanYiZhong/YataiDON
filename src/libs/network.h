@@ -31,8 +31,8 @@ public:
     bool is_online() const { return online; }
 
     std::string register_user(const std::string& username);
-    std::string map_to_json(const std::unordered_map<double, InputLogType>& my_map);
-    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::unordered_map<double, InputLogType> input_log);
+    std::string map_to_json(const std::map<double, InputLogType>& my_map);
+    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log);
 
     bool check_import_requested(const std::string& access_code);
     void clear_import_flag(const std::string& access_code);
