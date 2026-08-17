@@ -207,6 +207,8 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
             {"bad", params["bad"]},
             {"drumroll", params["drumroll"]},
             {"max_combo", params["max_combo"]},
+        },
+        cpr::Payload{
             {"input_log", map_to_json(input_log)},
         },
         cpr::Timeout{5000}
