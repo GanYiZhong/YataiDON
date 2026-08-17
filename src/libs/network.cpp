@@ -311,7 +311,7 @@ void NetworkClient::update(double current_ms) {
 #else
 
 std::string NetworkClient::register_user(const std::string&) { return ""; }
-void NetworkClient::submit_score(std::string&, int, const std::string&, Score) {}
+void NetworkClient::submit_score(std::string&, int, const std::string&, Score, std::map<double, InputLogType> input_log) {}
 bool NetworkClient::check_import_requested(const std::string&) { return false; }
 void NetworkClient::clear_import_flag(const std::string&) {}
 bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }
