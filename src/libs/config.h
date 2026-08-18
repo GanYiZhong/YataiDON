@@ -25,6 +25,7 @@ struct GeneralConfig {
     int player_1_id;
     int player_2_id;
     bool touch_input;
+    bool online_play;
 };
 
 

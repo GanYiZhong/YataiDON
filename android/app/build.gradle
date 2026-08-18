@@ -28,6 +28,7 @@ android {
             cmake {
                 arguments(
                     "-DANDROID_FFMPEG_PREFIX=${rootProject.file('../.android-ffmpeg').absolutePath}",
+                    "-DANDROID_OPENSSL_PREFIX=${rootProject.file('../.android-openssl').absolutePath}",
                     "-DANDROID_STL=c++_shared",
                     "-DANDROID_PLATFORM=android-29"
                 )

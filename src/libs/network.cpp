@@ -1,6 +1,7 @@
 #include "network.h"
 #include "scores.h"
 #include "color_utils.h"
+#include "global_data.h"
 #include "sha256.h"
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -12,6 +13,11 @@
 #include <cstdio>
 #include <map>
 #include <random>
+
+#if defined(NETWORK_ENABLED) && defined(__ANDROID__)
+#include <SDL3/SDL.h>
+#include <fstream>
+#endif
 
 NetworkClient network;
 
@@ -80,7 +86,54 @@ cpr::Header signed_headers(const std::string& method, const std::string& path,
     };
 }
 
+#if defined(__ANDROID__)
+// libcurl on Android has no system CA store to fall back on; extract the
+// bundled Mozilla cacert.pem (android/app/src/main/assets/cacert.pem) to a
+// real path once and point every request's CURLOPT_CAINFO at it.
+std::string ca_bundle_path() {
+    static const std::string path = [] {
+        const std::string out_path = "/sdcard/YataiDON/cacert.pem";
+        std::ifstream existing(out_path, std::ios::binary);
+        if (existing.good()) return out_path;
+
+        SDL_IOStream* io = SDL_IOFromFile("cacert.pem", "r");
+        if (!io) {
+            spdlog::error("Failed to open bundled cacert.pem asset");
+            return std::string{};
+        }
+        Sint64 size = SDL_GetIOSize(io);
+        if (size <= 0) {
+            SDL_CloseIO(io);
+            return std::string{};
+        }
+        std::string buf(static_cast<std::size_t>(size), '\0');
+        SDL_ReadIO(io, buf.data(), static_cast<std::size_t>(size));
+        SDL_CloseIO(io);
+
+        std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            spdlog::error("Failed to write cacert.pem to {}", out_path);
+            return std::string{};
+        }
+        out << buf;
+        return out_path;
+    }();
+    return path;
+}
+
+cpr::SslOptions android_ca() {
+    return cpr::Ssl(cpr::ssl::CaInfo{ca_bundle_path()});
+}
+#define NETWORK_CA_OPT , android_ca()
+#else
+#define NETWORK_CA_OPT
+#endif
+
 }  // namespace
+
+static bool network_enabled() {
+    return global_data.config && global_data.config->general.online_play;
+}
 
 static std::string network_url(const std::string& endpoint) {
     std::string base = NETWORK_URL;
@@ -94,14 +147,17 @@ void NetworkClient::check_heartbeat() {
         cpr::Url{network_url("/health")},
         signed_headers("GET", "/health", {}),
         cpr::Timeout{2000}
+        NETWORK_CA_OPT
     );
 }
 
 bool NetworkClient::check_import_requested(const std::string& access_code) {
+    if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
     if (response.status_code != 200) return false;
 
@@ -112,10 +168,12 @@ bool NetworkClient::check_import_requested(const std::string& access_code) {
 }
 
 bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3) {
+    if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
     if (response.status_code != 200) return false;
 
@@ -136,11 +194,13 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
 }
 
 void NetworkClient::clear_import_flag(const std::string& access_code) {
+    if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/clear_import_flag")},
         signed_headers("POST", "/clear_import_flag", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
     if (response.status_code != 200) {
         spdlog::error("Failed to clear import flag: HTTP {} - {}", response.status_code, response.text);
@@ -148,11 +208,13 @@ void NetworkClient::clear_import_flag(const std::string& access_code) {
 }
 
 std::string NetworkClient::register_user(const std::string& username) {
+    if (!network_enabled()) return "";
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/register_user")},
         signed_headers("POST", "/register_user", {{"username", username}}),
         cpr::Payload{{"username", username}},
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
     if (response.status_code != 200) {
         spdlog::error("Failed to register user: HTTP {} - {}", response.status_code, response.text);
@@ -179,6 +241,7 @@ std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_
 }
 
 void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log) {
+    if (!network_enabled()) return;
     std::map<std::string, std::string> params{
         {"access_code", access_code},
         {"hash", hash},
@@ -212,6 +275,7 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
             {"input_log", map_to_json(input_log)},
         },
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
     if (response.status_code != 200) {
         spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
@@ -219,11 +283,13 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
 }
 
 void NetworkClient::poll_song_jump(const std::string& access_code) {
+    if (!network_enabled()) return;
     if (pending_song_jump.has_value()) return;
     pending_song_jump = cpr::GetAsync(
         cpr::Url{network_url("/poll_song_jump")},
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
+        NETWORK_CA_OPT
     );
 }
 
@@ -235,6 +301,10 @@ std::optional<std::string> NetworkClient::take_song_jump_result() {
 }
 
 void NetworkClient::update(double current_ms) {
+    if (!network_enabled()) {
+        online = false;
+        return;
+    }
     if (current_ms - last_heartbeat_ms >= HEARTBEAT_INTERVAL_MS) {
         last_heartbeat_ms = current_ms;
         check_heartbeat();

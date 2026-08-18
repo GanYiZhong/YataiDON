@@ -23,6 +23,7 @@ judge_counter = false
 language = 'en'
 log_level = "info"
 nijiiro_notes = false
+online_play = false
 player_1_id = 1
 player_2_id = 2
 practice_mode_bar_delay = 1

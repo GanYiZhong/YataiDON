@@ -218,6 +218,7 @@ Config get_config() {
         config.general.player_1_id = (*general)["player_1_id"].value_or(1);
         config.general.player_2_id = (*general)["player_2_id"].value_or(1);
         config.general.touch_input = (*general)["touch_input"].value_or(false);
+        config.general.online_play = (*general)["online_play"].value_or(false);
     }
 
     // Parse paths
@@ -349,7 +350,8 @@ void save_config(const Config& config) {
         {"webcam_number", config.general.webcam_number},
         {"player_1_id", config.general.player_1_id},
         {"player_2_id", config.general.player_2_id},
-        {"touch_input", config.general.touch_input}
+        {"touch_input", config.general.touch_input},
+        {"online_play", config.general.online_play}
     });
 
     // Paths

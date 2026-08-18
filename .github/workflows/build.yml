@@ -404,6 +404,11 @@ jobs:
           export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724
           bash tools/build_ffmpeg_android.sh
 
+      - name: Build OpenSSL for Android
+        run: |
+          export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724
+          bash tools/build_openssl_android.sh
+
       - name: Cache CMake dependencies
         uses: actions/cache@v4
         with:

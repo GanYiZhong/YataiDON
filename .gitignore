@@ -23,6 +23,7 @@ YataiDON.exe
 /android/app/.cxx/
 /build-android-arm64
 /.android-ffmpeg
+/.android-openssl
 YataiDON.data
 YataiDON.html
 YataiDON.js
