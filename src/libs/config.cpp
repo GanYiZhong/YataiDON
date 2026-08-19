@@ -192,83 +192,71 @@ Config get_config() {
     try {
         config_file = toml::parse_file(config_path.string());
     } catch (const toml::parse_error& err) {
-        throw std::runtime_error("Failed to parse config file: " +
-                                std::string(err.what()));
+        spdlog::error("Failed to parse {}: {} -- using defaults", config_path.string(), err.what());
     }
 
-    Config config;
+    Config config{};
 
-    // Parse general config
-    if (auto general = config_file["general"].as_table()) {
-        config.general.access_code = (*general)["access_code"].value_or("");
-        config.general.fps_counter = (*general)["fps_counter"].value_or(false);
-        config.general.audio_offset = (*general)["audio_offset"].value_or(0);
-        config.general.visual_offset = (*general)["visual_offset"].value_or(0);
-        config.general.language = (*general)["language"].value_or("en");
-        config.general.timer_frozen = (*general)["timer_frozen"].value_or(false);
-        config.general.song_timer = (*general)["song_timer"].value_or(false);
-        config.general.judge_counter = (*general)["judge_counter"].value_or(false);
-        config.general.nijiiro_notes = (*general)["nijiiro_notes"].value_or(false);
-        config.general.log_level = (*general)["log_level"].value_or(2);
-        config.general.practice_mode_bar_delay = (*general)["practice_mode_bar_delay"].value_or(0);
-        config.general.score_method = (*general)["score_method"].value_or("standard");
-        config.general.display_bpm = (*general)["display_bpm"].value_or(false);
-        config.general.song_limit = (*general)["song_limit"].value_or(0);
-        config.general.webcam_number = (*general)["webcam_number"].value_or(-1);
-        config.general.player_1_id = (*general)["player_1_id"].value_or(1);
-        config.general.player_2_id = (*general)["player_2_id"].value_or(1);
-        config.general.touch_input = (*general)["touch_input"].value_or(false);
-        config.general.online_play = (*general)["online_play"].value_or(false);
-    }
+    config.general.access_code = config_file["general"]["access_code"].value_or("");
+    config.general.fps_counter = config_file["general"]["fps_counter"].value_or(false);
+    config.general.audio_offset = config_file["general"]["audio_offset"].value_or(0);
+    config.general.visual_offset = config_file["general"]["visual_offset"].value_or(0);
+    config.general.language = config_file["general"]["language"].value_or("en");
+    config.general.timer_frozen = config_file["general"]["timer_frozen"].value_or(false);
+    config.general.song_timer = config_file["general"]["song_timer"].value_or(false);
+    config.general.judge_counter = config_file["general"]["judge_counter"].value_or(false);
+    config.general.nijiiro_notes = config_file["general"]["nijiiro_notes"].value_or(false);
+    config.general.log_level = config_file["general"]["log_level"].value_or(2);
+    config.general.practice_mode_bar_delay = config_file["general"]["practice_mode_bar_delay"].value_or(0);
+    config.general.score_method = config_file["general"]["score_method"].value_or("standard");
+    config.general.display_bpm = config_file["general"]["display_bpm"].value_or(false);
+    config.general.song_limit = config_file["general"]["song_limit"].value_or(0);
+    config.general.webcam_number = config_file["general"]["webcam_number"].value_or(-1);
+    config.general.player_1_id = config_file["general"]["player_1_id"].value_or(1);
+    config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
+    config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
+    config.general.online_play = config_file["general"]["online_play"].value_or(false);
 
     // Parse paths
-    if (auto paths = config_file["paths"].as_table()) {
-        if (auto tja_path = (*paths)["tja_path"].as_array()) {
-            config.paths.tja_path = parsePathArray(*tja_path);
-        }
-        config.paths.skin = fs::path((*paths)["skin"].value_or("default"));
+    if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
+        config.paths.tja_path = parsePathArray(*tja_path);
     }
+    config.paths.skin = fs::path(config_file["paths"]["skin"].value_or("PyTaikoGreen"));
 
     // Parse keys (converting from strings to key codes)
-    if (auto keys = config_file["keys"].as_table()) {
-        config.keys.exit_key = getKeyCode((*keys)["exit_key"].value_or("escape"));
-        config.keys.fullscreen_key = getKeyCode((*keys)["fullscreen_key"].value_or("f11"));
-        config.keys.borderless_key = getKeyCode((*keys)["borderless_key"].value_or("f10"));
-        config.keys.pause_key = getKeyCode((*keys)["pause_key"].value_or("p"));
-        config.keys.back_key = getKeyCode((*keys)["back_key"].value_or("escape"));
-        config.keys.restart_key = getKeyCode((*keys)["restart_key"].value_or("r"));
-    }
+    config.keys.exit_key = getKeyCode(config_file["keys"]["exit_key"].value_or("escape"));
+    config.keys.fullscreen_key = getKeyCode(config_file["keys"]["fullscreen_key"].value_or("f11"));
+    config.keys.borderless_key = getKeyCode(config_file["keys"]["borderless_key"].value_or("f10"));
+    config.keys.pause_key = getKeyCode(config_file["keys"]["pause_key"].value_or("p"));
+    config.keys.back_key = getKeyCode(config_file["keys"]["back_key"].value_or("escape"));
+    config.keys.restart_key = getKeyCode(config_file["keys"]["restart_key"].value_or("r"));
 
     // Parse keys_1p
-    if (auto keys_1p = config_file["keys_1p"].as_table()) {
-        if (auto left_kat = (*keys_1p)["left_kat"].as_array()) {
-            config.keys_1p.left_kat = parseKeyArray(*left_kat);
-        }
-        if (auto left_don = (*keys_1p)["left_don"].as_array()) {
-            config.keys_1p.left_don = parseKeyArray(*left_don);
-        }
-        if (auto right_don = (*keys_1p)["right_don"].as_array()) {
-            config.keys_1p.right_don = parseKeyArray(*right_don);
-        }
-        if (auto right_kat = (*keys_1p)["right_kat"].as_array()) {
-            config.keys_1p.right_kat = parseKeyArray(*right_kat);
-        }
+    if (auto left_kat = config_file["keys_1p"]["left_kat"].as_array()) {
+        config.keys_1p.left_kat = parseKeyArray(*left_kat);
+    }
+    if (auto left_don = config_file["keys_1p"]["left_don"].as_array()) {
+        config.keys_1p.left_don = parseKeyArray(*left_don);
+    }
+    if (auto right_don = config_file["keys_1p"]["right_don"].as_array()) {
+        config.keys_1p.right_don = parseKeyArray(*right_don);
+    }
+    if (auto right_kat = config_file["keys_1p"]["right_kat"].as_array()) {
+        config.keys_1p.right_kat = parseKeyArray(*right_kat);
     }
 
     // Parse keys_2p
-    if (auto keys_2p = config_file["keys_2p"].as_table()) {
-        if (auto left_kat = (*keys_2p)["left_kat"].as_array()) {
-            config.keys_2p.left_kat = parseKeyArray(*left_kat);
-        }
-        if (auto left_don = (*keys_2p)["left_don"].as_array()) {
-            config.keys_2p.left_don = parseKeyArray(*left_don);
-        }
-        if (auto right_don = (*keys_2p)["right_don"].as_array()) {
-            config.keys_2p.right_don = parseKeyArray(*right_don);
-        }
-        if (auto right_kat = (*keys_2p)["right_kat"].as_array()) {
-            config.keys_2p.right_kat = parseKeyArray(*right_kat);
-        }
+    if (auto left_kat = config_file["keys_2p"]["left_kat"].as_array()) {
+        config.keys_2p.left_kat = parseKeyArray(*left_kat);
+    }
+    if (auto left_don = config_file["keys_2p"]["left_don"].as_array()) {
+        config.keys_2p.left_don = parseKeyArray(*left_don);
+    }
+    if (auto right_don = config_file["keys_2p"]["right_don"].as_array()) {
+        config.keys_2p.right_don = parseKeyArray(*right_don);
+    }
+    if (auto right_kat = config_file["keys_2p"]["right_kat"].as_array()) {
+        config.keys_2p.right_kat = parseKeyArray(*right_kat);
     }
 
     // Parse gamepad_1p (fallback to legacy [gamepad] if missing)
@@ -287,40 +275,32 @@ Config get_config() {
     }
 
     // Parse gamepad_2p
-    if (auto gamepad_2p = config_file["gamepad_2p"].as_table()) {
-        if (auto left_kat = (*gamepad_2p)["left_kat"].as_array())
-            config.gamepad_2p.left_kat = parseIntArray(*left_kat);
-        if (auto left_don = (*gamepad_2p)["left_don"].as_array())
-            config.gamepad_2p.left_don = parseIntArray(*left_don);
-        if (auto right_don = (*gamepad_2p)["right_don"].as_array())
-            config.gamepad_2p.right_don = parseIntArray(*right_don);
-        if (auto right_kat = (*gamepad_2p)["right_kat"].as_array())
-            config.gamepad_2p.right_kat = parseIntArray(*right_kat);
-    }
+    if (auto left_kat = config_file["gamepad_2p"]["left_kat"].as_array())
+        config.gamepad_2p.left_kat = parseIntArray(*left_kat);
+    if (auto left_don = config_file["gamepad_2p"]["left_don"].as_array())
+        config.gamepad_2p.left_don = parseIntArray(*left_don);
+    if (auto right_don = config_file["gamepad_2p"]["right_don"].as_array())
+        config.gamepad_2p.right_don = parseIntArray(*right_don);
+    if (auto right_kat = config_file["gamepad_2p"]["right_kat"].as_array())
+        config.gamepad_2p.right_kat = parseIntArray(*right_kat);
 
     // Parse audio
-    if (auto audio = config_file["audio"].as_table()) {
-        config.audio.device_type   = (*audio)["device_type"].value_or(0);
-        config.audio.sample_rate   = (*audio)["sample_rate"].value_or(44100);
-        config.audio.buffer_size   = (*audio)["buffer_size"].value_or(512);
-    }
+    config.audio.device_type = config_file["audio"]["device_type"].value_or(0);
+    config.audio.sample_rate = config_file["audio"]["sample_rate"].value_or(44100);
+    config.audio.buffer_size = config_file["audio"]["buffer_size"].value_or(512);
 
     // Parse volume
-    if (auto volume = config_file["volume"].as_table()) {
-        config.volume.sound = (*volume)["sound"].value_or(1.0);
-        config.volume.music = (*volume)["music"].value_or(1.0);
-        config.volume.voice = (*volume)["voice"].value_or(1.0);
-        config.volume.hitsound = (*volume)["hitsound"].value_or(1.0);
-        config.volume.attract_mode = (*volume)["attract_mode"].value_or(1.0);
-    }
+    config.volume.sound = config_file["volume"]["sound"].value_or(1.0);
+    config.volume.music = config_file["volume"]["music"].value_or(1.0);
+    config.volume.voice = config_file["volume"]["voice"].value_or(1.0);
+    config.volume.hitsound = config_file["volume"]["hitsound"].value_or(1.0);
+    config.volume.attract_mode = config_file["volume"]["attract_mode"].value_or(1.0);
 
     // Parse video
-    if (auto video = config_file["video"].as_table()) {
-        config.video.fullscreen = (*video)["fullscreen"].value_or(false);
-        config.video.borderless = (*video)["borderless"].value_or(false);
-        config.video.target_fps = (*video)["target_fps"].value_or(60);
-        config.video.vsync = (*video)["vsync"].value_or(true);
-    }
+    config.video.fullscreen = config_file["video"]["fullscreen"].value_or(false);
+    config.video.borderless = config_file["video"]["borderless"].value_or(false);
+    config.video.target_fps = config_file["video"]["target_fps"].value_or(60);
+    config.video.vsync = config_file["video"]["vsync"].value_or(true);
 
     return config;
 }
@@ -452,12 +432,24 @@ void save_config(const Config& config) {
         {"vsync", config.video.vsync}
     });
 
-    // Write to file
-    std::ofstream ofs(config_path);
-    if (!ofs.is_open()) {
-        spdlog::error("Failed to save config.toml");
-        return;
+    fs::path tmp_path = config_path;
+    tmp_path += ".tmp";
+    {
+        std::ofstream ofs(tmp_path, std::ios::trunc);
+        if (!ofs.is_open()) {
+            spdlog::error("Failed to save config.toml");
+            return;
+        }
+        ofs << config_table;
+        if (!ofs.good()) {
+            spdlog::error("Failed to write config.toml");
+            return;
+        }
     }
 
-    ofs << config_table;
+    std::error_code ec;
+    fs::rename(tmp_path, config_path, ec);
+    if (ec) {
+        spdlog::error("Failed to save config.toml: {}", ec.message());
+    }
 };
