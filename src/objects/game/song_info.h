@@ -20,11 +20,12 @@ private:
     int genre;
     FadeAnimation* fade;
     std::unique_ptr<OutlinedText> song_title;
+    std::unique_ptr<OutlinedText> song_subtitle;
     std::unique_ptr<SongNum> song_num;
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, int genre, int song_num);
+    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num);
 
     void update(double current_ms);
     void draw();

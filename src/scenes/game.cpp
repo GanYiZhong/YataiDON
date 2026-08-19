@@ -52,7 +52,7 @@ void GameScreen::on_screen_start() {
     init_tja(session_data.selected_song);
     spdlog::info("TJA initialized for song: {}", session_data.selected_song.string());
     load_hitsounds();
-    song_info = SongInfo(session_data.song_title, session_data.genre_index, global_data.songs_played + 1);
+    song_info = SongInfo(session_data.song_title, session_data.song_subtitle, parser->metadata.subtitle_full_display, session_data.genre_index, global_data.songs_played + 1);
     result_transition = ResultTransition(global_data.player_num);
     bpm = parser->metadata.bpm;
     scene_preset = parser->metadata.scene_preset;
@@ -130,6 +130,7 @@ void GameScreen::init_tja(fs::path song) {
 
     global_data.session_data[(int)global_data.player_num].song_title = titles.count(lang) ? titles.at(lang) : titles.count("en") ? titles.at("en") : titles.empty() ? "" : titles.begin()->second;
     global_data.session_data[(int)global_data.player_num].song_subtitle = subtitles.count(lang) ? subtitles.at(lang) : "";
+    global_data.session_data[(int)global_data.player_num].song_subtitle_full_display = parser->metadata.subtitle_full_display;
 
     if (fs::exists(parser->metadata.wave) && !song_music.has_value() && !pending_song_load.valid()) {
         fs::path wave = parser->metadata.wave;

@@ -106,6 +106,7 @@ struct SessionData {
     int selected_difficulty = 0;
     std::string song_title = "default_title";
     std::string song_subtitle = "default_subtitle";
+    bool song_subtitle_full_display = false;
     int genre_index = 0;
     ResultData result_data;
     DanResultData dan_result_data;
