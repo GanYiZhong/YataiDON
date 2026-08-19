@@ -337,6 +337,26 @@ void ScoresManager::export_to_hiroba(const std::string& access_code, int player_
     spdlog::info("export_to_hiroba: submitted {} scores", count);
 }
 
+int ScoresManager::sync_from_server(const std::string& access_code) {
+    if (access_code.empty()) return 0;
+
+    int updated = 0;
+    for (RemoteScore& rs : network.fetch_scores(access_code)) {
+        auto local = get_score(rs.hash, rs.difficulty, player_1);
+        bool differs = !local ||
+            local->score != rs.score.score || local->good != rs.score.good ||
+            local->ok != rs.score.ok || local->bad != rs.score.bad ||
+            local->drumroll != rs.score.drumroll || local->max_combo != rs.score.max_combo ||
+            local->crown != rs.score.crown || local->rank != rs.score.rank;
+        if (differs) {
+            save_score(rs.hash, rs.difficulty, player_1, rs.score);
+            updated++;
+        }
+    }
+    spdlog::info("sync_from_server: updated {} scores from hiroba", updated);
+    return updated;
+}
+
 std::optional<Score> ScoresManager::get_score(std::string& hash, int difficulty, int player_id) {
     auto it = score_cache.find(std::make_tuple(hash, difficulty, player_id));
     if (it != score_cache.end()) return it->second;

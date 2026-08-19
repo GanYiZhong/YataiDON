@@ -197,7 +197,6 @@ Config get_config() {
 
     Config config{};
 
-    config.general.access_code = config_file["general"]["access_code"].value_or("");
     config.general.fps_counter = config_file["general"]["fps_counter"].value_or(false);
     config.general.audio_offset = config_file["general"]["audio_offset"].value_or(0);
     config.general.visual_offset = config_file["general"]["visual_offset"].value_or(0);
@@ -215,7 +214,10 @@ Config get_config() {
     config.general.player_1_id = config_file["general"]["player_1_id"].value_or(1);
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
-    config.general.online_play = config_file["general"]["online_play"].value_or(false);
+
+    config.network.access_code = config_file["network"]["access_code"].value_or("");
+    config.network.online_play = config_file["network"]["online_play"].value_or(false);
+    config.network.sync_scores = config_file["network"]["sync_scores"].value_or(false);
 
     // Parse paths
     if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
@@ -314,7 +316,6 @@ void save_config(const Config& config) {
 
     // General
     config_table.insert("general", toml::table{
-        {"access_code", config.general.access_code},
         {"fps_counter", config.general.fps_counter},
         {"audio_offset", config.general.audio_offset},
         {"visual_offset", config.general.visual_offset},
@@ -330,8 +331,14 @@ void save_config(const Config& config) {
         {"webcam_number", config.general.webcam_number},
         {"player_1_id", config.general.player_1_id},
         {"player_2_id", config.general.player_2_id},
-        {"touch_input", config.general.touch_input},
-        {"online_play", config.general.online_play}
+        {"touch_input", config.general.touch_input}
+    });
+
+    // Network
+    config_table.insert("network", toml::table{
+        {"access_code", config.network.access_code},
+        {"online_play", config.network.online_play},
+        {"sync_scores", config.network.sync_scores}
     });
 
     // Paths

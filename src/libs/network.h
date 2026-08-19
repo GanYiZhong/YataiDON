@@ -24,6 +24,12 @@ enum class InputLogType {
     KAT_R = 3
 };
 
+struct RemoteScore {
+    std::string hash;
+    int difficulty;
+    Score score;
+};
+
 class NetworkClient {
 public:
     void update(double current_ms);
@@ -39,8 +45,16 @@ public:
 
     bool fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3);
 
+    bool fetch_username(const std::string& access_code, std::string& username);
+    void update_username(const std::string& access_code, const std::string& username);
+
+    bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
+    void update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume);
+
     void poll_song_jump(const std::string& access_code);
     std::optional<std::string> take_song_jump_result();
+
+    std::vector<RemoteScore> fetch_scores(const std::string& access_code);
 
 private:
     void check_heartbeat();

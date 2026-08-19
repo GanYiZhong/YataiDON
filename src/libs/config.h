@@ -7,7 +7,6 @@
 namespace fs = std::filesystem;
 
 struct GeneralConfig {
-    std::string access_code;
     bool fps_counter;
     int audio_offset;
     int visual_offset;
@@ -25,9 +24,13 @@ struct GeneralConfig {
     int player_1_id;
     int player_2_id;
     bool touch_input;
-    bool online_play;
 };
 
+struct NetworkConfig {
+    std::string access_code;
+    bool online_play;
+    bool sync_scores;
+};
 
 struct PathsConfig {
     std::vector<fs::path> tja_path;
@@ -88,6 +91,7 @@ struct VideoConfig {
 
 struct Config {
     GeneralConfig general;
+    NetworkConfig network;
     PathsConfig paths;
     KeysConfig keys;
     Keys1PConfig keys_1p;
