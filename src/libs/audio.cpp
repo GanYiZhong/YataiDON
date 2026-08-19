@@ -1,5 +1,23 @@
 #include "audio.h"
+#ifdef SUPPORT_FUMEN
+#include "optional/nus3bank.h"
+#include "optional/nub.h"
+#include "optional/gen4.h"
+#endif
 #include "texture.h"
+
+// Both arcade bank formats decode to the same shape; the extension says which
+// era the container is from.
+#ifdef SUPPORT_FUMEN
+static bool is_bank_file(const fs::path& p) {
+    auto ext = p.extension();
+    return ext == ".nus3bank" || ext == ".nub";
+}
+static bool decode_bank(const fs::path& p, gen4::DecodedAudio& out) {
+    return p.extension() == ".nub" ? gen3::decode_nub(p, out)
+                                   : gen4::decode_nus3bank(p, out);
+}
+#endif
 #ifdef __ANDROID__
 extern "C" {
 #include <libavformat/avformat.h>
@@ -641,8 +659,74 @@ std::string AudioEngine::path_to_string(const fs::path& path) const {
     return path.string();
 }
 
+// A decoded buffer handed over as raw float PCM, resampled to the device rate
+// if it does not already match. Returns null on failure; frames and rate are
+// updated in place.
+static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
+                                unsigned int& frames, unsigned int& rate,
+                                double target_rate,
+                                int converter = SRC_SINC_FASTEST) {
+    float* data = new float[samples.size()];
+    std::memcpy(data, samples.data(), samples.size() * sizeof(float));
+
+    if ((double)rate == target_rate) return data;
+
+    double ratio = target_rate / (double)rate;
+    long out_frames = (long)(frames * ratio) + 1;
+    float* resampled = new float[(size_t)out_frames * channels];
+    SRC_DATA sd{};
+    sd.data_in = data;          sd.input_frames = frames;
+    sd.data_out = resampled;    sd.output_frames = out_frames;
+    sd.src_ratio = ratio;       sd.end_of_input = 1;
+    int err = src_simple(&sd, converter, channels);
+    delete[] data;
+    if (err) {
+        delete[] resampled;
+        spdlog::error("Resampling a decoded stream failed: {}", src_strerror(err));
+        return nullptr;
+    }
+    frames = (unsigned int)sd.output_frames_gen;
+    rate   = (unsigned int)target_rate;
+    return resampled;
+}
+
 std::string AudioEngine::load_sound(const fs::path& file_path, const std::string& name) {
     try {
+#ifdef SUPPORT_FUMEN
+        if (is_bank_file(file_path)) {
+            gen4::DecodedAudio decoded;
+            if (!decode_bank(file_path, decoded)) return "";
+
+            unsigned int frames = (unsigned int)decoded.frame_count();
+            unsigned int rate   = (unsigned int)decoded.sample_rate;
+            float* data = adopt_decoded_pcm(decoded.samples, decoded.channels,
+                                            frames, rate, target_sample_rate);
+            if (!data) return "";
+
+            sound snd;
+            snd.data            = data;
+            snd.frame_count     = frames;
+            snd.sample_rate     = rate;
+            snd.channels        = decoded.channels;
+            snd.is_playing      = false;
+            snd.current_frame   = 0;
+            snd.loop            = false;
+            snd.volume          = 1.0f;
+            snd.pan             = 0.5f;
+            snd.pitch           = 1.0f;
+            snd.frame_frac      = 0.0f;
+            snd.resampler       = nullptr;
+            snd.resample_buffer = nullptr;
+            {
+                std::unique_lock<std::shared_mutex> guard(rw_lock);
+                sounds[name] = snd;
+            }
+            spdlog::info("Loaded sound (G.719): {} ({} frames, {} Hz, {} ch)",
+                         name, frames, rate, snd.channels);
+            return name;
+        }
+#endif
+
         SF_INFO file_info;
         std::memset(&file_info, 0, sizeof(SF_INFO));
 
@@ -975,8 +1059,73 @@ void AudioEngine::seek_sound(const std::string& name, float position) {
     }
 }
 
+bool AudioEngine::prepare_nus3bank_pcm(const fs::path& file_path, PreparedPCM& out,
+                                       bool quick_resample) {
+#ifdef SUPPORT_FUMEN
+    gen4::DecodedAudio decoded;
+    if (!decode_bank(file_path, decoded)) return false;
+
+    unsigned int frames = (unsigned int)decoded.frame_count();
+    unsigned int rate   = (unsigned int)decoded.sample_rate;
+    float* data = adopt_decoded_pcm(decoded.samples, decoded.channels,
+                                    frames, rate, target_sample_rate,
+                                    quick_resample ? SRC_LINEAR : SRC_SINC_FASTEST);
+    if (!data) return false;
+
+    out.data.reset(data);
+    out.frames      = frames;
+    out.rate        = rate;
+    out.channels    = decoded.channels;
+    out.preview_ms  = decoded.preview_ms;
+    out.source_path = file_path.string();
+    return true;
+#else
+    (void)file_path; (void)out; (void)quick_resample;
+    return false;
+#endif
+}
+
+std::string AudioEngine::load_music_stream_prepared(PreparedPCM&& pcm, const std::string& name) {
+    if (!pcm.data || pcm.frames == 0 || pcm.channels <= 0) return "";
+
+    music mus{};
+    mus.file_handle        = nullptr;
+    mus.file_info.channels = pcm.channels;
+    mus.file_info.samplerate = (int)pcm.rate;
+    mus.file_path          = pcm.source_path;
+    mus.pcm_data           = pcm.data.release();
+    mus.pcm_total_frames   = pcm.frames;
+    mus.buffer_size        = 4096;
+    mus.stream_buffer      = new float[mus.buffer_size * pcm.channels];
+    mus.buffer_position    = 0;
+    mus.frames_in_buffer   = 0;
+    mus.is_playing         = false;
+    mus.current_frame      = 0;
+    mus.loop               = false;
+    mus.volume             = 1.0f;
+    mus.pan                = 0.5f;
+    mus.pitch              = 1.0f;
+    mus.resampler          = nullptr;
+    mus.resample_buffer    = nullptr;
+    {
+        std::unique_lock<std::shared_mutex> guard(rw_lock);
+        music_streams[name] = mus;
+    }
+    spdlog::info("Loaded music stream (G.719): {} ({} frames, {} Hz, {} ch)",
+                 name, pcm.frames, pcm.rate, pcm.channels);
+    return name;
+}
+
 std::string AudioEngine::load_music_stream(const fs::path& file_path, const std::string& name) {
     try {
+#ifdef SUPPORT_FUMEN
+        if (is_bank_file(file_path)) {
+            PreparedPCM pcm;
+            if (!prepare_nus3bank_pcm(file_path, pcm)) return "";
+            return load_music_stream_prepared(std::move(pcm), name);
+        }
+#endif
+
         SF_INFO file_info;
         std::memset(&file_info, 0, sizeof(SF_INFO));
 
