@@ -343,12 +343,10 @@ int ScoresManager::sync_from_server(const std::string& access_code) {
     int updated = 0;
     for (RemoteScore& rs : network.fetch_scores(access_code)) {
         auto local = get_score(rs.hash, rs.difficulty, player_1);
-        bool differs = !local ||
-            local->score != rs.score.score || local->good != rs.score.good ||
-            local->ok != rs.score.ok || local->bad != rs.score.bad ||
-            local->drumroll != rs.score.drumroll || local->max_combo != rs.score.max_combo ||
-            local->crown != rs.score.crown || local->rank != rs.score.rank;
-        if (differs) {
+        bool remote_is_better = !local ||
+            rs.score.crown > local->crown ||
+            (rs.score.crown == local->crown && rs.score.score > local->score);
+        if (remote_is_better) {
             save_score(rs.hash, rs.difficulty, player_1, rs.score);
             updated++;
         }
