@@ -215,9 +215,12 @@ Config get_config() {
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
 
-    config.network.access_code = config_file["network"]["access_code"].value_or("");
-    config.network.online_play = config_file["network"]["online_play"].value_or(false);
-    config.network.sync_scores = config_file["network"]["sync_scores"].value_or(false);
+    config.network.access_code = config_file["network"]["access_code"].value_or(
+        config_file["general"]["access_code"].value_or(""));
+    config.network.online_play = config_file["network"]["online_play"].value_or(
+        config_file["general"]["online_play"].value_or(false));
+    config.network.sync_scores = config_file["network"]["sync_scores"].value_or(
+        config_file["general"]["sync_scores_on_launch"].value_or(false));
 
     // Parse paths
     if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
