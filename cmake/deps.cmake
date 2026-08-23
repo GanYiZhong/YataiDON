@@ -469,33 +469,30 @@ endif()
 # Ericsson/Polycom copyright, so they are fetched at build time and never
 # vendored into this tree; the repository has no CMake build of its own, so the
 # targets are declared here.
-option(YATAIDON_G719 "Build G.719 audio support for gen 4 arcade data" OFF)
-if(YATAIDON_G719)
-  FetchContent_Declare(
-    libg719
-    GIT_REPOSITORY https://github.com/kode54/libg719_decode.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE
-  )
-  FetchContent_Populate(libg719)
+FetchContent_Declare(
+  libg719
+  GIT_REPOSITORY https://github.com/kode54/libg719_decode.git
+  GIT_TAG master
+  GIT_SHALLOW TRUE
+)
+FetchContent_Populate(libg719)
 
-  file(GLOB G719_SOURCES
-       ${libg719_SOURCE_DIR}/g719.c
-       ${libg719_SOURCE_DIR}/reference_code/common/*.c
-       ${libg719_SOURCE_DIR}/reference_code/decoder/*.c)
+file(GLOB G719_SOURCES
+     ${libg719_SOURCE_DIR}/g719.c
+     ${libg719_SOURCE_DIR}/reference_code/common/*.c
+     ${libg719_SOURCE_DIR}/reference_code/decoder/*.c)
 
-  add_library(g719 STATIC ${G719_SOURCES})
-  target_include_directories(g719 PUBLIC
-                             ${libg719_SOURCE_DIR}
-                             ${libg719_SOURCE_DIR}/reference_code/include)
-  set_target_properties(g719 PROPERTIES C_STANDARD 99)
-  # Its stack_alloc.h refuses to compile until one of the two temporary
-  # allocation modes is picked. VAR_ARRAYS uses C99 variable length arrays,
-  # which every compiler we target has, and unlike alloca it needs no
-  # platform header.
-  target_compile_definitions(g719 PRIVATE VAR_ARRAYS)
-  if(NOT MSVC)
-    # Reference code, not ours to tidy: keep its warnings out of our build log.
-    target_compile_options(g719 PRIVATE -w)
-  endif()
+add_library(g719 STATIC ${G719_SOURCES})
+target_include_directories(g719 PUBLIC
+                           ${libg719_SOURCE_DIR}
+                           ${libg719_SOURCE_DIR}/reference_code/include)
+set_target_properties(g719 PROPERTIES C_STANDARD 99)
+# Its stack_alloc.h refuses to compile until one of the two temporary
+# allocation modes is picked. VAR_ARRAYS uses C99 variable length arrays,
+# which every compiler we target has, and unlike alloca it needs no
+# platform header.
+target_compile_definitions(g719 PRIVATE VAR_ARRAYS)
+if(NOT MSVC)
+  # Reference code, not ours to tidy: keep its warnings out of our build log.
+  target_compile_options(g719 PRIVATE -w)
 endif()

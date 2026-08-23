@@ -5,11 +5,9 @@
 #include <cstring>
 #include <fstream>
 
-#ifdef YATAIDON_G719
 extern "C" {
 #include <g719.h>
 }
-#endif
 
 namespace gen4 {
 
@@ -237,11 +235,7 @@ bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size
 }  // namespace
 
 bool audio_supported() {
-#ifdef YATAIDON_G719
     return true;
-#else
-    return false;
-#endif
 }
 
 bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
@@ -269,11 +263,6 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
         return true;
     }
 
-#ifndef YATAIDON_G719
-    spdlog::warn("gen4 audio: {} needs G.719 support, which this build does not have",
-                 path.filename().string());
-    return false;
-#else
     Bnsf info;
     if (!parse_container(file, pack, pack_size, info)) return false;
 
@@ -329,7 +318,6 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
     spdlog::debug("gen4 audio: {} decoded, {} frames, {} Hz, {} ch",
                   path.filename().string(), out.frame_count(), out.sample_rate, out.channels);
     return true;
-#endif
 }
 
 }  // namespace gen4

@@ -3,10 +3,8 @@
 // The audio of the gen 4 arcade games: .nus3bank containers holding a BNSF
 // stream tagged IS22, which is ITU-T G.719 (Siren 22) at 48 kHz.
 //
-// FFmpeg and libsndfile both have no G.719 decoder, so this is only built when
-// YATAIDON_G719 is on, which fetches one at build time. Without it the
-// functions still exist and report that the format is not supported, so
-// callers need no conditional compilation of their own.
+// FFmpeg and libsndfile both have no G.719 decoder, so one is fetched at
+// build time (see cmake/deps.cmake) and linked in unconditionally.
 
 #include <cstdint>
 #include <filesystem>
@@ -29,9 +27,8 @@ struct DecodedAudio {
 // True when this build can decode .nus3bank audio at all.
 bool audio_supported();
 
-// Decodes the first audio stream of a .nus3bank. Returns false and logs why on
-// a container it cannot read, an unsupported codec tag, or a build without
-// decoder support.
+// Decodes the first audio stream of a .nus3bank. Returns false and logs why
+// on a container it cannot read or an unsupported codec tag.
 bool decode_nus3bank(const fs::path& path, DecodedAudio& out);
 
 }  // namespace gen4

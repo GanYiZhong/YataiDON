@@ -145,12 +145,7 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE portaudio)
 
-# G.719 support is optional: without it the gen 4 arcade songs still load and
-# play, they are simply silent.
-if(YATAIDON_G719)
-  target_link_libraries(${PROJECT_NAME} PRIVATE g719)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE YATAIDON_G719)
-endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE g719)
 
 include(cmake/platform.cmake)
 
