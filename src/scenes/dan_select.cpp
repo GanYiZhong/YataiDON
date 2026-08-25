@@ -5,6 +5,7 @@
 #include "../libs/filesystem.h"
 #include <filesystem>
 #include <cmath>
+#include <algorithm>
 
 int DanNavigator::total_notes_for(const std::vector<DanSongEntry>& songs) {
     int total = 0;
@@ -103,6 +104,11 @@ void DanNavigator::init(const std::vector<fs::path>& song_paths) {
     };
 
     if (boxes.empty()) { spdlog::warn("DanNavigator: no dan courses found"); return; }
+
+    std::sort(boxes.begin(), boxes.end(),
+        [](const std::unique_ptr<DanBox>& a, const std::unique_ptr<DanBox>& b) {
+            return a->path < b->path;
+        });
 
     set_positions(true, 0);
     boxes[selected_index]->expand_box();
