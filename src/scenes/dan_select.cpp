@@ -203,7 +203,8 @@ void DanSelectScreen::on_screen_start() {
     is_confirmed = false;
     last_moved   = 0;
 
-    dan_navigator.init(global_data.config->paths.tja_path);
+    fs::path dan_folder = global_data.session_data[(int)global_data.player_num].selected_dan_folder;
+    dan_navigator.init({dan_folder});
 }
 
 Screens DanSelectScreen::on_screen_end(Screens next_screen) {
