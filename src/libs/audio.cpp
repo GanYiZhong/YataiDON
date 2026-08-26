@@ -392,7 +392,7 @@ bool AudioEngine::init_rtaudio_device(RtAudio::Api api, const char* label) {
     RtAudio::StreamParameters params;
     params.deviceId     = rt_audio->getDefaultOutputDevice();
     params.nChannels    = 2;
-    params.firstChannel = 0;
+    params.firstChannel = static_cast<unsigned int>(channel_offset);
 
     unsigned int bufferFrames = static_cast<unsigned int>(buffer_size);
 
@@ -426,7 +426,7 @@ bool AudioEngine::init_rtaudio_device(RtAudio::Api api, const char* label) {
     spdlog::info("    > Backend:       RtAudio | {}", label);
     spdlog::info("    > Device:        {}", dev_info.name);
     spdlog::info("    > Format:        Float32");
-    spdlog::info("    > Channels:      2");
+    spdlog::info("    > Channels:      2 (offset {})", params.firstChannel);
     spdlog::info("    > Sample rate:   {} Hz", rt_audio->getStreamSampleRate());
     spdlog::info("    > Buffer size:   {} frames (actual)", bufferFrames);
     return true;
@@ -547,6 +547,7 @@ bool AudioEngine::init_audio_device(const fs::path& sounds_path, const AudioConf
     this->sounds_path = sounds_path;
     this->target_sample_rate = audio_config.sample_rate < 0 ? 44100.0f : audio_config.sample_rate;
     this->buffer_size = audio_config.buffer_size;
+    this->channel_offset = audio_config.asio_channel;
     this->volume_presets = volume_presets;
     this->is_ready = false;
     this->master_volume = 1.0f;

@@ -293,6 +293,7 @@ Config get_config() {
     config.audio.device_type = config_file["audio"]["device_type"].value_or(0);
     config.audio.sample_rate = config_file["audio"]["sample_rate"].value_or(44100);
     config.audio.buffer_size = config_file["audio"]["buffer_size"].value_or(512);
+    config.audio.asio_channel = config_file["audio"]["asio_channel"].value_or(0);
 
     // Parse volume
     config.volume.sound = config_file["volume"]["sound"].value_or(1.0);
@@ -422,7 +423,8 @@ void save_config(const Config& config) {
     config_table.insert("audio", toml::table{
         {"device_type", config.audio.device_type},
         {"sample_rate", config.audio.sample_rate},
-        {"buffer_size", config.audio.buffer_size}
+        {"buffer_size", config.audio.buffer_size},
+        {"asio_channel", config.audio.asio_channel}
     });
 
     // Volume

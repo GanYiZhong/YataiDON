@@ -148,6 +148,7 @@ public:
 private:
     double target_sample_rate;
     unsigned long buffer_size;
+    int channel_offset = 0;
     VolumeConfig volume_presets;
     bool is_ready;
     mutable std::shared_mutex rw_lock;

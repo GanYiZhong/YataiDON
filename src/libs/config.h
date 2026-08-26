@@ -71,6 +71,7 @@ struct AudioConfig {
     int device_type;
     int sample_rate;
     int buffer_size;
+    int asio_channel;
 };
 
 struct VolumeConfig {
