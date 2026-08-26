@@ -1,5 +1,6 @@
 #include "audio.h"
 #include "texture.h"
+#include <algorithm>
 #ifdef __ANDROID__
 extern "C" {
 #include <libavformat/avformat.h>
@@ -357,7 +358,28 @@ int AudioEngine::rt_audio_callback(void* outputBuffer, void* /*inputBuffer*/,
                                     unsigned int framesPerBuffer, double /*streamTime*/,
                                     unsigned int /*status*/, void* userData) {
     AudioEngine* engine = static_cast<AudioEngine*>(userData);
-    mix(static_cast<float*>(outputBuffer), framesPerBuffer, engine);
+    float* out = static_cast<float*>(outputBuffer);
+    const unsigned int total_channels = engine->rt_total_channels;
+    std::memset(out, 0, static_cast<size_t>(framesPerBuffer) * total_channels * sizeof(float));
+
+    if (total_channels == 2 && engine->channel_offsets.size() == 1 && engine->channel_offsets[0] == 0) {
+        mix(out, framesPerBuffer, engine);
+        return 0;
+    }
+
+    size_t needed_floats = static_cast<size_t>(framesPerBuffer) * 2;
+    if (engine->sdl_scratch_buffer.size() < needed_floats)
+        engine->sdl_scratch_buffer.resize(needed_floats);
+    mix(engine->sdl_scratch_buffer.data(), framesPerBuffer, engine);
+
+    for (unsigned int f = 0; f < framesPerBuffer; f++) {
+        const float l = engine->sdl_scratch_buffer[f * 2];
+        const float r = engine->sdl_scratch_buffer[f * 2 + 1];
+        for (int offset : engine->channel_offsets) {
+            out[f * total_channels + offset]     = l;
+            out[f * total_channels + offset + 1] = r;
+        }
+    }
     return 0;
 }
 #endif
@@ -389,10 +411,14 @@ bool AudioEngine::init_rtaudio_device(RtAudio::Api api, const char* label) {
         return false;
     }
 
+    int max_offset = 0;
+    for (int off : channel_offsets) max_offset = std::max(max_offset, off);
+    rt_total_channels = static_cast<unsigned int>(max_offset) + 2;
+
     RtAudio::StreamParameters params;
     params.deviceId     = rt_audio->getDefaultOutputDevice();
-    params.nChannels    = 2;
-    params.firstChannel = static_cast<unsigned int>(channel_offset);
+    params.nChannels    = rt_total_channels;
+    params.firstChannel = 0;
 
     unsigned int bufferFrames = static_cast<unsigned int>(buffer_size);
 
@@ -426,7 +452,9 @@ bool AudioEngine::init_rtaudio_device(RtAudio::Api api, const char* label) {
     spdlog::info("    > Backend:       RtAudio | {}", label);
     spdlog::info("    > Device:        {}", dev_info.name);
     spdlog::info("    > Format:        Float32");
-    spdlog::info("    > Channels:      2 (offset {})", params.firstChannel);
+    std::string offsets_str;
+    for (int off : channel_offsets) offsets_str += (offsets_str.empty() ? "" : ", ") + std::to_string(off);
+    spdlog::info("    > Channels:      {} total, stereo duplicated at offsets [{}]", rt_total_channels, offsets_str);
     spdlog::info("    > Sample rate:   {} Hz", rt_audio->getStreamSampleRate());
     spdlog::info("    > Buffer size:   {} frames (actual)", bufferFrames);
     return true;
@@ -547,7 +575,7 @@ bool AudioEngine::init_audio_device(const fs::path& sounds_path, const AudioConf
     this->sounds_path = sounds_path;
     this->target_sample_rate = audio_config.sample_rate < 0 ? 44100.0f : audio_config.sample_rate;
     this->buffer_size = audio_config.buffer_size;
-    this->channel_offset = audio_config.asio_channel;
+    this->channel_offsets = audio_config.asio_channel.empty() ? std::vector<int>{0} : audio_config.asio_channel;
     this->volume_presets = volume_presets;
     this->is_ready = false;
     this->master_volume = 1.0f;
