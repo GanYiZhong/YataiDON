@@ -255,8 +255,10 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
         score.crown = Crown::DFC;
     } else if (score.bad == 0) {
         score.crown = Crown::FC;
-    } else {
+    } else if (players[0]->gauge->get_is_clear()) {
         score.crown = Crown::CLEAR;
+    } else {
+        score.crown = Crown::NONE;
     }
     if (score.score >= 1000000) {
         score.rank = Rank::_RAINBOW;

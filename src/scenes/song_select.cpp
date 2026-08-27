@@ -21,6 +21,7 @@ void SongSelectScreen::on_screen_start() {
     dan_transition.reset();
 
     navigator.hide_dan = hides_dan();
+    navigator.is_2p = is_2p_screen();
     navigator.init(global_data.config->paths.tja_path);
 #ifndef __EMSCRIPTEN__
     stats_future = std::async(std::launch::async, [this]() {

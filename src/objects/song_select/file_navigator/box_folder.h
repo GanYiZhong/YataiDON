@@ -8,6 +8,7 @@ public:
     int tja_count;
     bool is_osu_folder = false;
     std::map<int, Crown> crown;
+    std::map<int, Crown> crown_p2;
     bool entered = false;
     std::unique_ptr<FadeAnimation> enter_fade;
     std::optional<ray::Texture> box_texture;
