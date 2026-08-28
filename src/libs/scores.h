@@ -1,7 +1,13 @@
 #pragma once
 
 #include "global_data.h"
+#include <chrono>
 #include <sqlite3.h>
+
+inline int64_t unix_now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
 
 struct PlayerData {
     int player_id;
@@ -58,7 +64,7 @@ public:
     void export_to_hiroba(const std::string& access_code, int player_id);
     int sync_from_server(const std::string& access_code);
     std::optional<Score> get_score(std::string& hash, int difficulty, int player_id);
-    Score save_score(std::string& hash, int difficulty, int player_id, Score score);
+    Score save_score(std::string& hash, int difficulty, int player_id, Score score, int64_t played_at, const std::string& modifiers_json);
     void add_path_binding(const fs::path& path, const std::array<std::string, 5>& hashes);
     std::array<std::string, 5>& get_hashes(const fs::path& path);
     std::string get_single_hash(const fs::path& path);

@@ -275,8 +275,11 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     } else {
         score.rank = Rank::_WHITE;
     }
-    scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score);
-    network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log);
+    int64_t played_at = unix_now();
+    std::string modifiers_json = modifiers_to_json(players[0]->get_modifiers());
+    scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score, played_at, modifiers_json);
+    PlayerData pd = scores_manager.get_player_data(player_id).value_or(PlayerData{});
+    network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
 }
 
 void GameScreen::resync_song(double current_ms) {

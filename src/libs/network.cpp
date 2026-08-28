@@ -21,6 +21,25 @@
 
 NetworkClient network;
 
+std::string modifiers_to_json(const Modifiers& m) {
+    rapidjson::Document doc;
+    doc.SetObject();
+    rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
+
+    doc.AddMember("auto_play", m.auto_play, allocator);
+    doc.AddMember("speed", m.speed, allocator);
+    doc.AddMember("display", m.display, allocator);
+    doc.AddMember("inverse", m.inverse, allocator);
+    doc.AddMember("random", m.random, allocator);
+    doc.AddMember("subdiff", m.subdiff, allocator);
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    doc.Accept(writer);
+
+    return buffer.GetString();
+}
+
 #if defined(NETWORK_ENABLED)
 
 namespace {
@@ -387,7 +406,7 @@ std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_
     return buffer.GetString();
 }
 
-void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log) {
+void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log, int64_t played_at, const std::string& modifiers_json, bool chara_is_costume, int chara_cos_index) {
     if (!network_enabled()) return;
     std::map<std::string, std::string> params{
         {"access_code", access_code},
@@ -420,6 +439,10 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
         },
         cpr::Payload{
             {"input_log", map_to_json(input_log)},
+            {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
+            {"modifiers", modifiers_json},
+            {"chara_is_costume", chara_is_costume ? "true" : "false"},
+            {"chara_cos_index", std::to_string(chara_cos_index)},
         },
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -487,7 +510,7 @@ void NetworkClient::update(double current_ms) {
 #else
 
 std::string NetworkClient::register_user(const std::string&) { return ""; }
-void NetworkClient::submit_score(std::string&, int, const std::string&, Score, std::map<double, InputLogType> input_log) {}
+void NetworkClient::submit_score(std::string&, int, const std::string&, Score, std::map<double, InputLogType> input_log, int64_t, const std::string&, bool, int) {}
 bool NetworkClient::check_import_requested(const std::string&) { return false; }
 void NetworkClient::clear_import_flag(const std::string&) {}
 bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }

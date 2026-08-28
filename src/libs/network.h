@@ -30,6 +30,8 @@ struct RemoteScore {
     Score score;
 };
 
+std::string modifiers_to_json(const Modifiers& modifiers);
+
 class NetworkClient {
 public:
     void update(double current_ms);
@@ -38,7 +40,7 @@ public:
 
     std::string register_user(const std::string& username);
     std::string map_to_json(const std::map<double, InputLogType>& my_map);
-    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log);
+    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log, int64_t played_at, const std::string& modifiers_json, bool chara_is_costume, int chara_cos_index);
 
     bool check_import_requested(const std::string& access_code);
     void clear_import_flag(const std::string& access_code);

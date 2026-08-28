@@ -45,7 +45,17 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
         }
     }
 
-    sqlite3_exec(db_fsd, "PRAGMA user_version = 2;", nullptr, nullptr, nullptr);
+    if (version < 3) {
+        sqlite3_exec(db_fsd, "ALTER TABLE scores ADD COLUMN played_at INTEGER NOT NULL DEFAULT 0;",
+                     nullptr, nullptr, nullptr);
+    }
+
+    if (version < 4) {
+        sqlite3_exec(db_fsd, "ALTER TABLE scores ADD COLUMN modifiers TEXT NOT NULL DEFAULT '{}';",
+                     nullptr, nullptr, nullptr);
+    }
+
+    sqlite3_exec(db_fsd, "PRAGMA user_version = 4;", nullptr, nullptr, nullptr);
 
     std::string create_players =
         "CREATE TABLE IF NOT EXISTS players"
@@ -99,7 +109,9 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
         "ok INTEGER NOT NULL,"
         "bad INTEGER NOT NULL,"
         "drumroll INTEGER NOT NULL,"
-        "max_combo INTEGER NOT NULL);";
+        "max_combo INTEGER NOT NULL,"
+        "played_at INTEGER NOT NULL DEFAULT 0,"
+        "modifiers TEXT NOT NULL DEFAULT '{}');";
 
     char* errmsg = nullptr;
     if (sqlite3_exec(db_fsd, create_players.c_str(), nullptr, nullptr, &errmsg) != SQLITE_OK) {
@@ -304,7 +316,7 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
 void ScoresManager::export_to_hiroba(const std::string& access_code, int player_id) {
     sqlite3_stmt* stmt;
     const char* query =
-        "SELECT hash, difficulty, crown, rank, score, good, ok, bad, drumroll, max_combo "
+        "SELECT hash, difficulty, crown, rank, score, good, ok, bad, drumroll, max_combo, played_at, modifiers "
         "FROM scores WHERE player_id = ? AND hash IS NOT NULL AND hash != '';";
     if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
         spdlog::error("export_to_hiroba: failed to prepare statement: {}", sqlite3_errmsg(db_fsd));
@@ -328,9 +340,12 @@ void ScoresManager::export_to_hiroba(const std::string& access_code, int player_
         s.bad       = sqlite3_column_int(stmt, 7);
         s.drumroll  = sqlite3_column_int(stmt, 8);
         s.max_combo = sqlite3_column_int(stmt, 9);
+        int64_t played_at = sqlite3_column_int64(stmt, 10);
+        const unsigned char* modifiers_text = sqlite3_column_text(stmt, 11);
+        std::string modifiers_json = modifiers_text ? reinterpret_cast<const char*>(modifiers_text) : "{}";
 
         std::map<double, InputLogType> input_log;
-        network.submit_score(hash, difficulty, access_code, s, input_log);
+        network.submit_score(hash, difficulty, access_code, s, input_log, played_at, modifiers_json, false, -1);
         count++;
     }
     sqlite3_finalize(stmt);
@@ -347,7 +362,7 @@ int ScoresManager::sync_from_server(const std::string& access_code) {
             rs.score.crown > local->crown ||
             (rs.score.crown == local->crown && rs.score.score > local->score);
         if (remote_is_better) {
-            save_score(rs.hash, rs.difficulty, player_1, rs.score);
+            save_score(rs.hash, rs.difficulty, player_1, rs.score, unix_now(), "{}");
             updated++;
         }
     }
@@ -361,13 +376,13 @@ std::optional<Score> ScoresManager::get_score(std::string& hash, int difficulty,
     return std::nullopt;
 }
 
-Score ScoresManager::save_score(std::string& hash, int difficulty, int player_id, Score score) {
+Score ScoresManager::save_score(std::string& hash, int difficulty, int player_id, Score score, int64_t played_at, const std::string& modifiers_json) {
     sqlite3_stmt* stmt;
 
     char query[512];
     snprintf(query, sizeof(query),
-        "INSERT INTO scores (player_id, hash, difficulty, score, good, ok, bad, drumroll, max_combo, crown, rank) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        "INSERT INTO scores (player_id, hash, difficulty, score, good, ok, bad, drumroll, max_combo, crown, rank, played_at, modifiers) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
 
     if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
         spdlog::error("save_score: failed to prepare statement: {}", sqlite3_errmsg(db_fsd));
@@ -385,6 +400,8 @@ Score ScoresManager::save_score(std::string& hash, int difficulty, int player_id
     sqlite3_bind_int(stmt, 9, score.max_combo);
     sqlite3_bind_int(stmt, 10, static_cast<int>(score.crown));
     sqlite3_bind_int(stmt, 11, static_cast<int>(score.rank));
+    sqlite3_bind_int64(stmt, 12, played_at);
+    sqlite3_bind_text(stmt, 13, modifiers_json.c_str(), -1, nullptr);
 
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);

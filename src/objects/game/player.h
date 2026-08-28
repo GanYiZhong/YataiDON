@@ -65,11 +65,8 @@ public:
     int get_ok()   const { return ok_count; }
     int get_bad()  const { return bad_count; }
     bool is_auto_play() const { return modifiers.auto_play; }
-    // Practice mode toggles auto from its pause menu mid-song.
+    const Modifiers& get_modifiers() const { return modifiers; }
     void set_auto_play(bool value) { modifiers.auto_play = value; }
-    // Practice replays sections over and over; each resume starts the score,
-    // combo and judgement tallies fresh so the numbers describe the current
-    // attempt only.
     void reset_performance() {
         good_count = ok_count = bad_count = 0;
         combo = max_combo = 0;
