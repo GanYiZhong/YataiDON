@@ -48,6 +48,9 @@ public:
     bool fetch_username(const std::string& access_code, std::string& username);
     void update_username(const std::string& access_code, const std::string& username);
 
+    bool fetch_title(const std::string& access_code, std::string& title);
+    bool fetch_title_bg(const std::string& access_code, int& title_bg);
+
     bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
     void update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume);
 

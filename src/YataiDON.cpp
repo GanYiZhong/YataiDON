@@ -327,6 +327,20 @@ int main(int argc, char* argv[]) {
             scores_manager.save_player_data(scores_manager.player_1_data);
         }
 
+        std::string server_title;
+        if (network.fetch_title(global_data.config->network.access_code, server_title) &&
+            !server_title.empty() && server_title != scores_manager.player_1_data.title) {
+            scores_manager.player_1_data.title = server_title;
+            scores_manager.save_player_data(scores_manager.player_1_data);
+        }
+
+        int server_title_bg;
+        if (network.fetch_title_bg(global_data.config->network.access_code, server_title_bg) &&
+            server_title_bg != scores_manager.player_1_data.title_bg) {
+            scores_manager.player_1_data.title_bg = server_title_bg;
+            scores_manager.save_player_data(scores_manager.player_1_data);
+        }
+
         int head_index, body_index, cos_index;
         bool is_costume;
         if (network.fetch_costume(global_data.config->network.access_code, head_index, body_index, cos_index, is_costume) &&

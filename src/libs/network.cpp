@@ -211,6 +211,42 @@ bool NetworkClient::fetch_username(const std::string& access_code, std::string& 
     return true;
 }
 
+bool NetworkClient::fetch_title(const std::string& access_code, std::string& title) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("title") || !doc["title"].IsString()) return false;
+
+    title = doc["title"].GetString();
+    return true;
+}
+
+bool NetworkClient::fetch_title_bg(const std::string& access_code, int& title_bg) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("title_bg") || !doc["title_bg"].IsInt()) return false;
+
+    title_bg = doc["title_bg"].GetInt();
+    return true;
+}
+
 void NetworkClient::update_username(const std::string& access_code, const std::string& username) {
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
@@ -457,6 +493,8 @@ void NetworkClient::clear_import_flag(const std::string&) {}
 bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }
 bool NetworkClient::fetch_username(const std::string&, std::string&) { return false; }
 void NetworkClient::update_username(const std::string&, const std::string&) {}
+bool NetworkClient::fetch_title(const std::string&, std::string&) { return false; }
+bool NetworkClient::fetch_title_bg(const std::string&, int&) { return false; }
 bool NetworkClient::fetch_costume(const std::string&, int&, int&, int&, bool&) { return false; }
 void NetworkClient::update_costume(const std::string&, int, int, int, bool) {}
 std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { return {}; }
