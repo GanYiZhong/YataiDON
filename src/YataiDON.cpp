@@ -243,6 +243,18 @@ static void run_frame() {
         ray::SwapScreenBuffer();
     }
 
+    if (ray::IsKeyPressed(ray::KEY_F12)) {
+        static int screenshot_counter = 0;
+        ray::Image image = ray::LoadImageFromScreen();
+        if (L.current_screen == Screens::RESULT) {
+            ray::ImageCrop(&image, {0, 0, (float)image.width, (float)image.height / 2.0f});
+        }
+        ray::ExportImage(image, ray::TextFormat("screenshot%03i.png", screenshot_counter));
+        ray::UnloadImage(image);
+        screenshot_counter++;
+        spdlog::info("Screenshot saved");
+    }
+
 #ifndef __EMSCRIPTEN__
     if (L.target_duration.count() > 0) {
         L.next_frame_time += L.target_duration;
