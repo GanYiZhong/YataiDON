@@ -9,7 +9,9 @@
 #include "../../../libs/optional/gen3.h"
 #endif
 #include <random>
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>   // r56: std::getenv (YATAIDON_R56_DISABLE gate)
 
 static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef& box_def, SongParser parser) {
     if (path.extension() == ".osu")
@@ -253,6 +255,7 @@ void Navigator::init(std::vector<fs::path> songs_paths) {
     background_fade_change = (FadeAnimation*)tex.get_animation(5);
     bg_genre_index = items.empty() ? GenreIndex::TUTORIAL : items[open_index]->genre_index;
     last_bg_genre_index = bg_genre_index;
+    bg_genre_pending = true;
     if (genre_bg.has_value()) genre_bg->fade_in();
 }
 
@@ -696,8 +699,14 @@ void Navigator::load_collection_new(const fs::path& path, const BoxDef& box_def)
     }
 }
 
-void Navigator::load_collection_difficulty(const fs::path& path, const BoxDef& box_def, int course, int level) {
-    int songs_added = 0;
+void Navigator::load_collection_difficulty(const fs::path& path, const BoxDef& box_def, int course, int level, int order) {
+    struct Hit { fs::path path; BoxDef sibling; bool unmet; };
+    std::vector<Hit> hits;
+
+    const int crown_needed = (order == 2) ? (int)Crown::CLEAR
+                           : (order == 3) ? (int)Crown::FC
+                           : (order == 4) ? (int)Crown::DFC : 0;
+
     for (const auto& sibling : fs::directory_iterator(path.parent_path())) {
         if (abort_loading) break;
         if (!fs::is_directory(sibling) || sibling.path() == path) continue;
@@ -710,20 +719,42 @@ void Navigator::load_collection_difficulty(const fs::path& path, const BoxDef& b
             auto it = parser.metadata.course_data.find(course);
             if (it == parser.metadata.course_data.end()) continue;
             if ((int)it->second.level != level) continue;
-            if (songs_added > 0 && songs_added % 10 == 0)
-                enqueue_inline_box(make_back_box(path.parent_path()));
-            auto song = make_song_box(entry.path(), box_def, parser);
-            apply_song_genre(song.get(), sibling_box_def);
-            song->fade_in(266);
-            enqueue_inline_box(std::move(song));
-            songs_added++;
+
+            bool unmet = false;
+            if (crown_needed > 0) {
+                unmet = true;
+                const auto& hashes = scores_manager.get_hashes(entry.path());
+                std::string hash = hashes[std::min(course, 4)];
+                if (!hash.empty()) {
+                    auto score = scores_manager.get_score(hash, course, scores_manager.player_1);
+                    if (score.has_value() && (int)score->crown >= crown_needed) unmet = false;
+                }
+            }
+            hits.push_back(Hit{entry.path(), sibling_box_def, unmet});
         }
+    }
+
+    if (crown_needed > 0)
+        std::stable_partition(hits.begin(), hits.end(), [](const Hit& h) { return h.unmet; });
+
+    int songs_added = 0;
+    for (const auto& h : hits) {
+        if (abort_loading) break;
+        if (songs_added > 0 && songs_added % 10 == 0)
+            enqueue_inline_box(make_back_box(path.parent_path()));
+        SongParser parser(h.path);
+        parser.get_metadata();
+        auto song = make_song_box(h.path, box_def, parser);
+        apply_song_genre(song.get(), h.sibling);
+        song->fade_in(266);
+        enqueue_inline_box(std::move(song));
+        songs_added++;
     }
 }
 
-void Navigator::apply_diff_sort(int course, int level) {
+void Navigator::apply_diff_sort(int course, int level, int order) {
     last_diff_sort_result = {course, level};
-    diff_sort_filter      = {course, level};
+    diff_sort_filter      = std::array<int,3>{course, level, order};
     awaiting_diff_sort    = false;
     begin_inline_load();
 }
@@ -934,7 +965,8 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
         return;
     } else if (box_def.collection == "DIFFICULTY") {
         if (diff_sort_filter) {
-            load_collection_difficulty(path, box_def, diff_sort_filter->first, diff_sort_filter->second);
+            load_collection_difficulty(path, box_def, (*diff_sort_filter)[0], (*diff_sort_filter)[1],
+                                       (*diff_sort_filter)[2]);
             diff_sort_filter.reset();
         }
         loading_complete = true;
@@ -1128,6 +1160,7 @@ void Navigator::exit_inline() {
 }
 
 void Navigator::begin_inline_load() {
+    bg_genre_pending = false;
     int approx_items = (pending_inline_box_def.collection == "RECOMMENDED" ||
                         pending_inline_box_def.collection == "DIFFICULTY")
                        ? 10
@@ -1240,8 +1273,10 @@ bool Navigator::jump_to_song(const std::string& hash) {
         spdlog::warn("jump_to_song: no song found for hash {}", hash);
         return false;
     }
-    fs::path song_path = *song_path_opt;
+    return jump_to_song_path(*song_path_opt);
+}
 
+bool Navigator::jump_to_song_path(const fs::path& song_path) {
     std::vector<fs::path> chain;
     fs::path cur = song_path.parent_path();
     while (true) {
@@ -1357,6 +1392,7 @@ bool Navigator::jump_to_song(const std::string& hash) {
     open_index = target_index;
     bg_genre_index = items[open_index]->genre_index;
     last_bg_genre_index = bg_genre_index;
+    bg_genre_pending = false;
     set_positions(true, 0);
     items[open_index]->expand_box();
     background_fade_change->start();
@@ -1714,15 +1750,24 @@ void Navigator::set_positions(bool init, float duration) {
             float center_y     = 360 * tex.screen_scale;
             float fixed_x      = 640 * tex.screen_scale;
             float expand_gap   = 90 * tex.screen_scale;
+            float horizontal_spacing = 30 * tex.screen_scale;
+            if (const SkinInfo* pitch = tex.skin_entry("song_select_row_pitch")) {
+                if (pitch->x > 0) base_spacing = pitch->x;
+                if (pitch->y > 0) expand_gap   = pitch->y;
+            }
+            if (const SkinInfo* curve = tex.skin_entry("song_select_row_curve")) {
+                if (curve->x > 0) horizontal_spacing = curve->x;
+            }
             position = center_y + offset * base_spacing;
             if (offset > 0)      position += expand_gap;
             else if (offset < 0) position -= expand_gap;
             items[i]->vertical   = true;
-            float horizontal_spacing = 30 * tex.screen_scale;
-            items[i]->cross_pos = fixed_x + offset * horizontal_spacing;
+            float new_cross = fixed_x + offset * horizontal_spacing;
             if (init || std::abs(position - items[i]->position) >= tex.screen_height) {
                 items[i]->set_position(position);
+                items[i]->snap_cross(new_cross);
             } else {
+                items[i]->glide_cross(new_cross);
                 items[i]->move_box(position, duration);
             }
         } else {
@@ -1753,6 +1798,7 @@ void Navigator::navigate(int delta, bool snap) {
     if (items.empty() || inline_streaming) return;
     items[open_index]->close_box();
     last_bg_genre_index = bg_genre_index;
+    bg_genre_pending = false;
     open_index = ((open_index + delta) % (int)items.size() + (int)items.size()) % (int)items.size();
     bg_genre_index = items[open_index]->genre_index;
     set_positions(snap, 166);
@@ -1822,6 +1868,15 @@ void Navigator::update(double current_ms) {
 
     flush_pending_boxes();
 
+    if (bg_genre_pending && !items.empty()) {
+        GenreIndex cursor_genre = items[open_index]->genre_index;
+        if (cursor_genre != bg_genre_index) {
+            bg_genre_index      = cursor_genre;
+            last_bg_genre_index = cursor_genre;
+        }
+        if (loading_complete) bg_genre_pending = false;
+    }
+
     if (pending_inline_path) {
         if (genre_bg.has_value() && genre_bg->is_finished() && !awaiting_diff_sort) {
             inline_state->saved_folder_box = std::unique_ptr<FolderBox>(
@@ -1870,6 +1925,8 @@ void Navigator::update(double current_ms) {
             is_processing = false;
         }
     }
+
+    SongBox::service_bgm_resume(current_ms);
 
     for (auto& box : items) {
         bool on_screen = vertical_gallery

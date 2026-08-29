@@ -35,13 +35,16 @@ void BalloonCounter::draw(float y) {
         tex.draw_texture(BALLOON::POP, {.frame=balloon_index, .y=y, .fade=fade->attribute});
     }
     if (balloon_count > 0) {
-        float y_offset = is_2p ? 230 : 0;
+        float y_offset = is_2p ? 230 * tex.screen_scale : 0;
         tex.draw_texture(BALLOON::BUBBLE, {.mirror = is_2p ? Mirror::VERTICAL : Mirror::NONE, .y=y + y_offset, .fade=fade->attribute});
         std::string counter = std::to_string(std::max(0, balloon_total - balloon_count));
-        int total_width = counter.length() * tex.skin_config[SC::DRUMROLL_COUNTER_MARGIN].x;
+        float margin = tex.skin_config[SC::DRUMROLL_COUNTER_MARGIN].x;
+        if (const SkinInfo* m = tex.skin_entry("balloon_counter_margin"); m && m->x > 0)
+            margin = m->x;
+        float total_width = counter.length() * margin;
         for (int i = 0; i < counter.size(); i++) {
             char digit = counter[i];
-            tex.draw_texture(BALLOON::COUNTER, {.frame=digit - '0', .x=-(total_width / 2.0f) + (i * tex.skin_config[SC::DRUMROLL_COUNTER_MARGIN].x), .y=y - (float)stretch->attribute + (y_offset * 1.1f), .y2=(float)stretch->attribute, .fade=fade->attribute});
+            tex.draw_texture(BALLOON::COUNTER, {.frame=digit - '0', .x=-(total_width / 2.0f) + (i * margin), .y=y - (float)stretch->attribute + (y_offset * 1.1f), .y2=(float)stretch->attribute, .fade=fade->attribute});
         }
     }
 }

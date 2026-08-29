@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include "game.h"
 
 struct DanExamInfo {
@@ -10,6 +11,10 @@ struct DanExamInfo {
     std::string bar_texture;
     std::string exam_type;
     std::string exam_range;
+    bool    gothrough    = true;
+    int     song_count   = 0;               // songs finished BEFORE the current one
+    int     song_value[3]    = {0, 0, 0};   // that song's own count
+    float   song_progress[3] = {0, 0, 0};
 };
 
 struct DanInfoCache {
@@ -34,6 +39,9 @@ private:
     Gauge dan_gauge{GaugeMode::DAN, PlayerNum::P1, 1};  // initialized properly in init_dan()
 
     std::vector<bool> exam_failed;
+    bool   failed_out    = false;
+    double failed_out_at = 0.0;
+    std::vector<std::array<bool, 3>> exam_song_failed;
     std::optional<DanInfoCache> dan_info_cache;
 
     //DanTransition dan_transition;
@@ -42,16 +50,32 @@ private:
 
     // Cumulative stat tracking across songs
     int prev_good = 0, prev_ok = 0, prev_bad = 0, prev_drumroll = 0;
+    int prev_score = 0;
+    struct SongStats { int good = 0, ok = 0, bad = 0, drumroll = 0, score = 0, max_combo = 0; };
+    std::vector<SongStats> song_stats;
+    int song_max_combo = 0;
     std::string current_song_title;
 
     void init_dan();
     void change_song();
 
+    void update_skip_dan();
+    void poll_skip_dan();
+    void do_skip_dan();
+
     DanInfoCache calculate_dan_info();
     int get_exam_progress(const Exam& exam);
+    int get_exam_progress_song(const Exam& exam, int song_idx);
+    void draw_exam_row(const DanExamInfo& info, const Exam& exam, int index, float y);
     void fill_unplayed_songs();
-    void check_exam_failures(bool course_finished = false);
+    void check_exam_failures(bool course_finished = false, bool song_finished = false);
 
+    static int exam_tier(const Exam& exam, int value);
+    void save_result_data(bool all_failed);
+    void trigger_fail_out(double current_ms);
+
+    static const SkinInfo& dan_exam_info();
+    void push_dan_state();
     void draw_dan_info();
     void draw_digit_counter(const std::string& digits, float margin_x, TexID tex_id, int index, float y, float x_offset = 0);
 };

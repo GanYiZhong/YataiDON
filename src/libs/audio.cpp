@@ -5,6 +5,14 @@
 #include "optional/gen4.h"
 #endif
 #include "texture.h"
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <unordered_set>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <mutex>
 
 // Both arcade bank formats decode to the same shape; the extension says which
 // era the container is from.
@@ -690,6 +698,18 @@ static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
     return resampled;
 }
 
+void AudioEngine::store_sound(const std::string& name, const sound& snd) {
+    std::unique_lock<std::shared_mutex> guard(rw_lock);
+    auto it = sounds.find(name);
+    if (it != sounds.end()) {
+        std::atomic_ref<bool>(it->second.is_playing).store(false, std::memory_order_relaxed);
+        delete[] it->second.data;
+        if (it->second.resampler) src_delete(it->second.resampler);
+        delete[] it->second.resample_buffer;
+    }
+    sounds[name] = snd;
+}
+
 std::string AudioEngine::load_sound(const fs::path& file_path, const std::string& name) {
     try {
 #ifdef SUPPORT_FUMEN
@@ -717,10 +737,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
             snd.frame_frac      = 0.0f;
             snd.resampler       = nullptr;
             snd.resample_buffer = nullptr;
-            {
-                std::unique_lock<std::shared_mutex> guard(rw_lock);
-                sounds[name] = snd;
-            }
+            store_sound(name, snd);
             spdlog::info("Loaded sound (G.719): {} ({} frames, {} Hz, {} ch)",
                          name, frames, rate, snd.channels);
             return name;
@@ -780,10 +797,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
             }
             snd.resampler = nullptr;
             snd.resample_buffer = nullptr;
-            {
-                std::unique_lock<std::shared_mutex> guard(rw_lock);
-                sounds[name] = snd;
-            }
+            store_sound(name, snd);
             spdlog::debug("Loaded sound (ffmpeg): {} ({} frames, {} Hz, {} ch)",
                           name, snd.frame_count, snd.sample_rate, snd.channels);
             return name;
@@ -847,10 +861,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
         snd.resampler = nullptr;
         snd.resample_buffer = nullptr;
 
-        {
-            std::unique_lock<std::shared_mutex> guard(rw_lock);
-            sounds[name] = snd;
-        }
+        store_sound(name, snd);
 
         spdlog::debug("Loaded sound: {} ({} frames, {} Hz, {} channels)",
                      name, snd.frame_count, snd.sample_rate, snd.channels);
@@ -864,22 +875,27 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
 }
 
 void AudioEngine::load_screen_sounds(const std::string& screen_name) {
-    // Sounds has no inheritance mechanism of its own (unlike Graphics), so a child
-    // skin missing a sound folder would previously get nothing at all. Load the
-    // parent skin's copy first (if any), then the child's on top — same "child
-    // overrides, parent fills gaps" order as TextureWrapper::load_folder — so a
-    // child skin only needs to ship the sounds it actually wants to change.
+    auto _snd_t0 = std::chrono::steady_clock::now();
+
+    std::vector<std::pair<fs::path, std::string>> queue;
+    std::unordered_set<std::string> claimed;
+
+    auto want = [&](const fs::path& file, const std::string& name) {
+        if (!claimed.insert(name).second) return;
+        if (!fs::exists(file)) { claimed.erase(name); return; }
+        queue.emplace_back(file, name);
+    };
+
     auto scan = [&](const fs::path& dir) {
         if (!fs::exists(dir)) return;
         try {
             for (const auto& entry : fs::directory_iterator(dir)) {
                 if (entry.is_directory()) {
-                    for (const auto& file : fs::directory_iterator(entry.path())) {
-                        load_sound(file.path(),
-                                    entry.path().stem().string() + "_" + file.path().stem().string());
-                    }
+                    for (const auto& file : fs::directory_iterator(entry.path()))
+                        want(file.path(),
+                             entry.path().stem().string() + "_" + file.path().stem().string());
                 } else if (entry.is_regular_file()) {
-                    load_sound(entry.path(), entry.path().stem().string());
+                    want(entry.path(), entry.path().stem().string());
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -900,18 +916,35 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
         spdlog::warn("Sounds for screen {} not found", screen_name);
     }
 
-    if (has_parent) load_sound(parent_sounds / "don.wav", "don");
-    load_sound(sounds_path / "don.wav", "don");
-    if (has_parent) load_sound(parent_sounds / "ka.wav", "kat");
-    load_sound(sounds_path / "ka.wav", "kat");
+    want(sounds_path / "don.wav", "don");
+    if (has_parent) want(parent_sounds / "don.wav", "don");
+    want(sounds_path / "ka.wav", "kat");
+    if (has_parent) want(parent_sounds / "ka.wav", "kat");
 
     if (has_screen_sounds) {
-        if (has_parent) scan(parent_sounds / screen_name);
         scan(path);
+        if (has_parent) scan(parent_sounds / screen_name);
     }
 
-    if (has_parent) scan(parent_sounds / "global");
     scan(sounds_path / "global");
+    if (has_parent) scan(parent_sounds / "global");
+
+    unsigned hw = std::thread::hardware_concurrency();
+    size_t workers = std::min<size_t>(queue.size(), hw ? hw : 4);
+    if (workers <= 1) {
+        for (const auto& [file, name] : queue) load_sound(file, name);
+    } else {
+        std::atomic<size_t> next{0};
+        std::vector<std::thread> pool;
+        pool.reserve(workers);
+        for (size_t w = 0; w < workers; ++w) {
+            pool.emplace_back([this, &queue, &next]() {
+                for (size_t i = next.fetch_add(1); i < queue.size(); i = next.fetch_add(1))
+                    load_sound(queue[i].first, queue[i].second);
+            });
+        }
+        for (auto& t : pool) t.join();
+    }
 }
 
 void AudioEngine::unload_sound(const std::string& name) {
@@ -977,9 +1010,12 @@ void AudioEngine::play_sound(const std::string& name, VolumePreset volume_preset
         std::atomic_ref<unsigned int>(snd.current_frame).store(0, std::memory_order_relaxed);
         std::atomic_ref<float>(snd.frame_frac).store(0.0f, std::memory_order_relaxed);
         std::atomic_ref<bool>(snd.is_playing).store(true, std::memory_order_release);
-    } else {
-        //spdlog::warn("Sound {} not found", name);
     }
+}
+
+bool AudioEngine::has_sound(const std::string& name) {
+    std::shared_lock<std::shared_mutex> guard(rw_lock);
+    return sounds.find(name) != sounds.end();
 }
 
 void AudioEngine::stop_sound(const std::string& name) {
@@ -991,6 +1027,14 @@ void AudioEngine::stop_sound(const std::string& name) {
         std::atomic_ref<float>(it->second.frame_frac).store(0.0f, std::memory_order_relaxed);
     } else {
         spdlog::warn("Sound {} not found", name);
+    }
+}
+
+void AudioEngine::set_sound_loop(const std::string& name, bool loop) {
+    std::shared_lock<std::shared_mutex> guard(rw_lock);
+    auto it = sounds.find(name);
+    if (it != sounds.end()) {
+        std::atomic_ref<bool>(it->second.loop).store(loop, std::memory_order_relaxed);
     }
 }
 

@@ -33,6 +33,12 @@ public:
     GenreIndex song_genre_index = GenreIndex::DEFAULT;
 
     SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser);
+    ~SongBox() override { release_preview_slot(); }
+
+    static void service_bgm_resume(double current_ms);
+    static void reset_bgm_slot();
+    void release_preview_slot();
+    bool holds_preview_slot = false;
 
     void reset() override;
 

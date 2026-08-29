@@ -48,6 +48,7 @@ struct Exam {
     int red = 0;
     int gold = 0;
     std::string range;  // "less" or "more"
+    bool gothrough = true;
 };
 
 struct DanSongEntry {
@@ -55,6 +56,7 @@ struct DanSongEntry {
     int genre_index = 0;
     int difficulty = 0;
     int level = 0;
+    bool hidden = false;
 };
 
 struct DanResultSong {
@@ -66,6 +68,8 @@ struct DanResultSong {
     int ok = 0;
     int bad = 0;
     int drumroll = 0;
+    bool hidden = false;
+    bool unreached = false;
 };
 
 struct DanResultExam {
@@ -73,10 +77,18 @@ struct DanResultExam {
     int counter_value = 0;
     std::string bar_texture = "exam_red";
     bool failed = false;
+    int   song_value[3]    = {0, 0, 0};
+    float song_progress[3] = {0.0f, 0.0f, 0.0f};
+    int   song_count       = 0;
+    int tier = 0;
 };
 
 struct DanResultData {
     int dan_color = 0;
+    int dan_rank = -1;
+    int dan_index = -1;
+    int dan_index_max = -1;
+    bool is_gaiden = false;
     std::string dan_title = "default_title";
     int score = 0;
     float gauge_length = 0.0f;
@@ -84,6 +96,7 @@ struct DanResultData {
     std::vector<DanResultSong> songs;
     std::vector<Exam> exams;
     std::vector<DanResultExam> exam_data;
+    int odai_result = -1;
 };
 
 struct ResultData {
@@ -103,6 +116,10 @@ struct SessionData {
     std::vector<DanSongEntry> selected_dan;
     std::vector<Exam> selected_dan_exam;
     int dan_color = 0;
+    int dan_rank = -1;
+    int dan_index = -1;
+    int dan_index_max = -1;
+    bool dan_gaiden = false;
     int selected_difficulty = 0;
     std::string song_title = "default_title";
     std::string song_subtitle = "default_subtitle";
@@ -122,7 +139,23 @@ struct CameraConfig {
 
 struct GlobalData {
     int songs_played = 0;
+    std::string current_screen = "LOADING";
+    bool in_transition = false;
+    std::string title_state = "";
+    double      title_state_start_ms = 0.0;
+    int  live_combo = 0;
+    int  live_score = 0;
+    int  live_drumroll = 0;
+    bool live_gogo = false;
+    double live_soul = 0.0;
+    bool live_is_clear = false;
+    bool live_is_rainbow = false;
+    int  live_skip_count = -1;
+    bool live_skip_used = false;
+    bool force_auto_play = false;
     bool returned_from_result = false;
+    bool entry_join_pending = false;
+    PlayerNum entry_joined_seat = PlayerNum::P1;
     CameraConfig camera;
     Config* config = nullptr;  // Using pointer, initialize appropriately
     int total_songs = 0;
@@ -130,10 +163,6 @@ struct GlobalData {
     PlayerNum first_login_player = PlayerNum::P1;
     int input_locked = 0;
     std::vector<SessionData> session_data = std::vector<SessionData>(3);
-    // Difficulty each player last confirmed, indexed like session_data;
-    // -1 until they pick one. Only used to place the difficulty cursor, so
-    // it lives for the run and is deliberately not written to the config.
-    // Not part of SessionData: that is reset after every song.
     std::vector<int> last_difficulty = std::vector<int>(3, -1);
 
     GlobalData() {

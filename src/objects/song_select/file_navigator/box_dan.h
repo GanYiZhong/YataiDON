@@ -7,6 +7,9 @@ class DanBox : public BaseBox {
 public:
     std::string dan_title;
     int dan_color = 0;
+    int dan_rank = -1;
+    int dan_index = -1;
+    bool gaiden = false;
     std::vector<DanSongEntry> songs;
     std::vector<Exam> exams;
     int total_notes = 0;
@@ -22,6 +25,7 @@ public:
     void update(double current_ms) override;
 
 protected:
+    void draw_chip();
     void draw_closed() override;
     void draw_open() override;
     void draw_diff_select() override { draw_open(); }

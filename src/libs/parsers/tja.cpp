@@ -1410,6 +1410,8 @@ std::vector<std::pair<int, int>> find_streams(const std::deque<Note>& modded_not
     std::vector<std::pair<int, int>> streams;
     size_t i = 0;
 
+    if (modded_notes.size() < 2) return streams;
+
     while (i < modded_notes.size() - 1) {
         if (modded_notes[i].type == NoteType::ROLL_HEAD || modded_notes[i].type == NoteType::ROLL_HEAD_L ||
             modded_notes[i].type == NoteType::BALLOON_HEAD || modded_notes[i].type == NoteType::KUSUDAMA) {

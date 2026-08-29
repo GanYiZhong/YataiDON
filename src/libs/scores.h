@@ -5,29 +5,37 @@
 #include <mutex>
 
 struct PlayerData {
-    int player_id;
-    std::string username;
-    std::string title;
-    int title_bg;
-    int dan;
-    bool gold;
-    bool rainbow;
-    bool modifier_auto;
-    int modifier_speed;
-    bool modifier_display;
-    bool modifier_inverse;
-    int modifier_random;
-    int neiro_index;
-    ray::Color chara_color_1;
-    ray::Color chara_color_2;
-    ray::Color chara_color_3;
-    int chara_head_index;
-    int chara_body_index;
-    int chara_cos_index;
-    bool chara_is_costume;
-    int chara_paint_index;
-    int chara_face_index;
-    int chara_acce_index;
+    int player_id            = 0;
+    std::string username     = "";
+    std::string title        = "";
+    int title_bg             = 0;
+    int dan                  = -1;      // -1 = no 段位, matches the column default
+    bool gold                = false;
+    bool rainbow             = false;
+    bool modifier_auto       = false;
+    int modifier_speed       = 10;      // 1.0x, in tenths
+    bool modifier_display    = false;
+    bool modifier_inverse    = false;
+    int modifier_random      = 0;
+    bool modifier_skip       = false;
+    int neiro_index          = 0;
+    ray::Color chara_color_1 = ray::Color{0x68, 0xBF, 0xC0, 0xFF};
+    ray::Color chara_color_2 = ray::Color{0xF9, 0x47, 0x28, 0xFF};
+    ray::Color chara_color_3 = ray::Color{0xF9, 0xF0, 0xE1, 0xFF};
+    int chara_head_index     = 0;
+    int chara_body_index     = 0;
+    int chara_cos_index      = 0;
+    bool chara_is_costume    = true;
+    int chara_paint_index    = 0;
+    int chara_face_index     = 0;
+    int chara_acce_index     = 0;
+};
+
+struct DanRecord {
+    int dan_index = -1;
+    int rank      = 0;
+    int score     = 0;
+    int arrival   = 0;
 };
 
 struct Score {
@@ -67,6 +75,8 @@ public:
     std::optional<fs::path> get_path_by_diff_hash(const std::string& diff_hash);
     void add_song(const std::array<std::string, 5>& hash, const std::string& title, const std::string& subtitle);
     void remap_hashes(const std::unordered_map<std::string, std::string>& old_to_new);
+    std::optional<DanRecord> get_dan_record(int player_id, const std::string& course_title);
+    void save_dan_record(int player_id, const std::string& course_title, const DanRecord& rec);
     std::optional<PlayerData> get_player_data(int player_id);
     void save_player_data(const PlayerData& player);
     int add_player(const std::string& name);
@@ -92,5 +102,6 @@ inline Modifiers player_data_to_modifiers(const PlayerData& pd) {
     m.display   = pd.modifier_display;
     m.inverse   = pd.modifier_inverse;
     m.random    = pd.modifier_random;
+    m.skip      = pd.modifier_skip;
     return m;
 }

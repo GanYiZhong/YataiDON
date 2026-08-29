@@ -91,6 +91,7 @@ private:
     double last_frame_ms = 0;
 
     float scale = 650.0f;
+    float draw_scale = 1.0f;
     float rot_x = 181.25f;
     float rot_y = 27.5f;
     float rot_z = 0.0f;
@@ -147,7 +148,7 @@ public:
 
     void update(double current_ms);
 
-    void draw(float x, float y);
+    void draw(float x, float y, float scale_mul = 1.0f);
 };
 
 struct PlayerData;

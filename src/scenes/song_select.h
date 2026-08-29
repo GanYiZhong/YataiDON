@@ -37,6 +37,8 @@ protected:
 
     std::optional<DiffSortSelect> diff_sort_selector;
     std::pair<int,int> last_diff_sort = {-1, -1};
+    int last_diff_order = 1;
+    void apply_sort_window_result();
 
     std::optional<SearchBox> search_box;
 
@@ -51,6 +53,11 @@ protected:
 
     void poll_song_jump(double current_ms);
     double last_song_jump_poll_ms = -1e9;
+
+    virtual bool allows_second_player_join() { return true; }
+    double join_request_ms = -1.0;
+    PlayerNum join_existing_seat = PlayerNum::P1;
+    std::optional<Screens> poll_second_player_join(double current_ms);
 
     virtual void draw_overlays();
 

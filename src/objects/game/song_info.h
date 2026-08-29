@@ -9,7 +9,8 @@ public:
     float width;
     float height;
     SongNum() = default;
-    SongNum(int song_num);
+    SongNum(int song_num, float outline_override = -1.0f);
+    SongNum(int value, const std::string& config_key);
 
     void draw(float x, float y, float fade);
 };
@@ -21,10 +22,11 @@ private:
     FadeAnimation* fade;
     std::unique_ptr<OutlinedText> song_title;
     std::unique_ptr<SongNum> song_num;
+    std::unique_ptr<SongNum> song_max;
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, int genre, int song_num);
+    SongInfo(const std::string& song_name, int genre, int song_num, int song_total = 0);
 
     void update(double current_ms);
     void draw();

@@ -3,6 +3,7 @@
 #include "box_song.h"
 #include "genre_bg.h"
 #include <queue>
+#include <array>
 #include <unordered_map>
 
 class SongSelectScript;
@@ -48,6 +49,7 @@ private:
     std::optional<float> genre_bg_end_pos;
     GenreIndex bg_genre_index;
     GenreIndex last_bg_genre_index;
+    bool bg_genre_pending = true;
 
     FadeAnimation* background_fade_change;
     MoveAnimation* background_move;
@@ -71,7 +73,7 @@ private:
     std::unordered_map<std::string, BoxDef>  box_def_cache;
 
     bool awaiting_diff_sort = false;
-    std::optional<std::pair<int,int>> diff_sort_filter;
+    std::optional<std::array<int,3>> diff_sort_filter;
     std::optional<std::pair<int,int>> last_diff_sort_result;
 
     bool vertical_gallery = false;
@@ -102,7 +104,7 @@ private:
     void parse_song_list(const fs::path& path, BoxDef box_def, bool inline_mode);
     void load_current_directory_async(const fs::path path);
     void load_all_roots();
-    void load_collection_difficulty(const fs::path& path, const BoxDef& box_def, int course, int level);
+    void load_collection_difficulty(const fs::path& path, const BoxDef& box_def, int course, int level, int order = 1);
     void load_from_song_list(const fs::path& path, const BoxDef& box_def, bool mark_favorite);
     void load_collection_new(const fs::path& path, const BoxDef& box_def);
     void load_collection_recommended(const fs::path& path, const BoxDef& box_def);
@@ -135,10 +137,11 @@ public:
     BoxDef parse_box_def(const fs::path& path);
     bool needs_diff_sort() const { return awaiting_diff_sort; }
     bool diff_sort_ready() { return awaiting_diff_sort; }
-    void apply_diff_sort(int course, int level);
+    void apply_diff_sort(int course, int level, int order = 1);
     void cancel_diff_sort();
     void load_current_directory(const fs::path path);
     bool jump_to_song(const std::string& hash);
+    bool jump_to_song_path(const fs::path& song_path);
     void enter_diff_select();
     void exit_diff_select();
     float get_diff_fade_in();
@@ -162,6 +165,10 @@ public:
 
     MoveAnimation* background_move_anim() const { return background_move; }
     FadeAnimation* background_fade_anim() const { return background_fade_change; }
+    FolderBox* lua_current_folder() const {
+        if (!inline_state.has_value()) return nullptr;
+        return inline_state->saved_folder_box.get();
+    }
     int bg_genre_frame() const { return genre_to_ref_frame(bg_genre_index); }
     int last_bg_genre_frame() const { return genre_to_ref_frame(last_bg_genre_index); }
 };

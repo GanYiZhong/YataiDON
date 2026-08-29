@@ -1,5 +1,6 @@
 #include "box_dan.h"
 #include "../../../libs/song_parser.h"
+#include "../../../libs/scores.h"
 
 DanBox::DanBox(const fs::path& path, const std::string& title, int color,
                const std::vector<DanSongEntry>& songs_in,
@@ -11,27 +12,62 @@ DanBox::DanBox(const fs::path& path, const std::string& title, int color,
     text_name = title;
 }
 
+static float dan_shrink_font(float font_size) {
+    return std::max(font_size - 10.0f * tex.screen_scale, font_size * 0.6f);
+}
+
 void DanBox::load_text() {
     BaseBox::load_text();  // populates name (vertical) for closed state
-    float base_font = tex.skin_config[SC::SONG_BOX_NAME].font_size;
-    if (utf8_char_count(text_name) >= 30) base_font -= (int)(10 * tex.screen_scale);
-    name = std::make_unique<OutlinedText>(text_name, (int)base_font, ray::WHITE, ray::BLACK, true);
+    const SkinInfo* chip_slot = tex.skin_entry("dan_chip_name");
+    float base_font = (chip_slot && chip_slot->font_size > 0)
+                    ? (float)chip_slot->font_size
+                    : (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
+    float name_outline = 5.0f;
+    if (utf8_char_count(text_name) >= 30) {
+        float shrunk = dan_shrink_font(base_font);
+        name_outline = 5.0f * (shrunk / base_font);
+        base_font = shrunk;
+    }
+    name = std::make_unique<OutlinedText>(text_name, (int)base_font, ray::WHITE, ray::BLACK, true, name_outline);
     int font_size = tex.skin_config[SC::DAN_TITLE].font_size;
     hori_name = std::make_unique<OutlinedText>(dan_title, font_size, ray::WHITE, ray::BLACK, false);
 
+    int revealed = 0;
+    {
+        bool any_hidden = false;
+        for (const auto& e : songs) any_hidden |= e.hidden;
+        if (any_hidden) {
+            auto rec = scores_manager.get_dan_record(
+                get_player_id(global_data.player_num), dan_title);
+            if (rec && rec->rank > 0) revealed = rec->arrival;
+        }
+    }
+
     const std::string& lang = global_data.config->general.language;
+    int song_idx = 0;
     for (auto& entry : songs) {
         SongParser sp(entry.song_path);
         std::string title_str = sp.metadata.title.count(lang) ? sp.metadata.title.at(lang) : sp.metadata.title.at("en");
         std::string sub_str   = sp.metadata.subtitle.count(lang) ? sp.metadata.subtitle.at(lang) : "";
+        if (entry.hidden && song_idx >= revealed) {
+            title_str = "？？？";
+            sub_str.clear();
+        }
+        song_idx++;
 
-        int sub_font = tex.skin_config[SC::DAN_SUBTITLE].font_size;
-        if (sub_str.size() >= 30)
-            sub_font -= (int)(10 * tex.screen_scale);
+        int base_sub_font = tex.skin_config[SC::DAN_SUBTITLE].font_size;
+        int sub_font = base_sub_font;
+        float sub_outline = 5.0f;
+        if (sub_str.size() >= 30) {
+            float shrunk = dan_shrink_font((float)base_sub_font);
+            sub_outline = 5.0f * (shrunk / (float)base_sub_font);
+            sub_font = (int)shrunk;
+        }
 
+        const bool vertical = !tex.options[SCO::DAN_TITLE_HORIZONTAL];
         song_texts.push_back({
-            std::make_unique<OutlinedText>(title_str, font_size, ray::WHITE, ray::BLACK, true),
-            std::make_unique<OutlinedText>(sub_str,   sub_font,  ray::WHITE, ray::BLACK, true)
+            std::make_unique<OutlinedText>(title_str, font_size, ray::WHITE, ray::BLACK, vertical),
+            std::make_unique<OutlinedText>(sub_str,   sub_font,  ray::WHITE, ray::BLACK, vertical, sub_outline)
         });
     }
     text_loaded = true;
@@ -43,7 +79,7 @@ void DanBox::update(double current_ms) {
         yellow_box->create_anim_2();
 }
 
-void DanBox::draw_closed() {
+void DanBox::draw_chip() {
     tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_LEFT,  {.x=position, .fade=fade->attribute, .index=0});
     tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM,       {.x=position, .fade=fade->attribute, .index=0});
     tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_RIGHT, {.x=position, .fade=fade->attribute, .index=0});
@@ -53,36 +89,43 @@ void DanBox::draw_closed() {
     tex.draw_texture(BOX::FOLDER, {.frame=dan_color, .x=position, .fade=fade->attribute});
 
     if (text_loaded && name) {
+        const SkinInfo* chip = tex.skin_entry("dan_chip_name");
+        const SkinInfo& nb = chip ? *chip : tex.skin_config[SC::SONG_BOX_NAME];
         name->draw({
-            .x = position + tex.skin_config[SC::SONG_BOX_NAME].x - name->width / 2.0f,
-            .y = tex.skin_config[SC::SONG_BOX_NAME].y,
-            .y2 = std::min(name->height, tex.skin_config[SC::SONG_BOX_NAME].height) - name->height,
+            .x = position + nb.x - name->width / 2.0f,
+            .y = nb.y,
+            .y2 = std::min(name->height, nb.height) - name->height,
             .fade = fade->attribute
         });
     }
 }
 
+void DanBox::draw_closed() { draw_chip(); }
+
 void DanBox::draw_open() {
     if (!yellow_box.has_value()) return;
+    draw_chip();
     yellow_box->draw();
 
     if (!text_loaded) return;
     float f = open_fade->attribute;
 
     float offset_x = tex.skin_config[SC::DAN_YELLOW_BOX_OFFSET].x;
+    float offset_y = tex.skin_config[SC::DAN_YELLOW_BOX_OFFSET].y;
     for (int i = 0; i < (int)songs.size(); i++) {
         float x = i * offset_x;
-        tex.draw_texture(YELLOW_BOX::GENRE_BANNER,   {.frame=songs[i].genre_index, .x=x, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY,     {.frame=songs[i].difficulty,  .x=x, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY_X,   {.x=x, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY_STAR,{.x=x, .fade=f});
+        float y = i * offset_y;
+        tex.draw_texture(YELLOW_BOX::GENRE_BANNER,   {.frame=songs[i].genre_index, .x=x, .y=y, .fade=f});
+        tex.draw_texture(YELLOW_BOX::DIFFICULTY,     {.frame=songs[i].difficulty,  .x=x, .y=y, .fade=f});
+        tex.draw_texture(YELLOW_BOX::DIFFICULTY_X,   {.x=x, .y=y, .fade=f});
+        tex.draw_texture(YELLOW_BOX::DIFFICULTY_STAR,{.x=x, .y=y, .fade=f});
 
         // Level counter
         std::string lvl = std::to_string(songs[i].level);
         float margin = tex.skin_config[SC::DAN_LEVEL_COUNTER_MARGIN].x;
         float total_w = lvl.size() * margin;
         for (int j = 0; j < (int)lvl.size(); j++) {
-            tex.draw_texture(YELLOW_BOX::DIFFICULTY_NUM, {.frame=lvl[j]-'0', .x=x-(total_w/2)+(j*margin), .fade=f});
+            tex.draw_texture(YELLOW_BOX::DIFFICULTY_NUM, {.frame=lvl[j]-'0', .x=x-(total_w/2)+(j*margin), .y=y, .fade=f});
         }
 
         // Song title and subtitle
@@ -91,9 +134,9 @@ void DanBox::draw_open() {
             SkinInfo td = tex.skin_config[SC::DAN_TITLE];
             SkinInfo sd = tex.skin_config[SC::DAN_SUBTITLE];
             if (title_text)
-                title_text->draw({.x=td.x+x, .y=td.y, .y2=std::min(title_text->height, td.height)-title_text->height, .fade=f});
+                title_text->draw({.x=td.x+x, .y=td.y+y, .y2=std::min(title_text->height, td.height)-title_text->height, .fade=f});
             if (sub_text)
-                sub_text->draw({.x=sd.x+x, .y=sd.y-std::min(sub_text->height, sd.height), .y2=std::min(sub_text->height, sd.height)-sub_text->height, .fade=f});
+                sub_text->draw({.x=sd.x+x, .y=sd.y+y-std::min(sub_text->height, sd.height), .y2=std::min(sub_text->height, sd.height)-sub_text->height, .fade=f});
         }
     }
 
@@ -105,16 +148,19 @@ void DanBox::draw_open() {
     for (int i = 0; i < (int)tn.size(); i++)
         tex.draw_texture(YELLOW_BOX::TOTAL_NOTES_COUNTER, {.frame=tn[i]-'0', .x=(float)(i*tn_margin), .fade=f});
 
-    // Frame
-    tex.draw_texture(YELLOW_BOX::FRAME, {.frame=dan_color, .fade=f});
-    if (hori_name) {
-        SkinInfo hn = tex.skin_config[SC::DAN_HORI_NAME];
-        hori_name->draw({
-            .x = hn.x - hori_name->width/2.0f,
-            .y = hn.y,
-            .x2 = std::min(hori_name->width, hn.width) - hori_name->width,
-            .fade = f
-        });
+    if (dan_rank >= 0 && tex.options[SCO::DAN_SELECT_RANK_PLATE]) {
+        tex.draw_texture(YELLOW_BOX::RANK_PLATE, {.frame=dan_rank, .fade=f});
+    } else {
+        tex.draw_texture(YELLOW_BOX::FRAME, {.frame=dan_color, .fade=f});
+        if (hori_name) {
+            SkinInfo hn = tex.skin_config[SC::DAN_HORI_NAME];
+            hori_name->draw({
+                .x = hn.x - hori_name->width/2.0f,
+                .y = hn.y,
+                .x2 = std::min(hori_name->width, hn.width) - hori_name->width,
+                .fade = f
+            });
+        }
     }
 
     draw_exam_box();
@@ -150,6 +196,7 @@ void DanBox::draw_exam_box() {
             {"judgegood",    YELLOW_BOX::EXAM_JUDGEGOOD},
             {"judgeperfect", YELLOW_BOX::EXAM_JUDGEPERFECT},
             {"score",        YELLOW_BOX::EXAM_SCORE},
+            {"renda",        YELLOW_BOX::EXAM_ROLL},   // ROUND 47: 連打数 exam type
         };
         auto icon_it = exam_icons.find(exam.type);
         if (icon_it != exam_icons.end())

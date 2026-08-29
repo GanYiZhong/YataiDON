@@ -31,6 +31,7 @@ struct Modifiers {
     bool inverse = false;
     int random = 0;
     int subdiff = 0;
+    bool skip = false;
 };
 
 enum class NoteType : int {
@@ -89,6 +90,7 @@ public:
     bool is_branch_start;
     // Drumroll specific
     std::optional<int> color;
+    float roll_intensity = 0.0f;
     // Balloon specific
     std::optional<int> count;
     std::optional<bool> popped;
