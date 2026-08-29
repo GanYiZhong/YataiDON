@@ -132,6 +132,7 @@ SongSelectState SongSelectPlayer::select_song() {
     audio.play_sound("don", VolumePreset::SOUND);
     BaseBox* item = navigator.get_current_item();
     if (navigator.is_directory(item) && item->genre_index == GenreIndex::DAN) {
+        global_data.session_data[(int)player_num].selected_dan_folder = item->path;
         return SongSelectState::DAN_SELECTED;
     } else if (navigator.is_song(item)) {
         navigator.enter_diff_select();

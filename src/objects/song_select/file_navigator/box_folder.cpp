@@ -3,6 +3,7 @@
 #include "../../../libs/optional/gen4.h"
 #include "../../../libs/optional/gen3.h"
 #endif
+#include "navigator.h"
 #include "../../../libs/filesystem.h"
 #include "../../../libs/scores.h"
 #include "../../../libs/audio.h"
@@ -12,6 +13,7 @@
 namespace {
 struct FolderScan {
     std::map<int, Crown> crown;
+    std::map<int, Crown> crown_p2;
     int tja_count;
 };
 std::mutex scan_cache_mutex;
@@ -22,27 +24,32 @@ std::deque<fs::path> deferred_scans;
 
 void scan_folder_now(const fs::path& path) {
     std::map<int, Crown> crown;
+    std::map<int, Crown> crown_p2;
     int tja_count = 0;
-    std::set<int> disqualified;
+    std::set<int> disqualified_p1;
+    std::set<int> disqualified_p2;
 
-    auto update_crown = [&](const fs::path& file_path) {
-        auto hashes = scores_manager.get_hashes(file_path);
+    int player_1_id = global_data.config->general.player_1_id;
+    int player_2_id = global_data.config->general.player_2_id;
+
+    auto update_crown = [&](const fs::path& file_path, int player_id, std::map<int, Crown>& out_crown, std::set<int>& disqualified) {
+        auto& hashes = scores_manager.get_hashes(file_path);
         for (int diff = 0; diff < 5; diff++) {
             if (hashes[diff].empty()) continue;
-            auto score = scores_manager.get_score(hashes[diff], diff, global_data.config->general.player_1_id);
+            auto score = scores_manager.get_score(hashes[diff], diff, player_id);
 
             if (!score || score->crown == Crown::NONE) {
-                crown.erase(diff);
+                out_crown.erase(diff);
                 disqualified.insert(diff);
                 continue;
             }
 
             if (disqualified.count(diff)) continue;
 
-            if (crown.find(diff) == crown.end())
-                crown[diff] = score->crown;
+            if (out_crown.find(diff) == out_crown.end())
+                out_crown[diff] = score->crown;
             else
-                crown[diff] = std::min(crown[diff], score->crown);
+                out_crown[diff] = std::min(out_crown[diff], score->crown);
         }
     };
 
@@ -57,8 +64,10 @@ void scan_folder_now(const fs::path& path) {
             auto entries = read_song_list(entry.path());
             tja_count += (int)entries.size();
             for (const auto& e : entries)
-                if (auto found = scores_manager.get_path_by_hash(e.hash))
-                    update_crown(*found);
+                if (auto found = scores_manager.get_path_by_hash(e.hash)) {
+                    update_crown(*found, player_1_id, crown, disqualified_p1);
+                    update_crown(*found, player_2_id, crown_p2, disqualified_p2);
+                }
             scan.increment(scan_ec);
             if (scan_ec) scan_ec.clear();
             continue;
@@ -66,7 +75,8 @@ void scan_folder_now(const fs::path& path) {
         auto ext = entry.path().extension();
         if (ext == ".tja" || ext == ".osu") {
             tja_count++;
-            update_crown(entry.path());
+            update_crown(entry.path(), player_1_id, crown, disqualified_p1);
+            update_crown(entry.path(), player_2_id, crown_p2, disqualified_p2);
         }
 
         scan.increment(scan_ec);
@@ -74,7 +84,7 @@ void scan_folder_now(const fs::path& path) {
     }
 
     std::lock_guard<std::mutex> lock(scan_cache_mutex);
-    scan_cache[path] = {crown, tja_count};
+    scan_cache[path] = {crown, crown_p2, tja_count};
 }
 }
 
@@ -98,12 +108,14 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         auto it = scan_cache.find(path);
         if (it != scan_cache.end()) {
             crown = it->second.crown;
+            crown_p2 = it->second.crown_p2;
             tja_count = it->second.tja_count;
             return;
         }
     }
 
     crown.clear();
+    crown_p2.clear();
     tja_count = 0;
 
     #ifdef SUPPORT_FUMEN
@@ -112,7 +124,7 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         for (const gen4::OrderEntry& listing : library->order())
             if (genre_no < 0 || listing.genre_no == genre_no) tja_count++;
         std::lock_guard<std::mutex> lock(scan_cache_mutex);
-        scan_cache[path] = {crown, tja_count};
+        scan_cache[path] = {crown, crown_p2, tja_count};
         return;
     }
     if (const gen3::Library* library = gen3::library_for(path)) {
@@ -120,7 +132,7 @@ void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs:
         for (const gen3::SongEntry& e : library->songs())
             if (genre.empty() || e.genre == genre) tja_count++;
         std::lock_guard<std::mutex> lock(scan_cache_mutex);
-        scan_cache[path] = {crown, tja_count};
+        scan_cache[path] = {crown, crown_p2, tja_count};
         return;
     }
 #endif
@@ -176,6 +188,7 @@ void FolderBox::update(double current_time) {
         auto it = scan_cache.find(path);
         if (it != scan_cache.end()) {
             crown = it->second.crown;
+            crown_p2 = it->second.crown_p2;
             tja_count = it->second.tja_count;
             scan_pending = false;
             // The count text may already be baked with the placeholder.
@@ -231,14 +244,29 @@ void FolderBox::draw_closed() {
         .fade = fade->attribute
     });
 
-    if (!crown.empty()) {
-        int highest_crown = std::max_element(crown.begin(), crown.end(),
+    auto highest_crown = [](const std::map<int, Crown>& c, int& frame) -> std::optional<Crown> {
+        if (c.empty()) return std::nullopt;
+        int key = std::max_element(c.begin(), c.end(),
             [](const auto& a, const auto& b) { return a.first < b.first; })->first;
-        int frame = std::min((int)Difficulty::URA, highest_crown);
-        Crown c = crown.at(highest_crown);
-        if      (c == Crown::DFC)   tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=bx, .y=by});
-        else if (c == Crown::FC)    tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=bx, .y=by});
-        else                         tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=bx, .y=by});
+        frame = std::min((int)Difficulty::URA, key);
+        return c.at(key);
+    };
+    auto draw_one = [&](Crown c, int frame, float x) {
+        if      (c == Crown::DFC) tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=x, .y=by});
+        else if (c == Crown::FC)  tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=x, .y=by});
+        else                       tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=x, .y=by});
+    };
+
+    int frame_1p = 0, frame_2p = 0;
+    std::optional<Crown> crown_1p = highest_crown(crown, frame_1p);
+    std::optional<Crown> crown_2p = navigator.is_2p ? highest_crown(crown_p2, frame_2p) : std::nullopt;
+
+    if (crown_2p.has_value()) {
+        float half = tex.textures[YELLOW_BOX::CROWN_DFC]->width * 0.35f;
+        if (crown_1p.has_value()) draw_one(crown_1p.value(), frame_1p, bx - half);
+        draw_one(crown_2p.value(), frame_2p, bx + half);
+    } else if (crown_1p.has_value()) {
+        draw_one(crown_1p.value(), frame_1p, bx);
     }
 }
 

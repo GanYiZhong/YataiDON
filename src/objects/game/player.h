@@ -72,6 +72,7 @@ public:
     bool is_skip_enabled() const { return modifiers.skip; }
     void cut_to_end(double now, int prev_good = 0, int prev_ok = 0, int prev_bad = 0);
     bool was_skipped() const { return skipped_run; }
+    const Modifiers& get_modifiers() const { return modifiers; }
     void set_auto_play(bool value) { modifiers.auto_play = value; }
     void reset_performance() {
         good_count = ok_count = bad_count = 0;

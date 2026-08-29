@@ -1,10 +1,6 @@
 #include "song_info.h"
 #include "../../libs/global_data.h"
 
-// ROUND 19: the arcade's own outline thicknesses live in the lumen
-// DefineEditText records (`song_info.nulm`: 3.0 stage px on the 「N曲目」/「M曲」
-// plate halves, 6.5 on the song title). This skin ships them as the optional
-// `outline` key; a skin that never declared one keeps the historic hardcoded 5.
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
 SongInfo::SongInfo(const std::string& song_name, int genre, int song_num, int song_total)
@@ -12,18 +8,11 @@ SongInfo::SongInfo(const std::string& song_name, int genre, int song_num, int so
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
-    // The gameplay plate's own outline, when the skin declared one on
-    // `song_num_game`; otherwise the shared SC::SONG_NUM value.
     const SkinInfo* plate_cfg = tex.skin_entry("song_num_game");
     this->song_num = std::make_unique<SongNum>(
         song_num, plate_cfg ? plate_cfg->outline : -1.0f);
-    // ROUND 17: the arcade's "M曲" half. Both the total and the skin key have to
-    // be there -- a caller that knows no total, or a skin that never declared the
-    // second field, gets exactly the old single-field plate.
     if (song_total > 0 && tex.skin_entry("song_num_max"))
         song_max = std::make_unique<SongNum>(song_total, "song_num_max");
-    fade = (FadeAnimation*)tex.get_animation(3);
-}
 
 void SongInfo::update(double current_ms) {
     fade->update(current_ms);
@@ -60,8 +49,14 @@ void SongInfo::draw() {
 
     song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
 
+    if (song_subtitle) {
+        float sub_y = tex.skin_config[SC::SONG_INFO_SUBTITLE].y - song_subtitle->height / 2.0f;
+        song_subtitle->draw({.x=text_x - song_subtitle->width, .y=sub_y, .fade=1 - fade->attribute});
+    }
+
     if (genre < 9) {
-        tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
+        float genre_y_offset = song_subtitle ? song_subtitle->height : 0;
+        tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .y = genre_y_offset, .fade = 1 - fade->attribute,});
     }
 }
 

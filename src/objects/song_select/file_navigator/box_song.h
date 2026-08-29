@@ -11,6 +11,7 @@ class SongBox : public BaseBox {
 public:
     std::array<std::string, 5> hashes;
     std::array<std::optional<Score>, 5> scores;
+    std::array<std::optional<Score>, 5> scores_p2;
     SongParser parser;
     bool is_favorite;
     std::string text_subtitle;
@@ -104,4 +105,7 @@ protected:
     void draw_open() override;
     void draw_diff_select() override;
     void draw_text();
+    void draw_box_crown(float x, float y, double fade_val);
+    void draw_diff_crown(int diff, float x, float y, double fade_val);
+    void draw_diff_outline(float x, float y, double fade_val);
 };

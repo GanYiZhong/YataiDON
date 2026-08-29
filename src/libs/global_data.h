@@ -113,6 +113,7 @@ struct ResultData {
 struct SessionData {
     fs::path selected_song;
     std::string song_hash;
+    fs::path selected_dan_folder;
     std::vector<DanSongEntry> selected_dan;
     std::vector<Exam> selected_dan_exam;
     int dan_color = 0;
@@ -123,6 +124,7 @@ struct SessionData {
     int selected_difficulty = 0;
     std::string song_title = "default_title";
     std::string song_subtitle = "default_subtitle";
+    bool song_subtitle_full_display = false;
     int genre_index = 0;
     ResultData result_data;
     DanResultData dan_result_data;

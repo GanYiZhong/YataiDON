@@ -361,7 +361,8 @@ void DanSelectScreen::on_screen_start() {
     if (auto pd = scores_manager.get_player_data(get_player_id(global_data.player_num)))
         dan_player_data = *pd;
 
-    dan_navigator.init(global_data.config->paths.tja_path);
+    fs::path dan_folder = global_data.session_data[(int)global_data.player_num].selected_dan_folder;
+    dan_navigator.init({dan_folder});
 }
 
 Screens DanSelectScreen::on_screen_end(Screens next_screen) {

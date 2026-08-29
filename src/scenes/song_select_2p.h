@@ -11,6 +11,7 @@ private:
     void draw_overlays() override;
 
 protected:
+    bool is_2p_screen() override { return true; }
     Screens get_game_screen_target() override { return Screens::GAME_2P; }
 
     bool hides_dan() override { return true; }

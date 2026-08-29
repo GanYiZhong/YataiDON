@@ -55,8 +55,8 @@ void GameScreen::on_screen_start() {
     init_tja(session_data.selected_song);
     spdlog::info("TJA initialized for song: {}", session_data.selected_song.string());
     load_hitsounds();
-    song_info = SongInfo(session_data.song_title, session_data.genre_index, global_data.songs_played + 1);
-    result_transition = ResultTransition(scene_player_num());
+    song_info = SongInfo(session_data.song_title, session_data.song_subtitle, parser->metadata.subtitle_full_display, session_data.genre_index, global_data.songs_played + 1);
+    result_transition = ResultTransition(global_data.player_num);
     bpm = parser->metadata.bpm;
     scene_preset = parser->metadata.scene_preset;
     if (!movie.has_value()) {
@@ -138,6 +138,7 @@ void GameScreen::init_tja(fs::path song) {
 
     global_data.session_data[(int)global_data.player_num].song_title = titles.count(lang) ? titles.at(lang) : titles.count("en") ? titles.at("en") : titles.empty() ? "" : titles.begin()->second;
     global_data.session_data[(int)global_data.player_num].song_subtitle = subtitles.count(lang) ? subtitles.at(lang) : "";
+    global_data.session_data[(int)global_data.player_num].song_subtitle_full_display = parser->metadata.subtitle_full_display;
 
     if (fs::exists(parser->metadata.wave) && !song_music.has_value() && !pending_song_load.valid()) {
         fs::path wave = parser->metadata.wave;
@@ -266,8 +267,10 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
         score.crown = Crown::DFC;
     } else if (score.bad == 0) {
         score.crown = Crown::FC;
-    } else {
+    } else if (players[0]->gauge->get_is_clear()) {
         score.crown = Crown::CLEAR;
+    } else {
+        score.crown = Crown::NONE;
     }
     if (run_skipped) {
         score.rank = Rank::_NONE;
@@ -286,8 +289,11 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     } else {
         score.rank = Rank::_WHITE;
     }
-    scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score);
-    network.submit_score(hash, session_data.selected_difficulty, global_data.config->general.access_code, score, players[0]->input_log);
+    int64_t played_at = unix_now();
+    std::string modifiers_json = modifiers_to_json(players[0]->get_modifiers());
+    scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score, played_at, modifiers_json);
+    PlayerData pd = scores_manager.get_player_data(player_id).value_or(PlayerData{});
+    network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
 }
 
 void GameScreen::resync_song(double current_ms) {

@@ -3,7 +3,12 @@
 
 void ResultScreen::on_screen_start() {
     Screen::on_screen_start();
-    song_info = std::make_unique<OutlinedText>(global_data.session_data[(int)global_data.player_num].song_title, tex.skin_config[SC::SONG_INFO_RESULT].font_size, ray::WHITE, ray::BLACK, false, 5);
+    SessionData& session_data = global_data.session_data[(int)global_data.player_num];
+    song_info = std::make_unique<OutlinedText>(session_data.song_title, tex.skin_config[SC::SONG_INFO_RESULT].font_size, ray::WHITE, ray::BLACK, false, 5);
+    song_info_subtitle.reset();
+    if (session_data.song_subtitle_full_display && !session_data.song_subtitle.empty()) {
+        song_info_subtitle = std::make_unique<OutlinedText>(session_data.song_subtitle, tex.skin_config[SC::SONG_INFO_RESULT_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
+    }
     audio.play_sound("bgm", VolumePreset::MUSIC);
     fade_out = (FadeAnimation*)tex.get_animation(0);
     fade_in.emplace(global_data.player_num);
@@ -98,9 +103,11 @@ void ResultScreen::draw_overlay() {
 
 void ResultScreen::draw_song_info() {
     song_num->draw(tex.skin_config[SC::SONG_NUM_RESULT].x, tex.skin_config[SC::SONG_NUM_RESULT].y, 1.0);
-    const SkinInfo& si = tex.skin_config[SC::SONG_INFO_RESULT];
-    float title_x = si.width > 0 ? si.x + (si.width - song_info->width) / 2 : si.x - song_info->width;
-    song_info->draw({.x=title_x, .y=si.y - song_info->height / 2, .fade=1.0});
+    float text_x = tex.skin_config[SC::SONG_INFO_RESULT].x;
+    song_info->draw({.x=text_x - song_info->width, .y=tex.skin_config[SC::SONG_INFO_RESULT].y - song_info->height / 2, .fade=1.0});
+    if (song_info_subtitle) {
+        song_info_subtitle->draw({.x=text_x - song_info_subtitle->width, .y=tex.skin_config[SC::SONG_INFO_RESULT_SUBTITLE].y - song_info_subtitle->height / 2, .fade=1.0});
+    }
 }
 
 void ResultScreen::draw() {

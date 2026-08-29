@@ -21,6 +21,25 @@
 
 NetworkClient network;
 
+std::string modifiers_to_json(const Modifiers& m) {
+    rapidjson::Document doc;
+    doc.SetObject();
+    rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
+
+    doc.AddMember("auto_play", m.auto_play, allocator);
+    doc.AddMember("speed", m.speed, allocator);
+    doc.AddMember("display", m.display, allocator);
+    doc.AddMember("inverse", m.inverse, allocator);
+    doc.AddMember("random", m.random, allocator);
+    doc.AddMember("subdiff", m.subdiff, allocator);
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    doc.Accept(writer);
+
+    return buffer.GetString();
+}
+
 #if defined(NETWORK_ENABLED)
 
 namespace {
@@ -132,7 +151,7 @@ cpr::SslOptions android_ca() {
 }  // namespace
 
 static bool network_enabled() {
-    return global_data.config && global_data.config->general.online_play;
+    return global_data.config && global_data.config->network.online_play;
 }
 
 static std::string network_url(const std::string& endpoint) {
@@ -193,6 +212,153 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
     return true;
 }
 
+bool NetworkClient::fetch_username(const std::string& access_code, std::string& username) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("username") || !doc["username"].IsString()) return false;
+
+    username = doc["username"].GetString();
+    return true;
+}
+
+bool NetworkClient::fetch_title(const std::string& access_code, std::string& title) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("title") || !doc["title"].IsString()) return false;
+
+    title = doc["title"].GetString();
+    return true;
+}
+
+bool NetworkClient::fetch_title_bg(const std::string& access_code, int& title_bg) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("title_bg") || !doc["title_bg"].IsInt()) return false;
+
+    title_bg = doc["title_bg"].GetInt();
+    return true;
+}
+
+void NetworkClient::update_username(const std::string& access_code, const std::string& username) {
+    if (!network_enabled()) return;
+    cpr::Response response = cpr::Post(
+        cpr::Url{network_url("/update_username")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Payload{{"username", username}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) {
+        spdlog::error("Failed to update username: HTTP {} - {}", response.status_code, response.text);
+    }
+}
+
+bool NetworkClient::fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume) {
+    if (!network_enabled()) return false;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return false;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return false;
+    if (!doc.HasMember("chara_head_index") || !doc["chara_head_index"].IsInt()) return false;
+    if (!doc.HasMember("chara_body_index") || !doc["chara_body_index"].IsInt()) return false;
+    if (!doc.HasMember("chara_cos_index") || !doc["chara_cos_index"].IsInt()) return false;
+    if (!doc.HasMember("chara_is_costume") || !doc["chara_is_costume"].IsBool()) return false;
+
+    head_index = doc["chara_head_index"].GetInt();
+    body_index = doc["chara_body_index"].GetInt();
+    cos_index = doc["chara_cos_index"].GetInt();
+    is_costume = doc["chara_is_costume"].GetBool();
+    return true;
+}
+
+void NetworkClient::update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume) {
+    if (!network_enabled()) return;
+    cpr::Response response = cpr::Post(
+        cpr::Url{network_url("/update_costume")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Payload{
+            {"chara_head_index", std::to_string(head_index)},
+            {"chara_body_index", std::to_string(body_index)},
+            {"chara_cos_index", std::to_string(cos_index)},
+            {"chara_is_costume", is_costume ? "true" : "false"},
+        },
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) {
+        spdlog::error("Failed to update costume: HTTP {} - {}", response.status_code, response.text);
+    }
+}
+
+std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string& access_code) {
+    std::vector<RemoteScore> result;
+    if (!network_enabled()) return result;
+    cpr::Response response = cpr::Get(
+        cpr::Url{network_url("/user")},
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{10000}
+        NETWORK_CA_OPT
+    );
+    if (response.status_code != 200) return result;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return result;
+    if (!doc.HasMember("scores") || !doc["scores"].IsArray()) return result;
+
+    for (auto& s : doc["scores"].GetArray()) {
+        if (!s.IsObject()) continue;
+        if (!s.HasMember("hash") || !s["hash"].IsString()) continue;
+        if (!s.HasMember("difficulty") || !s["difficulty"].IsInt()) continue;
+
+        RemoteScore rs;
+        rs.hash = s["hash"].GetString();
+        rs.difficulty = s["difficulty"].GetInt();
+        rs.score.score     = s.HasMember("score")     && s["score"].IsInt()     ? s["score"].GetInt()     : 0;
+        rs.score.good      = s.HasMember("good")      && s["good"].IsInt()      ? s["good"].GetInt()      : 0;
+        rs.score.ok        = s.HasMember("ok")        && s["ok"].IsInt()        ? s["ok"].GetInt()        : 0;
+        rs.score.bad       = s.HasMember("bad")       && s["bad"].IsInt()       ? s["bad"].GetInt()       : 0;
+        rs.score.drumroll  = s.HasMember("drumroll")  && s["drumroll"].IsInt()  ? s["drumroll"].GetInt()  : 0;
+        rs.score.max_combo = s.HasMember("max_combo") && s["max_combo"].IsInt() ? s["max_combo"].GetInt() : 0;
+        rs.score.crown = static_cast<Crown>(s.HasMember("crown") && s["crown"].IsInt() ? s["crown"].GetInt() : 0);
+        rs.score.rank  = static_cast<Rank>(s.HasMember("rank")   && s["rank"].IsInt()   ? s["rank"].GetInt()   : 0);
+        result.push_back(std::move(rs));
+    }
+    return result;
+}
+
 void NetworkClient::clear_import_flag(const std::string& access_code) {
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
@@ -240,7 +406,7 @@ std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_
     return buffer.GetString();
 }
 
-void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log) {
+void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log, int64_t played_at, const std::string& modifiers_json, bool chara_is_costume, int chara_cos_index) {
     if (!network_enabled()) return;
     std::map<std::string, std::string> params{
         {"access_code", access_code},
@@ -273,6 +439,10 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
         },
         cpr::Payload{
             {"input_log", map_to_json(input_log)},
+            {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
+            {"modifiers", modifiers_json},
+            {"chara_is_costume", chara_is_costume ? "true" : "false"},
+            {"chara_cos_index", std::to_string(chara_cos_index)},
         },
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -340,10 +510,17 @@ void NetworkClient::update(double current_ms) {
 #else
 
 std::string NetworkClient::register_user(const std::string&) { return ""; }
-void NetworkClient::submit_score(std::string&, int, const std::string&, Score, std::map<double, InputLogType> input_log) {}
+void NetworkClient::submit_score(std::string&, int, const std::string&, Score, std::map<double, InputLogType> input_log, int64_t, const std::string&, bool, int) {}
 bool NetworkClient::check_import_requested(const std::string&) { return false; }
 void NetworkClient::clear_import_flag(const std::string&) {}
 bool NetworkClient::fetch_chara_colors(const std::string&, ray::Color&, ray::Color&, ray::Color&) { return false; }
+bool NetworkClient::fetch_username(const std::string&, std::string&) { return false; }
+void NetworkClient::update_username(const std::string&, const std::string&) {}
+bool NetworkClient::fetch_title(const std::string&, std::string&) { return false; }
+bool NetworkClient::fetch_title_bg(const std::string&, int&) { return false; }
+bool NetworkClient::fetch_costume(const std::string&, int&, int&, int&, bool&) { return false; }
+void NetworkClient::update_costume(const std::string&, int, int, int, bool) {}
+std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { return {}; }
 void NetworkClient::poll_song_jump(const std::string&) {}
 std::optional<std::string> NetworkClient::take_song_jump_result() { return std::nullopt; }
 void NetworkClient::update(double) {}

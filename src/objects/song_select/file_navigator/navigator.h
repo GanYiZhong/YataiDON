@@ -122,6 +122,7 @@ public:
 
     bool is_processing = false;
     bool hide_dan = false;
+    bool is_2p = false;
     bool inline_streaming = false;
     fs::path current_path;
     std::string current_search;

@@ -1,4 +1,5 @@
 #include "box_song.h"
+#include "navigator.h"
 #include "../../../libs/audio.h"
 #include <thread>
 
@@ -55,6 +56,9 @@ void SongBox::refresh_scores() {
     }
     for (int i = 0; i < 5; i++) {
         scores[i] = scores_manager.get_score(hashes[i], i, global_data.config->general.player_1_id);
+        scores_p2[i] = navigator.is_2p
+            ? scores_manager.get_score(hashes[i], i, global_data.config->general.player_2_id)
+            : std::nullopt;
     }
     score_history.reset();
 }
@@ -242,16 +246,61 @@ void SongBox::draw_closed() {
     else if (is_new)
         tex.draw_texture(tex.get_enum("yellow_box/ex_data_new_song_balloon_" + global_data.config->general.language), {.x=bx, .y=by, .fade=fade->attribute});
 
-    int highest_key = -1;
-    for (int i = 0; i < (int)scores.size(); ++i) {
-        if (scores[i].has_value() && parser.metadata.course_data.count(i)) highest_key = std::max(highest_key, i);
+    draw_box_crown(bx, by, fade->attribute);
+}
+
+void SongBox::draw_box_crown(float x, float y, double fade_val) {
+    auto highest_crown = [&](const std::array<std::optional<Score>, 5>& s, int& frame) -> std::optional<Score> {
+        int highest_key = -1;
+        for (int i = 0; i < (int)s.size(); ++i) {
+            if (s[i].has_value() && parser.metadata.course_data.count(i)) highest_key = std::max(highest_key, i);
+        }
+        if (highest_key < 0) return std::nullopt;
+        frame = std::min((int)Difficulty::URA, highest_key);
+        return s[highest_key];
+    };
+    auto draw_one = [&](const Score& score, int frame, float px) {
+        if      (score.crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=px, .y=y, .fade=fade_val});
+        else if (score.crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=px, .y=y, .fade=fade_val});
+        else if (score.crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=px, .y=y, .fade=fade_val});
+    };
+
+    int frame_1p = 0, frame_2p = 0;
+    std::optional<Score> score_1p = highest_crown(scores, frame_1p);
+    std::optional<Score> score_2p = navigator.is_2p ? highest_crown(scores_p2, frame_2p) : std::nullopt;
+
+    if (score_2p.has_value()) {
+        float half = tex.textures[YELLOW_BOX::CROWN_DFC]->width * 0.35f;
+        if (score_1p.has_value()) draw_one(score_1p.value(), frame_1p, x - half);
+        draw_one(score_2p.value(), frame_2p, x + half);
+    } else if (score_1p.has_value()) {
+        draw_one(score_1p.value(), frame_1p, x);
     }
-    if (highest_key >= 0) {
-        Score score = scores[highest_key].value();
-        int frame = std::min((int)Difficulty::URA, highest_key);
-        if      (score.crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
-        else if (score.crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
-        else if (score.crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
+}
+
+void SongBox::draw_diff_crown(int diff, float x, float y, double fade_val) {
+    auto draw_one = [&](const std::optional<Score>& s, float px) {
+        if (!s.has_value()) return;
+        if      (s->crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::S_CROWN_DFC,   {.x=px, .y=y, .fade=fade_val});
+        else if (s->crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::S_CROWN_FC,    {.x=px, .y=y, .fade=fade_val});
+        else if (s->crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::S_CROWN_CLEAR, {.x=px, .y=y, .fade=fade_val});
+    };
+    if (navigator.is_2p) {
+        float half = tex.textures[YELLOW_BOX::S_CROWN_DFC]->width * 0.35f;
+        draw_one(scores[diff],    x - half);
+        draw_one(scores_p2[diff], x + half);
+    } else {
+        draw_one(scores[diff], x);
+    }
+}
+
+void SongBox::draw_diff_outline(float x, float y, double fade_val) {
+    if (navigator.is_2p) {
+        float half = tex.textures[YELLOW_BOX::S_CROWN_DFC]->width * 0.35f;
+        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=x - half, .y=y, .fade=fade_val});
+        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=x + half, .y=y, .fade=fade_val});
+    } else {
+        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=x, .y=y, .fade=fade_val});
     }
 }
 
@@ -268,12 +317,8 @@ void SongBox::draw_diff_select() {
     for (const auto& [diff, course] : parser.metadata.course_data) {
         if (Difficulty(diff) >= Difficulty::URA) continue;
         float cx = (diff * offset_x) + crown_offset;
-        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=cx, .y=offset_y, .fade=std::min((float)diff_fade_in->attribute, 0.25f)});
-        if (scores[diff].has_value()) {
-            if      (scores[diff]->crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::S_CROWN_DFC,   {.x=cx, .y=offset_y, .fade=diff_fade_in->attribute});
-            else if (scores[diff]->crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::S_CROWN_FC,    {.x=cx, .y=offset_y, .fade=diff_fade_in->attribute});
-            else if (scores[diff]->crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::S_CROWN_CLEAR, {.x=cx, .y=offset_y, .fade=diff_fade_in->attribute});
-        }
+        draw_diff_outline(cx, offset_y, std::min((float)diff_fade_in->attribute, 0.25f));
+        draw_diff_crown(diff, cx, offset_y, diff_fade_in->attribute);
     }
 
     for (int i = 0; i < 4; i++) {
@@ -326,12 +371,8 @@ void SongBox::draw_open() {
 
     for (const auto& [diff, course] : parser.metadata.course_data) {
         if (Difficulty(diff) >= Difficulty::URA) continue;
-        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=diff*offset, .fade=std::min((float)open_fade->attribute, 0.25f)});
-        if (scores[diff].has_value()) {
-            if      (scores[diff]->crown == Crown::DFC)           tex.draw_texture(YELLOW_BOX::S_CROWN_DFC,   {.x=diff*offset, .fade=open_fade->attribute});
-            else if (scores[diff]->crown == Crown::FC)            tex.draw_texture(YELLOW_BOX::S_CROWN_FC,    {.x=diff*offset, .fade=open_fade->attribute});
-            else if (scores[diff]->crown >= Crown::CLEAR)         tex.draw_texture(YELLOW_BOX::S_CROWN_CLEAR, {.x=diff*offset, .fade=open_fade->attribute});
-        }
+        draw_diff_outline(diff*offset, 0.0f, std::min((float)open_fade->attribute, 0.25f));
+        draw_diff_crown(diff, diff*offset, 0.0f, open_fade->attribute);
     }
 
     if      (parser.ex_data.new_audio)     tex.draw_texture(YELLOW_BOX::EX_DATA_NEW_AUDIO,     {.fade=open_fade->attribute});
