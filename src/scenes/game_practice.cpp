@@ -4,9 +4,9 @@
 
 void PracticeGameScreen::on_screen_start() {
     GameScreen::on_screen_start();
-    if (!movie.has_value()) {
-        background.emplace(global_data.player_num, bpm, "PRACTICE");
-    }
+    // ROUND 58: the "PRACTICE" background is now built once by the base
+    // on_screen_start() via background_scene_preset() (game_practice.h) --
+    // the emplace-over-the-base-built-rig that stood here is gone.
     pause_don_anim   = (TextureResizeAnimation*)tex.get_animation(67, true);
     pause_kat_anim   = (TextureResizeAnimation*)tex.get_animation(67, true);
     resume_don_anim  = (TextureResizeAnimation*)tex.get_animation(67, true);
@@ -178,7 +178,7 @@ std::optional<Screens> PracticeGameScreen::handle_menu_action(PracticeMenu::Acti
 }
 
 std::optional<Screens> PracticeGameScreen::global_keys_practice() {
-    if (ray::IsKeyPressed(global_data.config->keys.restart_key)) {
+    if (check_key_pressed(global_data.config->keys.restart_key)) {
         restart_practice();
         return std::nullopt;
     }

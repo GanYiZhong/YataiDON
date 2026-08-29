@@ -91,6 +91,9 @@ private:
     double last_frame_ms = 0;
 
     float scale = 650.0f;
+    // Per-draw multiplier on `scale`, set by draw(); 1.0 = the size every
+    // caller got before the parameter existed.
+    float draw_scale = 1.0f;
     float rot_x = 181.25f;
     float rot_y = 27.5f;
     float rot_z = 0.0f;
@@ -115,6 +118,16 @@ private:
     bool render_dirty = true;
     float last_draw_x = std::numeric_limits<float>::lowest();
     float last_draw_y = std::numeric_limits<float>::lowest();
+
+    // TEMP ROUND34 DIAGNOSTIC (r34-chara3d-matrix) - the on-screen composite
+    // blit runs every frame off the CACHED fxaa_target, but the pixel-content
+    // readback that locates a good sample point only runs on the frame that
+    // actually re-renders (render_dirty); this remembers that point so the
+    // post-blit backbuffer probe (same gate, YATAIDON_R33_GLSTATE) has
+    // somewhere to sample on every frame, not just the render_dirty one.
+    // Remove alongside the rest of the ROUND34 diagnostic.
+    int r34_sample_x = -1;
+    int r34_sample_y = -1;
 
     ray::Shader null_shader;
     ray::Shader face_shader;
@@ -147,7 +160,12 @@ public:
 
     void update(double current_ms);
 
-    void draw(float x, float y);
+    // scale_mul multiplies the model's built-in scale for this draw (arcade
+    // uses 1.12 on the result screen and 0.8 inside the costume panel).
+    // TEMP ROUND33 DIAGNOSTIC (r33-chara3d-glstate): `debug_label` is an
+    // optional call-site tag used only by the gated GL-state dump in
+    // chara_3d.cpp; remove this parameter when the diagnostic is removed.
+    void draw(float x, float y, float scale_mul = 1.0f, const char* debug_label = nullptr);
 };
 
 struct PlayerData;

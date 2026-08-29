@@ -12,7 +12,32 @@ void LoadingScreen::on_screen_start() {
     progress_bar_x = (tex.screen_width - progress_bar_width) / 2;
     progress_bar_y = tex.screen_height * 0.85;
 
-    fade_in = std::make_unique<FadeAnimation>(1000, 0.0, false, false, 1.0);
+    // ROUND 15 (r15-audit-global): the arcade boot screen is `attract/notice`, whose bar is a
+    // FIXED rect, not a fraction of the screen: `notice_instance_0` sits at (959.7,542.4) and
+    // places an 8x8 #650000 fill scaled 115.466 x 5 at (0,454.7) -> a 923.7 x 40 track whose
+    // top-left is (497.84, 977.10), with the #ff0000 fill left-anchored inside it.  The
+    // screen-derived default above is 825.6 x 75 at (547.2, 918) - too short, twice as tall, and
+    // 59 px too high, which is why its top edge cut through the last line of the NOTICE board
+    // (ink bottom 929).  A skin may now state the rect; a skin that does not keeps the old
+    // behaviour, so PyTaikoGreen is untouched.  Values are skin px (child = 1080p).
+    if (const SkinInfo* bar = tex.skin_entry("loading_progress_bar")) {
+        if (bar->width > 0 && bar->height > 0) {
+            progress_bar_x = bar->x;
+            progress_bar_y = bar->y;
+            progress_bar_width = bar->width;
+            progress_bar_height = bar->height;
+        }
+    }
+
+    // The cabinet's white flash into the title screen is `notice_instance_0` depth 6 (an 8x8 white
+    // fill stretched to 1920x1080) ramping alpha 0 -> 256 linearly over frames 600..625 = **25
+    // frames = 416.7 ms** at 60 fps.  This skin states that with `loading_fade_ms` (x = duration
+    // in ms); a skin that does not keeps the old 1000 ms, so PyTaikoGreen is unchanged.
+    double fade_ms = 1000;
+    if (const SkinInfo* f = tex.skin_entry("loading_fade_ms")) {
+        if (f->x > 0) fade_ms = f->x;
+    }
+    fade_in = std::make_unique<FadeAnimation>(fade_ms, 0.0, false, false, 1.0);
     allnet_indicator = AllNetIcon();
 
     songs = get_song_files(global_data.config->paths.tja_path);

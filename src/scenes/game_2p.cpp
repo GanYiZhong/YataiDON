@@ -1,13 +1,12 @@
 #include "game_2p.h"
 #include "../libs/input.h"
 
-void Game2PScreen::on_screen_start() {
-    GameScreen::on_screen_start();
-    if (!movie.has_value()) {
-        background.emplace(PlayerNum::TWO_PLAYER, bpm, scene_preset);
-    }
-    result_transition = ResultTransition(PlayerNum::TWO_PLAYER);
-}
+// ROUND 58 (r58-2p-background-polish): the on_screen_start() override that
+// re-emplaced background as TWO_PLAYER (and rebuilt result_transition) after
+// the base had already constructed the P1 versions is gone -- the base now
+// asks scene_player_num() (game_2p.h) and builds the TWO_PLAYER objects
+// directly, so a SCENEPRESET chart no longer builds+destroys a full collab
+// rig during 2P screen init (ROUND 52 found-in-passing).
 
 void Game2PScreen::init_tja(fs::path song) {
     int delay = (song.extension() == ".osu") ? 0 : start_delay;
@@ -42,6 +41,15 @@ void Game2PScreen::init_tja(fs::path song) {
         global_data.session_data[(int)PlayerNum::P2].selected_difficulty, true,
         get_player_modifiers(PlayerNum::P2)));
 
+    // ROUND 25 (r25-kusudama2p): wire the two seated players together so their
+    // kusudama (段位鼓) hits sum into one shared pool/pop instead of two
+    // independent per-player counters -- see ENGINE_BINDINGS.md ROUND 25 and
+    // player.h's kusudama_partner/kusudama_owner(). 1P (game.cpp) and DAN
+    // (game_dan.cpp) never call this, so kusudama_partner stays nullptr there
+    // and their kusudama behaviour is completely unchanged.
+    players[0]->kusudama_partner = players[1].get();
+    players[1]->kusudama_partner = players[0].get();
+
     start_ms = get_current_ms() - parser->metadata.offset * 1000;
 }
 
@@ -57,11 +65,29 @@ std::optional<Screens> Game2PScreen::update() {
     if (transition->is_finished()) {
         start_song(ms_from_start);
         global_data.input_locked = 0;
-    } else {
-        start_ms = current_time - parser->metadata.offset * 1000;
     }
+    // ROUND 20: this branch used to re-pin `start_ms = current_time -
+    // offset*1000` every frame the transition curtain was still up, which --
+    // because ms_from_start for THIS frame is computed above from the PREVIOUS
+    // frame's start_ms -- froze ms_from_start near a constant +offset*1000 for
+    // the whole loading transition instead of running continuously the way
+    // GameScreen (1P) does from on_screen_start onward (game.cpp never resets
+    // start_ms in update()). Any note/branch/gogo event with hit_ms below that
+    // offset was evaluated as already-past the instant the curtain lifted,
+    // which is exactly the class of "wrong drive source" bug this round is
+    // auditing for. start_ms is already set once in on_screen_start() (and in
+    // the restart handler below), so removing the per-frame override is enough
+    // to match 1P's single-continuous-clock mechanism.
 
-    resync_song(ms_from_start);
+    // ROUND 19-sp: was `resync_song(ms_from_start)` — same wrong-clock bug that
+    // r17-dan fixed in game_dan.cpp. `GameScreen::resync_song` expects the
+    // absolute wall-clock value so it can compute `frame_delta = current_ms -
+    // last_resync_ms` and `start_ms = current_ms - ms_from_start`. Fed the
+    // relative `ms_from_start` (~a few thousand ms), it stored that as
+    // `last_resync_ms` and set `start_ms = 0`, so the very next frame computed
+    // `ms_from_start = current_time - 0 = epoch_time (~1.75e12 ms)`, triggering
+    // a hard-resync every frame and making the correction_rate calculation bogus.
+    resync_song(current_time);
 
     update_background(current_time);
 

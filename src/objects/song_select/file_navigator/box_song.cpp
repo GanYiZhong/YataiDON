@@ -2,6 +2,46 @@
 #include "../../../libs/audio.h"
 #include <thread>
 
+// --- 選曲 BGM / song preview handoff -----------------------------------------
+// 39.06 evidence: song_select_all.lua `StopSound`/`UpdateSound`. The 選曲 BGM
+// (`bgm_senkyoku_v12a`) and a song's own preview bank share ONE bgm slot:
+//
+//   StopSound()  : `if data.song_bank_name == this.nowPlaySongName then return`
+//                  - focusing something that wants the same bank does nothing.
+//                  Otherwise `TSound:StopBGM(330)` and wait for the fade.
+//   UpdateSound(): after the fade, load and play the newly focused bank. The
+//                  senkyoku BGM is only started when the focus actually wants
+//                  it, and even then only `if IsPlayingBank(...) == false`.
+//
+// So moving from one song to the next goes preview A -> 330 ms fade -> preview
+// B. The select BGM is never played in the gap, and never restarted from the
+// top when it is already running.
+//
+// YataiDON restarted "bgm" from frame 0 the instant a previewing box closed,
+// which put a ~380 ms burst of the BGM intro between every pair of songs on the
+// wheel (measured, scratchpad/r14sn/t1/trace.tsv: PLAY bgm -> STOP bgm 385 ms
+// later, once per wheel step). The resume is now deferred by the arcade's
+// 330 ms and cancelled if another song has taken the preview slot in the
+// meantime - so song->song is silence, and only leaving the songs (folder,
+// もどる, an entry with no audio file) brings the BGM back.
+namespace {
+    double bgm_resume_at   = 0.0;   // 0 = nothing pending
+    int    preview_holders = 0;     // focused song boxes that own the bgm slot
+}
+
+void SongBox::reset_bgm_slot() {
+    bgm_resume_at   = 0.0;
+    preview_holders = 0;
+}
+
+void SongBox::service_bgm_resume(double current_ms) {
+    if (bgm_resume_at <= 0.0) return;
+    if (preview_holders > 0) { bgm_resume_at = 0.0; return; }   // a song took it
+    if (current_ms < bgm_resume_at) return;
+    bgm_resume_at = 0.0;
+    audio.play_sound("bgm", VolumePreset::MUSIC);
+}
+
 SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     : BaseBox(path, box_def)
 {
@@ -67,6 +107,7 @@ void SongBox::reset() {
     music_playing = false;
     preview_load.reset();
     preview_attempted = false;
+    release_preview_slot();
     score_history.reset();
     box_opened_at = 0.0;
 }
@@ -81,15 +122,32 @@ std::vector<Difficulty> SongBox::get_diffs() {
 
 void SongBox::load_text() {
     BaseBox::load_text();
-    float font_size = utf8_char_count(text_subtitle) < 30
-        ? tex.skin_config[SC::YB_SUBTITLE].font_size
-        : tex.skin_config[SC::YB_SUBTITLE].font_size - (int)(10 * tex.screen_scale);
-    subtitle = make_unique<OutlinedText>(text_subtitle, font_size, ray::WHITE, ray::BLACK, true);
+    // ROUND 28 (r28-outline-sweep): same bug class as box_dan.cpp ROUND 27 --
+    // long subtitle/name strings get their font_size shrunk by a flat
+    // `10 * screen_scale` px, but the OutlinedText ctor below was never given
+    // an outline_thickness argument, so it always fell back to the class
+    // default (5.0f) regardless of how far the font shrank. At small
+    // YB_SUBTITLE/SONG_BOX_NAME sizes a 30+ char subtitle/name renders with a
+    // disproportionately thick outline that blots the glyph interiors. Scale
+    // outline_thickness by the same ratio the font was shrunk by, matching
+    // dan_shrink_font's fix.
+    float base_sub_font = (float)tex.skin_config[SC::YB_SUBTITLE].font_size;
+    float font_size = base_sub_font;
+    float sub_outline = 5.0f;
+    if (utf8_char_count(text_subtitle) >= 30) {
+        font_size = base_sub_font - 10.0f * tex.screen_scale;
+        sub_outline = 5.0f * (font_size / base_sub_font);
+    }
+    subtitle = make_unique<OutlinedText>(text_subtitle, (int)font_size, ray::WHITE, ray::BLACK, true, sub_outline);
 
-    font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
-    if (utf8_char_count(text_name) >= 30)
-        font_size -= (int)(10 * tex.screen_scale);
-    name_black = make_unique<OutlinedText>(text_name, font_size, ray::WHITE, ray::BLACK, true);
+    float base_name_font = (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
+    font_size = base_name_font;
+    float name_outline = 5.0f;
+    if (utf8_char_count(text_name) >= 30) {
+        font_size = base_name_font - 10.0f * tex.screen_scale;
+        name_outline = 5.0f * (font_size / base_name_font);
+    }
+    name_black = make_unique<OutlinedText>(text_name, (int)font_size, ray::WHITE, ray::BLACK, true, name_outline);
     bpm_text = make_unique<OutlinedText>("BPM\n" + std::to_string(static_cast<int>(parser.metadata.bpm)), tex.skin_config[SC::SONG_BOX_BPM].font_size, ray::WHITE, ray::BLACK, false);
     if (exists(parser.metadata.preimage)) {
         preimage = ray::LoadTexture(parser.metadata.preimage.string().c_str());
@@ -170,6 +228,19 @@ void SongBox::update(double current_time) {
 void SongBox::expand_box() {
     BaseBox::expand_box();
     box_opened_at = get_current_ms();
+    // This box is about to claim the bgm slot for its preview (see the note at
+    // the top of the file). Claim it now, before the decode: the claim is what
+    // stops the previous box's pending BGM resume from firing in the gap.
+    if (!holds_preview_slot && fs::exists(parser.metadata.wave)) {
+        holds_preview_slot = true;
+        preview_holders++;
+    }
+}
+
+void SongBox::release_preview_slot() {
+    if (!holds_preview_slot) return;
+    holds_preview_slot = false;
+    if (preview_holders > 0) preview_holders--;
 }
 
 void SongBox::close_box() {
@@ -177,12 +248,15 @@ void SongBox::close_box() {
     box_opened_at = 0.0;
     preview_load.reset();
     preview_attempted = false;
+    release_preview_slot();
     if (music_playing) {
         if (audio.is_music_stream_valid("preview")) {
             audio.stop_music_stream("preview");
             audio.unload_music_stream("preview");
         }
-        audio.play_sound("bgm", VolumePreset::MUSIC);
+        // Deferred, and cancelled if the next focus is another song: the
+        // arcade's 330 ms StopBGM fade, not an instant restart from frame 0.
+        bgm_resume_at = get_current_ms() + 330.0;
         music_playing = false;
     }
 }

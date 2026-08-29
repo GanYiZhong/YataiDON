@@ -30,7 +30,20 @@ struct DrawTextureParams {
     double fade = 1.1f;
     int index = 0;
     std::optional<ray::Rectangle> src = std::nullopt;
+    // Optional raylib BlendMode for this one draw. Unset = draw in whatever
+    // mode the frame is already in (BLEND_CUSTOM_SEPARATE), which is the only
+    // behaviour that existed before, so every existing call is unaffected.
+    std::optional<int> blend = std::nullopt;
 };
+
+inline int blend_from_string(const std::string& s) {
+    if (s == "additive")   return ray::BLEND_ADDITIVE;
+    if (s == "multiplied") return ray::BLEND_MULTIPLIED;
+    if (s == "add_colors") return ray::BLEND_ADD_COLORS;
+    if (s == "subtract_colors") return ray::BLEND_SUBTRACT_COLORS;
+    if (s == "alpha_premultiply") return ray::BLEND_ALPHA_PREMULTIPLY;
+    return ray::BLEND_ALPHA;
+}
 
 struct SkinInfo {
     float x;
@@ -39,11 +52,17 @@ struct SkinInfo {
     float width;
     float height;
     std::map<std::string, std::string> text;
+    // ROUND 19: optional `outline` from skin_config, in OutlinedText's
+    // outline-radius units BEFORE its own screen_scale multiply. -1 = the key
+    // was absent, so the caller keeps whatever it hardcoded today.
+    float outline = -1.0f;
 
     SkinInfo(float x = 0, float y = 0, int font_size = 0,
              float width = 0, float height = 0,
-             const std::map<std::string, std::string>& text = {})
-        : x(x), y(y), font_size(font_size), width(width), height(height), text(text) {}
+             const std::map<std::string, std::string>& text = {},
+             float outline = -1.0f)
+        : x(x), y(y), font_size(font_size), width(width), height(height), text(text),
+          outline(outline) {}
 };
 
 struct TextureObject {
@@ -63,6 +82,12 @@ struct TextureObject {
     // no drawable texture. Virtual dispatch here keeps draw_texture free of
     // per-call dynamic_casts.
     virtual const ray::Texture2D* frame_texture(int frame) const { return nullptr; }
+
+    // ROUND 55: number of animation frames this object can serve. Lets
+    // callers clamp a requested frame instead of tripping FramedTexture's
+    // missing-frame throw (the CHN05 note-face tables reference a 3rd frame
+    // some 39.06 note extractions do not carry).
+    virtual int frame_count() const { return 1; }
 };
 
 struct SingleTexture : public TextureObject {
@@ -101,6 +126,8 @@ struct FramedTexture : public TextureObject {
         }
     }
 
+    int frame_count() const override { return static_cast<int>(textures.size()); }
+
     const ray::Texture2D* frame_texture(int frame) const override {
         if (frame >= static_cast<int>(textures.size())) {
             throw std::runtime_error("Frame " + std::to_string(frame) +
@@ -124,8 +151,7 @@ public:
     std::unordered_map<SC, SkinInfo> skin_config;
     // Same entries as skin_config, keyed by the raw JSON key. Lua and other
     // runtime consumers read skin_config.json keys the skinner just wrote,
-    // which may not exist in the generated SC enum until the next rebuild —
-    // this map lets them work without one.
+    // which may not exist in the generated SC enum until the next rebuild ??    // this map lets them work without one.
     std::unordered_map<std::string, SkinInfo> skin_config_by_name;
     std::unordered_map<SCO, bool> options;
     fs::path font_path;
@@ -140,12 +166,37 @@ public:
 
     void init(const fs::path& skin_path);
 
+    // Child skins may declare skin_config keys that the generated SC enum (built
+    // from the parent skin) doesn't know about; these read such keys by name.
+    // skin_flag is the opt-in convention for engine features a skin turns on:
+    // the key's x >= 1 means enabled, a missing key means off.
+    bool skin_flag(const std::string& key) const {
+        auto it = skin_config_by_name.find(key);
+        return it != skin_config_by_name.end() && it->second.x >= 1.0f;
+    }
+
+    // Whole entry by raw key, for engine values a skin may override without the
+    // generated SC enum knowing the key. Returns nullptr when the skin (and its
+    // parent) never declared it, so the caller keeps its own default.
+    const SkinInfo* skin_entry(const std::string& key) const {
+        auto it = skin_config_by_name.find(key);
+        return it == skin_config_by_name.end() ? nullptr : &it->second;
+    }
+
+    std::string skin_text(const std::string& key, const std::string& language,
+                          const std::string& fallback = "") const {
+        auto it = skin_config_by_name.find(key);
+        if (it == skin_config_by_name.end()) return fallback;
+        auto t = it->second.text.find(language);
+        return t == it->second.text.end() ? fallback : t->second;
+    }
+
     ~TextureWrapper() {
         unload_textures();
     }
 
     // Non-Graphics per-skin asset roots (Sounds/Videos/Models) have no inheritance
-    // mechanism of their own — these let those subsystems reuse the same parent-skin
+    // mechanism of their own ??these let those subsystems reuse the same parent-skin
     // knowledge init() already parsed from skin_config.json's screen.parent, instead
     // of every skin needing its own physical copy of everything.
     fs::path skin_root()   const { return graphics_path.parent_path(); }
@@ -169,6 +220,10 @@ public:
 
     void unload_textures();
 
+    // get_animation THROWS on an unknown id; this is the guard for optional
+    // animations a skin may or may not define (see ModifierSelector's
+    // separate slide-out curve).
+    bool has_animation(const int id) const { return animations.find(id) != animations.end(); }
     BaseAnimation* get_animation(const int id, bool is_copy = false);
     BaseAnimation* get_animation(const int id, const std::string& screen_name);
 
@@ -188,6 +243,10 @@ public:
 
     TexID get_enum(const std::string& name);
 
+    // True when "subset/name" both has a generated TexID and is currently loaded.
+    // Lets optional, skin-provided texture sets be used with a fallback.
+    bool has_texture(const std::string& name);
+
     void draw_texture(uint32_t id, const DrawTextureParams& = {});
 };
 
@@ -195,6 +254,6 @@ extern TextureWrapper tex;
 
 extern TextureWrapper global_tex;
 
-// TexID enum, per-subset namespaces, and tex_id_map — auto-generated from skin texture.json files
+// TexID enum, per-subset namespaces, and tex_id_map ??auto-generated from skin texture.json files
 // Usage: tex.draw_texture(YELLOW_BOX::CROWN_FC, {...})
 //        tex.textures[YELLOW_BOX::CROWN_FC]->width

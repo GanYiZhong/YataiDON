@@ -57,6 +57,21 @@ public:
     std::optional<Gauge> gauge;
     Gauge* dan_gauge = nullptr;  // non-owning; set by DanGameScreen
 
+    // ROUND 25 (r25-kusudama2p): non-owning; set by Game2PScreen so both seated
+    // players' kusudama (段位鼓) hits sum into ONE shared pool/pop instead of two
+    // independent per-player counters. Stays nullptr in 1P/DAN, which makes
+    // kusudama_owner() below return `this` unconditionally there -- i.e. those
+    // modes keep the exact pre-existing single-player behaviour.
+    Player* kusudama_partner = nullptr;
+    // Valid only on the pool owner (see kusudama_owner()); combined hit count
+    // toward the one shared kusudama target.
+    int kusudama_shared_hits = 0;
+    // Returns the Player instance that owns the shared KusudamaCounter/hit pool
+    // for the CURRENT kusudama note. P1 (is_2p == false) is always the owner
+    // when a partner exists; a lone player (no partner) is always its own
+    // owner.
+    Player* kusudama_owner() { return (kusudama_partner && is_2p) ? kusudama_partner : this; }
+
     std::optional<Note> get_first_note();
 
     ResultData get_result_score();
@@ -65,6 +80,22 @@ public:
     int get_ok()   const { return ok_count; }
     int get_bad()  const { return bad_count; }
     bool is_auto_play() const { return modifiers.auto_play; }
+    // 演奏スキップ: this lane's owner turned the arcade option on.
+    bool is_skip_enabled() const { return modifiers.skip; }
+    // 演奏スキップ trigger: stop the chart dead at `now` and let the normal
+    // end-of-song path (ending animation -> result) take over. Every pending
+    // note is dropped so nothing else is judged or drawn, mirroring the arcade
+    // cutting the enso at the tenth rim hit.
+    // 演奏スキップ. `cut_to_end` is the skip path; `was_skipped` lets the record
+    // and the ending follow the cabinet (see the comment on cut_to_end).
+    // ROUND 20 (r19-danskip): `prev_good`/`prev_ok`/`prev_bad` are the
+    // per-song baseline a cumulative multi-song player (段位道場) needs so the
+    // recount below only charges THIS song's unreached notes as 不可 instead
+    // of corrupting the bad count already banked by earlier songs in the
+    // course. Default 0 keeps the normal 1-song GameScreen call site (the
+    // whole run IS the song) byte-identical.
+    void cut_to_end(double now, int prev_good = 0, int prev_ok = 0, int prev_bad = 0);
+    bool was_skipped() const { return skipped_run; }
     // Practice mode toggles auto from its pause menu mid-song.
     void set_auto_play(bool value) { modifiers.auto_play = value; }
     // Practice replays sections over and over; each resume starts the score,
@@ -75,10 +106,15 @@ public:
         combo = max_combo = 0;
         score = 0;
         total_drumroll = 0;
+        was_gauge_full = false;
         if (judge_counter) judge_counter = JudgeCounter();
     }
     int get_score() const { return score; }
     int get_max_combo() const { return max_combo; }
+    // ROUND 50 (r50-dani-visual-completion): the LIVE combo, read-only. Needed
+    // by DanGameScreen to keep the cabinet's per-song g_maxComboNum_[j] (a
+    // per-song combo maximum the run-wide max_combo cannot be decomposed into).
+    int get_combo() const { return combo; }
     int get_total_drumroll() const { return total_drumroll; }
     int get_scissor_x() const { return virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0])); }
     void set_is_dan(bool v) { is_dan = v; }
@@ -104,6 +140,11 @@ protected:
 
 private:
     bool is_2p;
+    // Judgeable (DON..KAT_L) notes in the whole chart, master branch included -
+    // the same count the Gauge is built from. The arcade's skip path needs it to
+    // recount 不可 as `total - 良 - 可`.
+    int  judgeable_note_count = 0;
+    bool skipped_run = false;
     bool is_dan;
     int difficulty;
     int visual_offset;
@@ -128,6 +169,13 @@ private:
 
     float scroll_multiplier;
     bool is_gogo_time;
+    // ROUND (r-chara3d-fullanim): edge-trigger state for the previously-dead
+    // AnimIndex::DON_FULL_GAGE pose. Gauge::get_is_rainbow() already flips
+    // true exactly when gauge_length == gauge_max (gauge.cpp); we only want
+    // to fire the pose switch on the false->true transition, not every
+    // frame the gauge happens to sit at max, so the chara doesn't fight
+    // DON_SABI/DON_COMBO for every subsequent frame's set_anim() call.
+    bool was_gauge_full = false;
     Side autoplay_hit_side;
     int last_subdivision;
 
@@ -247,9 +295,13 @@ private:
 
     void draw_bar(double current_ms, float y, const Note& bar);
 
-    void draw_drumroll(double current_ms, float y, const Note& head, int current_eighth, bool moji_pass);
+    // ROUND 55: `note_frame` is the CHN05 combo-state face frame (0/1/2),
+    // already computed per frame by draw_notes (was the raw eighth counter).
+    void draw_drumroll(double current_ms, float y, const Note& head, int note_frame, bool moji_pass);
 
-    void draw_balloon(double current_ms, float y, const Note& head, int current_eighth, bool moji_pass);
+    // ROUND 55: balloon takes the face frame plus the CHN05 squash pulse
+    // (x-scale 1.0..0.7, left edge anchored -- OnpuDraw.obj.c:5273-5294).
+    void draw_balloon(double current_ms, float y, const Note& head, int note_frame, float pulse, bool moji_pass);
 
     void draw_notes(double current_ms, float y);
 

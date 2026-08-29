@@ -39,6 +39,17 @@ public:
 
     float position;
     float cross_pos = 0.0f;
+    // ROUND 56 (r56): the vertical wheel's cross axis used to SNAP while the row
+    // axis tweened, so a scroll step travelled an L instead of the cabinet's
+    // straight diagonal (39.06 song_select_main_genre.nulm sprite 19
+    // kanban_title_anim_u/d moves tx and ty together on one linear tween).
+    // glide_cross() rides the same clock/curve as move_box; snap_cross() keeps
+    // the old behaviour (init / long jumps / YATAIDON_R56_DISABLE).
+    float cross_target = 0.0f;
+    float cross_lead   = 0.0f;   // cross_pos - cross_target at glide start
+    float move_delta   = 0.0f;   // row-axis span of the active move (0 = none)
+    void snap_cross(float x)  { cross_pos = cross_target = x; cross_lead = 0.0f; }
+    void glide_cross(float x) { cross_lead = cross_pos - x; cross_target = x; }
     bool vertical = false;
     float left_bound;
     float right_bound;

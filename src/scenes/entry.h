@@ -38,6 +38,16 @@ private:
     std::vector<std::unique_ptr<EntryPlayer>> players;
 
     void reload_preview_chara(int player_id);
+    // ROUND 12 (opt-in, skin_flag "entry_credit_arcade"): the arcade CREDIT WAIT model.
+    // The two rows are PROMPTS, not a menu — entry_main.tlb's CheckEntry fires on every
+    // PLAYERn_OK / PLAYERn_CANCEL edge (= that seat's two DON faces) and enters THAT
+    // seat. No cursor, no 「つかわない」, no cancel. See Graphics/entry/MAPPING.md ROUND 12.
+    bool arcade_credit() const;
+    bool seat_joined(PlayerNum player_num) const;
+    void join_player(PlayerNum player_num);
+    // ROUND 15: re-entry from SONG SELECT for the cabinet's mid-song-select 2P join
+    // (entry_main.lua StartBGIn with StartModeSelect == true). See entry.cpp.
+    void start_second_player_join();
     void draw_background();
     void draw_side_select(float fade);
     void draw_player_drum();

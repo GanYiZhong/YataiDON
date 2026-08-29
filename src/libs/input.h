@@ -29,6 +29,11 @@ bool check_key_released(int key);
 // only sees devices it has a gamepad mapping for.
 int take_gamepad_button_pressed();
 
+// Engine-clock timestamp (get_current_ms base) of the most recent key, pad or
+// drum press, or 0 before the first one. Read-only: skins use it for idle
+// behaviour, it never consumes an event.
+double get_last_input_ms();
+
 // Clear all buffered input events
 // Useful when changing screens or locking input
 void clear_input_buffers();

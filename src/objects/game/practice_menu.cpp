@@ -41,7 +41,8 @@ void PracticeMenu::build_text() {
         int chars = 0;
         for (unsigned char c : label)
             if ((c & 0xC0) != 0x80) chars++;
-        int   fs    = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+        const int base_fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+        int   fs    = base_fs;
         float avail = tex.skin_config[SC::PRACTICE_MENU_LABEL].width;
         float v     = 1.0f;
         if (chars > 1) {
@@ -53,8 +54,14 @@ void PracticeMenu::build_text() {
                 v = 1.0f;
             }
         }
+        // ROUND 28 (r28-outline-sweep): same bug class as box_dan.cpp ROUND 27 --
+        // `fs` can be shrunk below SONG_BOX_NAME's configured size when a long
+        // label overflows PRACTICE_MENU_LABEL's width, but the outline_thickness
+        // argument below was a flat literal 5 regardless. Scale it by the same
+        // ratio the font was shrunk by.
+        float outline = 5.0f * ((float)fs / (float)base_fs);
         menu_text.push_back(std::make_unique<OutlinedText>(label, fs,
-            ray::WHITE, ray::BLACK, true, 5, 2.0f, v));
+            ray::WHITE, ray::BLACK, true, outline, 2.0f, v));
     }
 }
 
@@ -140,7 +147,6 @@ void PracticeMenu::draw() const {
     int n = (int)menu_text.size();
     if (n == 0) return;
 
-    float scale   = tex.screen_scale;
     float bar_w   = tex.skin_config[SC::PRACTICE_MENU_BAR].width;
     float bar_h   = tex.skin_config[SC::PRACTICE_MENU_BAR].height;
     float gap     = tex.skin_config[SC::PRACTICE_MENU_BAR].x;
@@ -150,7 +156,7 @@ void PracticeMenu::draw() const {
     float panel_y = tex.skin_config[SC::PRACTICE_MENU_PANEL].y;
     float pad     = (panel_w - n * bar_w - (n - 1) * gap) / 2.0f;
 
-    tex.draw_texture(PRACTICE::MENU_PANEL, {.scale = scale, .x = panel_x, .y = panel_y});
+    tex.draw_texture(PRACTICE::MENU_PANEL, {.x = panel_x, .y = panel_y});
 
     for (int i = 0; i < n; i++) {
         float x = panel_x + pad + i * (bar_w + gap);
@@ -158,7 +164,7 @@ void PracticeMenu::draw() const {
         bool selected = (i == index);
 
         tex.draw_texture(selected ? PRACTICE::MENU_BAR_SELECTED : PRACTICE::MENU_BAR,
-                         {.scale = scale, .x = x, .y = y});
+                         {.x = x, .y = y});
 
         OutlinedText* text = menu_text[i].get();
         float tx = x + (bar_w - text->width) / 2.0f;
@@ -168,13 +174,12 @@ void PracticeMenu::draw() const {
 }
 
 void PracticeMenu::draw_dialog() const {
-    float scale   = tex.screen_scale;
     float panel_w = tex.skin_config[SC::PRACTICE_MENU_PANEL].width;
     float panel_h = tex.skin_config[SC::PRACTICE_MENU_PANEL].height;
     float panel_x = (tex.screen_width - panel_w) / 2.0f;
     float panel_y = tex.skin_config[SC::PRACTICE_MENU_PANEL].y;
 
-    tex.draw_texture(PRACTICE::MENU_PANEL, {.scale = scale, .x = panel_x, .y = panel_y});
+    tex.draw_texture(PRACTICE::MENU_PANEL, {.x = panel_x, .y = panel_y});
 
     // The auto dialog stacks a label chip and the toggle row below its
     // title, so the title sits high; the yes/no confirms sit lower.
@@ -192,8 +197,7 @@ void PracticeMenu::draw_dialog() const {
         // Don chip above an ON | slider | OFF row, like the arcade's.
         float label_w = tex.skin_config[SC::PRACTICE_MENU_AUTO_LABEL].width;
         tex.draw_texture(PRACTICE::MENU_AUTO_LABEL,
-                         {.scale = scale,
-                          .x = panel_x + (panel_w - label_w) / 2.0f,
+                         {.x = panel_x + (panel_w - label_w) / 2.0f,
                           .y = panel_y + tex.skin_config[SC::PRACTICE_MENU_AUTO_LABEL].y});
         float tog_w = tex.skin_config[SC::PRACTICE_MENU_AUTO_TOGGLE].width;
         float gap   = tex.skin_config[SC::PRACTICE_MENU_AUTO_TOGGLE].x;
@@ -203,9 +207,8 @@ void PracticeMenu::draw_dialog() const {
         row_y   = panel_y + tex.skin_config[SC::PRACTICE_MENU_AUTO_TOGGLE].y;
         // The red knob slides toward whichever side is picked.
         tex.draw_texture(PRACTICE::MENU_TOGGLE,
-                         {.scale  = scale,
-                          .mirror = dialog_sel == 1 ? Mirror::HORIZONTAL : Mirror::NONE,
-                          .x = left_x + btn_w + gap, .y = row_y + 6 * scale});
+                         {.mirror = dialog_sel == 1 ? Mirror::HORIZONTAL : Mirror::NONE,
+                          .x = left_x + btn_w + gap, .y = row_y + 6 * tex.screen_scale});
     } else {
         left_x  = panel_x + tex.skin_config[SC::PRACTICE_MENU_DIALOG_BUTTON].x;
         right_x = panel_x + panel_w - tex.skin_config[SC::PRACTICE_MENU_DIALOG_BUTTON].x - btn_w;
@@ -213,9 +216,9 @@ void PracticeMenu::draw_dialog() const {
     }
 
     tex.draw_texture(dialog_sel == 0 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
-                     {.scale = scale, .x = left_x, .y = row_y});
+                     {.x = left_x, .y = row_y});
     tex.draw_texture(dialog_sel == 1 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
-                     {.scale = scale, .x = right_x, .y = row_y});
+                     {.x = right_x, .y = row_y});
 
     if (dlg_left)
         dlg_left->draw({.x = left_x + (btn_w - dlg_left->width) / 2.0f,

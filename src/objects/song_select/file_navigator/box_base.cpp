@@ -32,10 +32,19 @@ BaseBox::~BaseBox() {
 }
 
 void BaseBox::load_text() {
-    float font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
-    if (utf8_char_count(text_name) >= 30)
-        font_size -= (int)(10 * tex.screen_scale);
-    name = make_unique<OutlinedText>(text_name, font_size, ray::WHITE, fore_color.value(), true);
+    // ROUND 28 (r28-outline-sweep): same bug class as box_dan.cpp ROUND 27 /
+    // box_song.cpp ROUND 28 -- font_size was shrunk for long names but the
+    // outline_thickness argument was never passed, so OutlinedText fell back
+    // to its flat 5.0f default regardless of shrink. Scale it by the same
+    // ratio the font was shrunk by.
+    float base_font_size = (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
+    float font_size = base_font_size;
+    float name_outline = 5.0f;
+    if (utf8_char_count(text_name) >= 30) {
+        font_size = base_font_size - 10.0f * tex.screen_scale;
+        name_outline = 5.0f * (font_size / base_font_size);
+    }
+    name = make_unique<OutlinedText>(text_name, (int)font_size, ray::WHITE, fore_color.value(), true, name_outline);
 
     if (back_color.has_value()) {
         shader = load_shader("shader/dummy.vs", "shader/colortransform.fs");
@@ -90,6 +99,7 @@ void BaseBox::set_position(float target_position) {
 void BaseBox::move_box(float target_position, float duration) {
     this->target_position = target_position;
     float delta = target_position - position;
+    move_delta = delta;   // r56: lets update() ride the cross axis on the same curve
     move = std::make_unique<MoveAnimation>(duration, delta, false, false, 0, 0.0, std::nullopt, std::nullopt, "cubic");
     move->start();
 }
@@ -112,8 +122,17 @@ void BaseBox::update(double current_time) {
     move->update(current_time);
     if (!move->is_finished) {
         position += move->attribute - prev_position;
+        // r56: keep the cross axis on the SAME cubic clock as the row axis, so a
+        // wheel step moves along the cabinet's straight diagonal (see box_base.h).
+        if (move_delta != 0.0f && cross_lead != 0.0f) {
+            float p = (float)(move->attribute / move_delta);
+            if (p < 0.0f) p = 0.0f; else if (p > 1.0f) p = 1.0f;
+            cross_pos = cross_target + cross_lead * (1.0f - p);
+        }
     } else {
         position = target_position;
+        cross_pos = cross_target;   // r56
+        cross_lead = 0.0f;
         if (yellow_box.has_value() && !yellow_box_opened) {
             yellow_box->create_anim();
             yellow_box_opened = true;

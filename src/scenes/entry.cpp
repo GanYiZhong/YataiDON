@@ -1,4 +1,4 @@
-#include "entry.h"
+﻿#include "entry.h"
 #include "../libs/input.h"
 #include "../libs/scores.h"
 
@@ -27,13 +27,72 @@ void EntryScreen::on_screen_start() {
 
     lua_entry = std::make_unique<EntryScript>();
     lua_entry->start_side_select();
-
     reload_preview_chara(global_data.config->general.player_1_id);
     announce_played = false;
     players.clear();
     players.resize(2);
-
     audio.play_sound("bgm", VolumePreset::MUSIC);
+
+    if (global_data.entry_join_pending) {
+        global_data.entry_join_pending = false;
+        start_second_player_join();
+    }
+}
+
+// ROUND 15 - the ENTRY half of the cabinet's mid-song-select 2P join.
+//
+// `entry/entry_main.lua` `StartBGIn` (l.314): when the scene boots with the engine
+// global `StartModeSelect == true` it does NOT go to `CreditWaitStart`.  It runs
+//
+//     for loop_idx = 1, 2 do
+//         if PlayDataManager.GetUserType(loop_idx - 1) == UserType.kNone then
+//             PlayDataManager.Entry(loop_idx - 1, UserType.kCoin)
+//         end
+//     end
+//     ... SetupEntryData(true) / ChangeDonForPlayData / LoadChangeStandChara ...
+//     -> StartLoadWait -> StartLoadWait2 (DispDonAndNamePlate) -> ModeSelectStart
+//
+// i.e. every seat still at kNone is entered on the spot and the scene lands
+// directly in MODE SELECT with both Dons up.  `nextMode = SceneType.kEntry` in
+// `song_select_all.lua:1619` is the only route to ENTRY that can leave a seat
+// already at kCoin, so that branch exists for exactly this case.  The consequence
+// worth stating out loud: **the newcomer does not press anything a second time** -
+// the drum hit he made on song select IS his entry - and there is therefore no
+// second credit-wait screen and nothing for him to time out of.
+//
+// What is deliberately NOT preserved, because the cabinet does not preserve it
+// either: the first player's MODE choice.  The pair re-run mode select together.
+void EntryScreen::start_second_player_join() {
+    const PlayerNum first  = global_data.entry_joined_seat;
+    const PlayerNum second = (first == PlayerNum::P1) ? PlayerNum::P2 : PlayerNum::P1;
+
+    // Rebuild the seat that was already in, WITHOUT touching
+    // `global_data.first_login_player`: it still names `first`, so `get_player_id`
+    // keeps mapping him to player_1_id and the late joiner to player_2_id. That is
+    // the whole identity guarantee - nameplate, costume, modifiers and 音色 all
+    // hang off the player_id, so none of them can be swapped by this round trip.
+    side = (first == PlayerNum::P1) ? 0 : 2;
+    global_data.player_num = first;
+    players[0] = std::make_unique<EntryPlayer>(first, side, box_manager.get());
+    players[0]->start_animations();
+
+    // ...and enter the newcomer, exactly like `PlayDataManager.Entry(idx, kCoin)`.
+    const int second_side = (second == PlayerNum::P1) ? 0 : 2;
+    global_data.player_num = second;
+    players[1] = std::make_unique<EntryPlayer>(second, second_side, box_manager.get());
+    players[1]->start_animations();
+    audio.play_sound("cloud", VolumePreset::SOUND);
+    audio.play_sound("entry_start_" + std::to_string((int)second) + "p", VolumePreset::VOICE);
+
+    // join_player() parks player_num back on P1 once a session is 2P; the 2P scenes
+    // build their two SongSelectPlayers from explicit PlayerNums, so this only has
+    // to stay consistent with the existing path.
+    global_data.player_num = PlayerNum::P1;
+    is_2p = true;
+    side = 1;
+    state = EntryState::SELECT_MODE;
+    spdlog::info("[2P join] ENTRY resumed: {}P kept (first_login {}P), {}P entered, mode select",
+                 (int)first, (int)global_data.first_login_player, (int)second);
 }
 
 void EntryScreen::reload_preview_chara(int player_id) {
@@ -52,7 +111,61 @@ Screens EntryScreen::on_screen_end(Screens next_screen) {
     return Screen::on_screen_end(next_screen);
 }
 
+// ROUND 12 — the arcade credit-wait interaction model, opt-in per skin.
+//
+// `entry_main.tlb`'s `CheckEntry` (lines 2515-2543) polls
+// `Input.GetTrigger(PLAYERn_OK / PLAYERn_CANCEL)` — which are that seat's RIGHT DON and
+// LEFT DON (`research/bnusio.md` §8) — and calls `PlayDataManager.Entry(n-1, kCoin)` for
+// the seat that hit.  There is no cursor, no cancel widget and no kat handling: the two
+// yellow rows are prompts, both lit, and the seat you hit decides who enters.
+bool EntryScreen::arcade_credit() const {
+    return tex.skin_flag("entry_credit_arcade");
+}
+
+bool EntryScreen::seat_joined(PlayerNum player_num) const {
+    for (auto& player : players) {
+        if (player && player->player_num == player_num) return true;
+    }
+    return false;
+}
+
+// The body of the old SELECT_SIDE don branch, keyed by seat instead of by cursor.
+void EntryScreen::join_player(PlayerNum player_num) {
+    side = (player_num == PlayerNum::P1) ? 0 : 2;
+    global_data.player_num = player_num;
+
+    if (players[0]) {
+        players[1] = std::make_unique<EntryPlayer>(global_data.player_num, side, box_manager.get());
+        players[1]->start_animations();
+        global_data.player_num = PlayerNum::P1;
+        is_2p = true;
+    } else {
+        global_data.first_login_player = global_data.player_num;
+        players[0] = std::make_unique<EntryPlayer>(global_data.player_num, side, box_manager.get());
+        players[0]->start_animations();
+        is_2p = false;
+    }
+    audio.play_sound("cloud", VolumePreset::SOUND);
+    audio.play_sound("entry_start_" + std::to_string((int)global_data.player_num) + "p", VolumePreset::VOICE);
+    // The engine has no CreditDecideAction state, so tell the skin which row to flash
+    // before EntryState leaves SELECT_SIDE (a no-op for skins without the hook).
+    if (state == EntryState::SELECT_SIDE) lua_entry->decide_side_select(side);
+    state = EntryState::SELECT_MODE;
+    audio.play_sound("don", VolumePreset::SOUND);
+}
+
 std::optional<Screens> EntryScreen::handle_input() {
+    if (arcade_credit() && state == EntryState::SELECT_SIDE) {
+        // Any DON on a seat that has not entered yet enters that seat, immediately.
+        if (!seat_joined(PlayerNum::P1) &&
+            (is_l_don_pressed(PlayerNum::P1) || is_r_don_pressed(PlayerNum::P1))) {
+            join_player(PlayerNum::P1);
+        } else if (!seat_joined(PlayerNum::P2) &&
+                   (is_l_don_pressed(PlayerNum::P2) || is_r_don_pressed(PlayerNum::P2))) {
+            join_player(PlayerNum::P2);
+        }
+        return std::nullopt;
+    }
     if (state == EntryState::SELECT_SIDE) {
         if (is_l_don_pressed() || is_r_don_pressed()) {
             if (side == 1) {
@@ -107,6 +220,28 @@ std::optional<Screens> EntryScreen::handle_input() {
             if (player) player->handle_input();
         }
     } else if (state == EntryState::SELECT_MODE) {
+        if (arcade_credit()) {
+            // The cabinet never re-enters the credit screen for the 2nd player:
+            // `CheckEntry` keeps being polled through ModeSelectStart /
+            // ModeSelectStartWait / ModeSelect / ModeSelectChangeList, so the seat that
+            // hits joins IN PLACE (its `credit_side_` invite cloud just disappears).
+            // Polled before the mode-boxes-ready gate, exactly like the arcade.
+            if (!seat_joined(PlayerNum::P1) &&
+                (is_l_don_pressed(PlayerNum::P1) || is_r_don_pressed(PlayerNum::P1))) {
+                join_player(PlayerNum::P1);
+                return std::nullopt;
+            }
+            if (!seat_joined(PlayerNum::P2) &&
+                (is_l_don_pressed(PlayerNum::P2) || is_r_don_pressed(PlayerNum::P2))) {
+                join_player(PlayerNum::P2);
+                return std::nullopt;
+            }
+            if (!mode_select_ready()) return std::nullopt;
+            for (auto& player : players) {
+                if (player) player->handle_input();
+            }
+            return std::nullopt;
+        }
         // The mode boxes are only drawn once every player's entry animation
         // has played out; don't let them be picked while they are invisible.
         if (!mode_select_ready()) return std::nullopt;
@@ -144,7 +279,21 @@ std::optional<Screens> EntryScreen::update() {
     entry_overlay.update(current_time);
     lua_entry->update(current_time);
     box_manager->update(current_time, is_2p);
-    timer->update(current_time);
+    // ROUND 20: `entry_main.lua` `CreditWaitStart` leaves the 60 s dial STOPPED
+    // (`SetShadow(true)` / no `StartCount()`) and only counts it at all when
+    // `IsTimerCountInCreditWait()` is true — i.e. a card or QR session is
+    // present.  This engine has no card/QR entry path, so that predicate is
+    // always false: under the arcade credit model the dial must never run
+    // during `SELECT_SIDE` (it starts only once `ModeSelectStartWait` is
+    // reached, i.e. our `SELECT_MODE`).  Skipping `update()` here freezes the
+    // Lua-side `last_time` cleanly (it is re-stamped to `current_ms` on every
+    // tick it *does* see, so no catch-up burst on resume) — no new engine
+    // state needed.  Off by default: skins without `entry_credit_arcade` keep
+    // the old unconditional countdown (legacy 3-way cursor has no card/QR
+    // concept to key this off either).
+    if (!(arcade_credit() && state == EntryState::SELECT_SIDE)) {
+        timer->update(current_time);
+    }
     nameplate.update(current_time);
     chara->update(current_time);
     for (auto& player : players) {
@@ -187,9 +336,27 @@ void EntryScreen::draw_side_select(float fade) {
     auto& skin = tex.skin_config;
     lua_entry->draw_side_select();
 
-    chara->draw(tex.skin_config[SC::CHARA_ENTRY].x, tex.skin_config[SC::CHARA_ENTRY].y);
+    // ROUND 15 - `DispDonAndNamePlate()` (`script_lua/entry/entry_main.lua`): the cabinet's
+    // preview Don and its nameplate exist PER SEAT and are visible only while that seat's
+    // `play_data_[n].user_type ~= kNone`, i.e. only after that player has actually entered.
+    // On the credit-wait screen in free play with nobody entered the cabinet therefore shows
+    // no Don and no plate at all - the two 太鼓をたたいてスタート! rows stand on the bare
+    // street.  We drew both unconditionally from the first frame of the screen
+    // (`on_screen_start` -> `reload_preview_chara`), which is the user's
+    // 「現在 1p 還沒進入遊戲，但 3d don 就會顯示」.
+    // Once a seat joins, its Don comes from that seat's own `EntryPlayer` (`draw_player_drum`
+    // / `draw_nameplate_and_indicator`), so the shared preview pair is never the right thing
+    // to show here; gating it is the whole fix.  Only under the arcade credit model - the
+    // legacy 3-way side cursor is a YataiDON screen with no cabinet counterpart and keeps its
+    // preview so the player can see who he is about to be.
+    const bool show_preview = !arcade_credit() || seat_joined(PlayerNum::P1) || seat_joined(PlayerNum::P2);
+    if (show_preview) {
+        chara->draw(tex.skin_config[SC::CHARA_ENTRY].x, tex.skin_config[SC::CHARA_ENTRY].y);
+    }
     lua_entry->draw_side_select_buttons(side);
-    nameplate.draw(skin[SC::NAMEPLATE_ENTRY].x, skin[SC::NAMEPLATE_ENTRY].y, fade);
+    if (show_preview) {
+        nameplate.draw(skin[SC::NAMEPLATE_ENTRY].x, skin[SC::NAMEPLATE_ENTRY].y, fade);
+    }
 }
 
 void EntryScreen::draw_player_drum() {

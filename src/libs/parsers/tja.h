@@ -30,6 +30,10 @@ struct Modifiers {
     bool inverse = false;
     int random = 0;
     int subdiff = 0;
+    // 演奏スキップ (arcade 演奏オプション row 5). Opt-in per player; when on for a
+    // player in the enso, the rim of the *unused* drum, alternating left/right,
+    // ten times, ends the song early (GameScreen::update_skip).
+    bool skip = false;
 };
 
 enum class NoteType : int {
@@ -88,6 +92,11 @@ public:
     bool is_branch_start;
     // Drumroll specific
     std::optional<int> color;
+    // ROUND 55: CHN05 roll visual-intensity accumulator, 0..150 (+20 per
+    // counted hit, -1 per idle cabinet frame -- tlb_test_harness
+    // research/note_judgement.md section 5, extradata[1] at 0x1401342F0).
+    // `color` above is now derived from this on the active roll head.
+    float roll_intensity = 0.0f;
     // Balloon specific
     std::optional<int> count;
     std::optional<bool> popped;

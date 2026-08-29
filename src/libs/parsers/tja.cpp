@@ -1502,6 +1502,13 @@ std::vector<std::pair<int, int>> find_streams(const std::deque<Note>& modded_not
     std::vector<std::pair<int, int>> streams;
     size_t i = 0;
 
+    // ROUND 46 (r46-recentplayed-2p-crash): `size() - 1` on an EMPTY deque
+    // underflows to SIZE_MAX, so the loop dereferenced modded_notes[0] of an
+    // empty container -- the access violation behind ROUND 45's "2P from
+    // Recently Played crashes Player::reset_chart". An empty (or single-note)
+    // chart has no streams by definition.
+    if (modded_notes.size() < 2) return streams;
+
     while (i < modded_notes.size() - 1) {
         if (modded_notes[i].type == NoteType::ROLL_HEAD || modded_notes[i].type == NoteType::ROLL_HEAD_L ||
             modded_notes[i].type == NoteType::BALLOON_HEAD || modded_notes[i].type == NoteType::KUSUDAMA) {

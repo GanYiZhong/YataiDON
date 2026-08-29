@@ -43,6 +43,17 @@ public:
     GenreIndex song_genre_index = GenreIndex::DEFAULT;
 
     SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser);
+    ~SongBox() override { release_preview_slot(); }
+
+    // 選曲 BGM / preview handoff, see the note at the top of box_song.cpp.
+    // Navigator::update calls this once a frame; a box that is focused holds
+    // the bgm slot, so the BGM only comes back when no song holds it.
+    static void service_bgm_resume(double current_ms);
+    // Screen entry: the screen plays the BGM itself, so drop any resume left
+    // pending from the previous visit (it would restart it a moment later).
+    static void reset_bgm_slot();
+    void release_preview_slot();
+    bool holds_preview_slot = false;
 
     void reset() override;
 

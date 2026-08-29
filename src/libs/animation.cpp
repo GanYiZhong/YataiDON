@@ -1,7 +1,10 @@
 #include "animation.h"
 #include "global_data.h"
+#include "sample_table.h"
 #include "rapidjson/error/en.h"
+#include <algorithm>
 #include <cmath>
+#include <spdlog/spdlog.h>
 
 using std::runtime_error;
 
@@ -150,12 +153,14 @@ MoveAnimation::MoveAnimation(double duration, int total_distance, bool loop,
               bool lock_input, int start_position, double delay,
               std::optional<double> reverse_delay,
               std::optional<std::string> ease_in,
-              std::optional<std::string> ease_out)
+              std::optional<std::string> ease_out,
+              std::optional<int> waypoint, double waypoint_at)
     : BaseAnimation(duration, delay, loop, lock_input),
       total_distance(total_distance), start_position(start_position),
       total_distance_saved(total_distance), start_position_saved(start_position),
       ease_in(ease_in), ease_out(ease_out),
-      reverse_delay(reverse_delay), reverse_delay_saved(reverse_delay) {
+      reverse_delay(reverse_delay), reverse_delay_saved(reverse_delay),
+      waypoint(waypoint), waypoint_at(std::clamp(waypoint_at, 0.001, 0.999)) {
     attribute = start_position;
 }
 
@@ -188,15 +193,26 @@ void MoveAnimation::update(double current_time_ms) {
         }
     } else {
         double progress = (elapsed_time - delay) / duration;
-        progress = applyEasing(progress, ease_in, ease_out);
-        attribute = start_position + (total_distance * progress);
+        if (waypoint.has_value()) {
+            // Two straight segments through start_position + waypoint. Used for
+            // the arcade option-board slide, whose middle key frame overshoots
+            // past the end value; easing is deliberately not applied.
+            double w = (double)waypoint.value();
+            attribute = (progress <= waypoint_at)
+                ? start_position + w * (progress / waypoint_at)
+                : start_position + w + ((double)total_distance - w) * ((progress - waypoint_at) / (1.0 - waypoint_at));
+        } else {
+            progress = applyEasing(progress, ease_in, ease_out);
+            attribute = start_position + (total_distance * progress);
+        }
     }
 }
 
 std::unique_ptr<BaseAnimation> MoveAnimation::copy() const {
     return std::make_unique<MoveAnimation>(
         duration, total_distance_saved, loop, lock_input,
-        start_position_saved, delay_saved, reverse_delay_saved, ease_in, ease_out
+        start_position_saved, delay_saved, reverse_delay_saved, ease_in, ease_out,
+        waypoint, waypoint_at
     );
 }
 
@@ -328,6 +344,53 @@ std::unique_ptr<BaseAnimation> TextureResizeAnimation::copy() const {
     );
 }
 
+// ---------------------------------------------------------------------------
+// SampleAnimation (ROUND 54) - see the header comment for the JSON contract.
+// ---------------------------------------------------------------------------
+
+SampleAnimation::SampleAnimation(const SampleTable* table, const SampleTrack* trk,
+                                 const std::string& track_name,
+                                 const std::string& field_name, int field_col,
+                                 double f0, double f1, double scale_v,
+                                 double offset_v, bool step, double duration,
+                                 double delay, bool loop, bool lock_input)
+    : BaseAnimation(duration, delay, loop, lock_input),
+      table(table), track_ptr(trk), field_col(field_col), f0(f0), f1(f1),
+      scale_v(scale_v), offset_v(offset_v), step(step),
+      track_name(track_name), field_name(field_name) {
+    attribute = table->sample(*track_ptr, field_col, f0, step) * scale_v + offset_v;
+}
+
+void SampleAnimation::update(double current_time_ms) {
+    if (!is_started) return;
+    BaseAnimation::update(current_time_ms);
+
+    double elapsed_time = current_time_ms - start_ms;
+    if (elapsed_time <= delay) {
+        attribute = table->sample(*track_ptr, field_col, f0, step) * scale_v + offset_v;
+        return;
+    }
+    // `duration` defaults to the window's natural length; a shorter override
+    // finishes (and parks) early, a longer one holds the window's last value
+    // until the extra time elapses - matching a Lumen timeline stopped on its
+    // last frame. is_finished always lands exactly at delay + duration.
+    if (elapsed_time >= delay + duration) {
+        double end_frame = std::min(f1, f0 + duration / table->ms_per_frame());
+        attribute = table->sample(*track_ptr, field_col, end_frame, step) * scale_v + offset_v;
+        is_finished = true;
+        return;
+    }
+    double frame = std::min(f1, f0 + (elapsed_time - delay) / table->ms_per_frame());
+    attribute = table->sample(*track_ptr, field_col, frame, step) * scale_v + offset_v;
+}
+
+std::unique_ptr<BaseAnimation> SampleAnimation::copy() const {
+    return std::make_unique<SampleAnimation>(
+        table, track_ptr, track_name, field_name, field_col, f0, f1,
+        scale_v, offset_v, step, duration, delay_saved, loop, lock_input
+    );
+}
+
 template<typename T>
 std::optional<T> AnimationParser::getOptional(const Value& obj, const char* key) {
     if (!obj.HasMember(key)) return std::nullopt;
@@ -433,7 +496,17 @@ Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
 
 std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& anim_obj) {
     std::string type = anim_obj["type"].GetString();
-    double duration = anim_obj["duration"].GetDouble();
+    // "sample" derives its natural duration from its table window, so the key
+    // is optional there; every other type keeps requiring it (the old
+    // unconditional GetDouble() threw on absence, matching this).
+    double duration = 0.0;
+    if (anim_obj.HasMember("duration")) {
+        duration = anim_obj["duration"].IsDouble() ? anim_obj["duration"].GetDouble()
+                 : anim_obj["duration"].IsInt() ? static_cast<double>(anim_obj["duration"].GetInt())
+                 : 0.0;
+    } else if (type != "sample") {
+        throw std::runtime_error("Animation of type '" + type + "' requires duration");
+    }
 
     auto get_double = [&](const char* key, double def) {
         if (anim_obj.HasMember(key)) {
@@ -452,6 +525,15 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
 
     auto get_bool = [&](const char* key, bool def) {
         return anim_obj.HasMember(key) && anim_obj[key].IsBool() ? anim_obj[key].GetBool() : def;
+    };
+
+    // Absent => std::nullopt, so a move animation without "waypoint" keeps the
+    // plain start -> start+total_distance easing it always had.
+    auto get_int_opt = [&](const char* key) -> std::optional<int> {
+        if (!anim_obj.HasMember(key)) return std::nullopt;
+        if (anim_obj[key].IsInt())    return anim_obj[key].GetInt();
+        if (anim_obj[key].IsDouble()) return static_cast<int>(anim_obj[key].GetDouble());
+        return std::nullopt;
     };
 
     auto get_string_opt = [&](const char* key) -> std::optional<std::string> {
@@ -498,7 +580,9 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             delay,
             get_double_opt("reverse_delay"),
             get_string_opt("ease_in"),
-            get_string_opt("ease_out")
+            get_string_opt("ease_out"),
+            get_int_opt("waypoint"),
+            get_double("waypoint_at", 0.5)
         );
     } else if (type == "texture_change") {
         std::vector<std::tuple<double, double, int>> textures;
@@ -531,6 +615,48 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_double_opt("reverse_delay"),
             get_string_opt("ease_in"),
             get_string_opt("ease_out")
+        );
+    } else if (type == "sample") {
+        // ROUND 54: real clip-sampled attribute; FAIL-SOFT to "fallback" /
+        // "default" when the table cannot be resolved (ANIM_PIPELINE rule).
+        auto fail_soft = [&](const char* why) -> std::unique_ptr<BaseAnimation> {
+            spdlog::warn("[animation] sample entry unusable ({}) - using {}",
+                         why, anim_obj.HasMember("fallback") ? "fallback animation"
+                                                             : "constant default");
+            if (anim_obj.HasMember("fallback") && anim_obj["fallback"].IsObject()) {
+                return createAnimation(anim_obj["fallback"]);
+            }
+            double def = get_double("default", 0.0);
+            // constant attribute with the entry's own timing envelope
+            return std::make_unique<FadeAnimation>(
+                duration, def, loop, lock_input, def, delay);
+        };
+
+        auto table_name = get_string_opt("table");
+        auto track_name = get_string_opt("track");
+        if (!table_name || !track_name) return fail_soft("missing table/track key");
+        const SampleTable* st = get_sample_table(*table_name);
+        if (!st) return fail_soft("table not loadable");
+        const SampleTrack* trk = st->track(*track_name);
+        if (!trk) return fail_soft("track not in table");
+        std::string field = get_string_opt("field").value_or("a");
+        int col = st->field(field);
+        if (col < 0) return fail_soft("field not in table");
+
+        double f0 = st->range0, f1 = st->range1;
+        if (anim_obj.HasMember("range") && anim_obj["range"].IsArray() &&
+            anim_obj["range"].Size() == 2) {
+            f0 = anim_obj["range"][0].GetDouble();
+            f1 = anim_obj["range"][1].GetDouble();
+        }
+        if (f1 < f0) return fail_soft("empty range");
+        double natural = (f1 - f0) * st->ms_per_frame();
+        if (duration <= 0.0) duration = natural;
+
+        return std::make_unique<SampleAnimation>(
+            st, trk, *track_name, field, col, f0, f1,
+            get_double("scale", 1.0), get_double("offset", 0.0),
+            get_bool("step", false), duration, delay, loop, lock_input
         );
     } else {
         throw std::runtime_error("Unknown animation type: " + type);

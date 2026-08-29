@@ -2,6 +2,142 @@
 #include "gen4_audio.h"
 #include "green_audio.h"
 #include "texture.h"
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <unordered_set>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <mutex>
+
+// ---------------------------------------------------------------------------
+// Round-14 audio verification instrumentation.
+//
+// The log can never tell you that a cue fired: play_sound() on an unknown name
+// is a silent no-op (the warn below is commented out), and nothing records
+// which file a resident name was decoded from. That made every "does the right
+// sound come out at the right moment" claim unfalsifiable.
+//
+// Two env-gated taps fix that. Both are inert unless the variable is set, and
+// a normal run pays one relaxed atomic bool load per play/mix.
+//
+//   YATAIDON_AUDIO_TRACE=<file>   append LOAD/PLAY/MISS/STOP/MUSIC events,
+//                                 each stamped with the mixer frame counter so
+//                                 an event maps onto a sample offset in the
+//                                 recording below.
+//   YATAIDON_AUDIO_REC=<file.wav> tee the final mix (post master volume and
+//                                 clipping - exactly what the device receives)
+//                                 into a 16-bit WAV, written on shutdown.
+//   YATAIDON_AUDIO_REC_SECONDS=N  recording capacity, default 300 s.
+//   YATAIDON_AUDIO_REC_AUDIBLE=1  also let it out of the speakers. Without it
+//                                 a recording run is silent on the desktop, so
+//                                 an agent verifying audio does not blast the
+//                                 machine it is running on.
+// ---------------------------------------------------------------------------
+namespace audio_trace {
+
+static std::atomic<bool> enabled{false};
+static std::atomic<bool> rec_enabled{false};
+static std::atomic<bool> rec_audible{false};
+static std::atomic<unsigned long long> mixed_frames{0};
+static std::FILE* trace_file = nullptr;
+static std::mutex trace_mutex;
+static std::chrono::steady_clock::time_point t0;
+static std::string rec_path;
+static std::vector<int16_t> rec_buffer;   // interleaved stereo, preallocated
+static std::atomic<size_t> rec_used{0};   // in samples (not frames)
+
+static void init() {
+    t0 = std::chrono::steady_clock::now();
+    const char* tp = std::getenv("YATAIDON_AUDIO_TRACE");
+    if (tp && *tp) {
+        trace_file = std::fopen(tp, "wb");
+        if (trace_file) {
+            std::setvbuf(trace_file, nullptr, _IOLBF, 1 << 16);
+            std::fprintf(trace_file, "t_ms\tframe\tkind\tname\tdetail\n");
+            enabled.store(true, std::memory_order_relaxed);
+            spdlog::info("[audio-trace] writing {}", tp);
+        } else {
+            spdlog::error("[audio-trace] cannot open {}", tp);
+        }
+    }
+    const char* rp = std::getenv("YATAIDON_AUDIO_REC");
+    if (rp && *rp) {
+        double secs = 300.0;
+        if (const char* s = std::getenv("YATAIDON_AUDIO_REC_SECONDS")) {
+            double v = std::atof(s);
+            if (v > 0.0) secs = v;
+        }
+        rec_path = rp;
+        // Preallocated once: the mixer thread must never allocate.
+        rec_buffer.assign((size_t)(secs * 48000.0) * 2, 0);
+        rec_used.store(0, std::memory_order_relaxed);
+        const char* aud = std::getenv("YATAIDON_AUDIO_REC_AUDIBLE");
+        rec_audible.store(aud && *aud && *aud != '0', std::memory_order_relaxed);
+        rec_enabled.store(true, std::memory_order_relaxed);
+        spdlog::info("[audio-trace] recording {} ({:.0f} s cap, {})", rp, secs,
+                     rec_audible.load(std::memory_order_relaxed) ? "audible" : "muted output");
+    }
+}
+
+static void event(const char* kind, const std::string& name, const std::string& detail) {
+    if (!enabled.load(std::memory_order_relaxed)) return;
+    auto ms = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - t0).count();
+    std::lock_guard<std::mutex> g(trace_mutex);
+    if (!trace_file) return;
+    std::fprintf(trace_file, "%.1f\t%llu\t%s\t%s\t%s\n", ms,
+                 (unsigned long long)mixed_frames.load(std::memory_order_relaxed),
+                 kind, name.c_str(), detail.c_str());
+    // MSVCRT treats _IOLBF as full buffering, so without this the file stays empty
+    // until shutdown - a run in flight cannot be watched, and a crashed run loses
+    // everything it had traced.
+    std::fflush(trace_file);
+}
+
+// Called from the audio callback. No allocation, no locks.
+static void capture(const float* out, unsigned long samples) {
+    if (!rec_enabled.load(std::memory_order_relaxed)) return;
+    size_t used = rec_used.load(std::memory_order_relaxed);
+    size_t room = rec_buffer.size() > used ? rec_buffer.size() - used : 0;
+    size_t n    = samples < room ? samples : room;
+    for (size_t i = 0; i < n; ++i) {
+        float v = out[i];
+        v = v > 1.0f ? 1.0f : (v < -1.0f ? -1.0f : v);
+        rec_buffer[used + i] = (int16_t)std::lrintf(v * 32767.0f);
+    }
+    rec_used.store(used + n, std::memory_order_relaxed);
+}
+
+static void shutdown(double rate) {
+    if (rec_enabled.load(std::memory_order_relaxed) && !rec_path.empty()) {
+        rec_enabled.store(false, std::memory_order_relaxed);
+        size_t used = rec_used.load(std::memory_order_relaxed);
+        SF_INFO info;
+        std::memset(&info, 0, sizeof(info));
+        info.samplerate = (int)rate;
+        info.channels   = 2;
+        info.format     = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+        SNDFILE* f = sf_open(rec_path.c_str(), SFM_WRITE, &info);
+        if (f) {
+            sf_writef_short(f, rec_buffer.data(), (sf_count_t)(used / 2));
+            sf_close(f);
+            spdlog::info("[audio-trace] wrote {} ({} frames @ {} Hz)", rec_path,
+                         used / 2, (int)rate);
+        } else {
+            spdlog::error("[audio-trace] cannot write {}", rec_path);
+        }
+    }
+    std::lock_guard<std::mutex> g(trace_mutex);
+    if (trace_file) {
+        enabled.store(false, std::memory_order_relaxed);
+        std::fclose(trace_file);
+        trace_file = nullptr;
+    }
+}
+
+}  // namespace audio_trace
 
 // Both arcade bank formats decode to the same shape; the extension says which
 // era the container is from.
@@ -344,6 +480,13 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
         out[i] = (sample > 1.0f) ? 1.0f : ((sample < -1.0f) ? -1.0f : sample);
     }
 
+    // Verification tap: what the device is about to receive, byte for byte.
+    audio_trace::mixed_frames.fetch_add(framesPerBuffer, std::memory_order_relaxed);
+    if (audio_trace::rec_enabled.load(std::memory_order_relaxed)) {
+        audio_trace::capture(out, buffer_size);
+        if (!audio_trace::rec_audible.load(std::memory_order_relaxed))
+            std::memset(out, 0, buffer_size * sizeof(float));
+    }
 }
 
 void AudioEngine::sdl_audio_callback(void* userdata, SDL_AudioStream* stream, int additional_amount, int /*total_amount*/) {
@@ -563,6 +706,7 @@ bool AudioEngine::init_audio_device(const fs::path& sounds_path, const AudioConf
     this->volume_presets = volume_presets;
     this->is_ready = false;
     this->master_volume = 1.0f;
+    audio_trace::init();
     try {
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
         switch (audio_config.device_type) {
@@ -593,6 +737,9 @@ bool AudioEngine::init_audio_device(const fs::path& sounds_path, const AudioConf
 
 void AudioEngine::close_audio_device() {
     try {
+        // Flush the verification taps before the device (and the mix thread) go
+        // away, otherwise a graceful quit loses the whole recording.
+        audio_trace::shutdown(target_sample_rate > 0 ? target_sample_rate : 44100.0);
         unload_all_sounds();
         unload_all_music();
 
@@ -685,6 +832,21 @@ static float* adopt_decoded_pcm(std::vector<float>& samples, int channels,
     return resampled;
 }
 
+// Replaces a resident sound of the same name, releasing its PCM first. Plain
+// map assignment leaked the old buffer, which for a fully decoded BGM is tens
+// of megabytes on every screen change.
+void AudioEngine::store_sound(const std::string& name, const sound& snd) {
+    std::unique_lock<std::shared_mutex> guard(rw_lock);
+    auto it = sounds.find(name);
+    if (it != sounds.end()) {
+        std::atomic_ref<bool>(it->second.is_playing).store(false, std::memory_order_relaxed);
+        delete[] it->second.data;
+        if (it->second.resampler) src_delete(it->second.resampler);
+        delete[] it->second.resample_buffer;
+    }
+    sounds[name] = snd;
+}
+
 std::string AudioEngine::load_sound(const fs::path& file_path, const std::string& name) {
     try {
         // The gen 4 arcade banks hold G.719, which neither libsndfile nor
@@ -713,12 +875,12 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
             snd.frame_frac      = 0.0f;
             snd.resampler       = nullptr;
             snd.resample_buffer = nullptr;
-            {
-                std::unique_lock<std::shared_mutex> guard(rw_lock);
-                sounds[name] = snd;
-            }
+            store_sound(name, snd);
             spdlog::info("Loaded sound (G.719): {} ({} frames, {} Hz, {} ch)",
                          name, frames, rate, snd.channels);
+            audio_trace::event("LOAD", name,
+                               path_to_string(file_path) + "\tframes=" +
+                               std::to_string(frames));
             return name;
         }
 
@@ -775,10 +937,7 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
             }
             snd.resampler = nullptr;
             snd.resample_buffer = nullptr;
-            {
-                std::unique_lock<std::shared_mutex> guard(rw_lock);
-                sounds[name] = snd;
-            }
+            store_sound(name, snd);
             spdlog::debug("Loaded sound (ffmpeg): {} ({} frames, {} Hz, {} ch)",
                           name, snd.frame_count, snd.sample_rate, snd.channels);
             return name;
@@ -842,13 +1001,15 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
         snd.resampler = nullptr;
         snd.resample_buffer = nullptr;
 
-        {
-            std::unique_lock<std::shared_mutex> guard(rw_lock);
-            sounds[name] = snd;
-        }
+        store_sound(name, snd);
 
         spdlog::debug("Loaded sound: {} ({} frames, {} Hz, {} channels)",
                      name, snd.frame_count, snd.sample_rate, snd.channels);
+        // The path is the only proof of which skin won a name; the spdlog line
+        // above never had it.
+        audio_trace::event("LOAD", name,
+                           path_to_string(file_path) + "\tframes=" +
+                           std::to_string(snd.frame_count));
 
         return name;
 
@@ -859,22 +1020,33 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
 }
 
 void AudioEngine::load_screen_sounds(const std::string& screen_name) {
+    auto _snd_t0 = std::chrono::steady_clock::now();
+
     // Sounds has no inheritance mechanism of its own (unlike Graphics), so a child
-    // skin missing a sound folder would previously get nothing at all. Load the
-    // parent skin's copy first (if any), then the child's on top — same "child
-    // overrides, parent fills gaps" order as TextureWrapper::load_folder — so a
-    // child skin only needs to ship the sounds it actually wants to change.
+    // skin missing a sound folder would get nothing at all. The child's copy wins
+    // and the parent only fills the gaps — the first pass over a name claims it,
+    // so the parent's version of an overridden sound is never decoded. Previously
+    // both were decoded and the parent's result thrown away, which for a screen
+    // BGM is a whole ogg decode wasted on every single screen change.
+    std::vector<std::pair<fs::path, std::string>> queue;
+    std::unordered_set<std::string> claimed;
+
+    auto want = [&](const fs::path& file, const std::string& name) {
+        if (!claimed.insert(name).second) return;
+        if (!fs::exists(file)) { claimed.erase(name); return; }
+        queue.emplace_back(file, name);
+    };
+
     auto scan = [&](const fs::path& dir) {
         if (!fs::exists(dir)) return;
         try {
             for (const auto& entry : fs::directory_iterator(dir)) {
                 if (entry.is_directory()) {
-                    for (const auto& file : fs::directory_iterator(entry.path())) {
-                        load_sound(file.path(),
-                                    entry.path().stem().string() + "_" + file.path().stem().string());
-                    }
+                    for (const auto& file : fs::directory_iterator(entry.path()))
+                        want(file.path(),
+                             entry.path().stem().string() + "_" + file.path().stem().string());
                 } else if (entry.is_regular_file()) {
-                    load_sound(entry.path(), entry.path().stem().string());
+                    want(entry.path(), entry.path().stem().string());
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -895,18 +1067,43 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
         spdlog::warn("Sounds for screen {} not found", screen_name);
     }
 
-    if (has_parent) load_sound(parent_sounds / "don.wav", "don");
-    load_sound(sounds_path / "don.wav", "don");
-    if (has_parent) load_sound(parent_sounds / "ka.wav", "kat");
-    load_sound(sounds_path / "ka.wav", "kat");
+    want(sounds_path / "don.wav", "don");
+    if (has_parent) want(parent_sounds / "don.wav", "don");
+    want(sounds_path / "ka.wav", "kat");
+    if (has_parent) want(parent_sounds / "ka.wav", "kat");
 
     if (has_screen_sounds) {
-        if (has_parent) scan(parent_sounds / screen_name);
         scan(path);
+        if (has_parent) scan(parent_sounds / screen_name);
     }
 
-    if (has_parent) scan(parent_sounds / "global");
     scan(sounds_path / "global");
+    if (has_parent) scan(parent_sounds / "global");
+
+    // Decoding is per-file independent work (own file handle, own buffers, and
+    // the map insert takes the write lock), so it is spread over the cores
+    // instead of stalling the screen change one ogg at a time.
+    unsigned hw = std::thread::hardware_concurrency();
+    size_t workers = std::min<size_t>(queue.size(), hw ? hw : 4);
+    if (workers <= 1) {
+        for (const auto& [file, name] : queue) load_sound(file, name);
+    } else {
+        std::atomic<size_t> next{0};
+        std::vector<std::thread> pool;
+        pool.reserve(workers);
+        for (size_t w = 0; w < workers; ++w) {
+            pool.emplace_back([this, &queue, &next]() {
+                for (size_t i = next.fetch_add(1); i < queue.size(); i = next.fetch_add(1))
+                    load_sound(queue[i].first, queue[i].second);
+            });
+        }
+        for (auto& t : pool) t.join();
+    }
+
+    spdlog::info("[perf]  sounds for {}: {:.1f} ms ({} resident)", screen_name,
+                 std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - _snd_t0).count(),
+                 sounds.size());
 }
 
 void AudioEngine::unload_sound(const std::string& name) {
@@ -972,9 +1169,20 @@ void AudioEngine::play_sound(const std::string& name, VolumePreset volume_preset
         std::atomic_ref<unsigned int>(snd.current_frame).store(0, std::memory_order_relaxed);
         std::atomic_ref<float>(snd.frame_frac).store(0.0f, std::memory_order_relaxed);
         std::atomic_ref<bool>(snd.is_playing).store(true, std::memory_order_release);
+        audio_trace::event("PLAY", name,
+                           "preset=" + std::to_string((int)volume_preset) +
+                           " frames=" + std::to_string(snd.frame_count));
     } else {
         //spdlog::warn("Sound {} not found", name);
+        // A cue asked for by name that nothing resolves to. Silent by design in
+        // a release run; the trace is the only place it is ever visible.
+        audio_trace::event("MISS", name, "preset=" + std::to_string((int)volume_preset));
     }
+}
+
+bool AudioEngine::has_sound(const std::string& name) {
+    std::shared_lock<std::shared_mutex> guard(rw_lock);
+    return sounds.find(name) != sounds.end();
 }
 
 void AudioEngine::stop_sound(const std::string& name) {
@@ -984,8 +1192,20 @@ void AudioEngine::stop_sound(const std::string& name) {
         std::atomic_ref<bool>(it->second.is_playing).store(false, std::memory_order_relaxed);
         std::atomic_ref<unsigned int>(it->second.current_frame).store(0, std::memory_order_relaxed);
         std::atomic_ref<float>(it->second.frame_frac).store(0.0f, std::memory_order_relaxed);
+        audio_trace::event("STOP", name, "");
     } else {
         spdlog::warn("Sound {} not found", name);
+    }
+}
+
+// ROUND 52 (r52-lua-divergence-fixes): loop flag for Lua-requested looping SE
+// (arcade result count_up_loop_*). The mixer already restarts a sound whose
+// loop flag is set; this only flips the flag, thread-safely, like stop_sound.
+void AudioEngine::set_sound_loop(const std::string& name, bool loop) {
+    std::shared_lock<std::shared_mutex> guard(rw_lock);
+    auto it = sounds.find(name);
+    if (it != sounds.end()) {
+        std::atomic_ref<bool>(it->second.loop).store(loop, std::memory_order_relaxed);
     }
 }
 
@@ -1354,6 +1574,7 @@ void AudioEngine::play_music_stream(const std::string& name, VolumePreset volume
 
         std::atomic_ref<unsigned long long>(mus.current_frame).store(0, std::memory_order_relaxed);
         std::atomic_ref<bool>(mus.is_playing).store(true, std::memory_order_release);
+        audio_trace::event("MUSIC", name, mus.file_path);
     } else {
         spdlog::warn("Sound {} not found", name);
     }
@@ -1515,3 +1736,4 @@ void AudioEngine::seek_music_stream(const std::string& name, float position) {
 }
 
 AudioEngine audio;
+

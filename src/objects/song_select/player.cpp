@@ -4,8 +4,8 @@
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
 
-void SongSelectPlayer::try_lua_selector(bool is_half, float fade_in) {
-    selector_handled_by_lua = script && script->draw_selector(this, is_half, fade_in);
+void SongSelectPlayer::try_lua_selector(bool is_half, float fade_in, int pass) {
+    selector_handled_by_lua = script && script->draw_selector(this, is_half, fade_in, pass);
 }
 
 SongSelectPlayer::SongSelectPlayer(PlayerNum player_num)
@@ -212,16 +212,21 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
 }
 
 std::optional<std::pair<int,int>> SongSelectPlayer::handle_input_diff_sort(DiffSortSelect* diff_sort_selector) {
+    // ROUND 15: the arcade window plays its own SEs (katsu_c on a value change,
+    // don_c on a decide, beep_c when the star row has no songs) and swallows input
+    // during its 1 s start wait and its 2 s end hold, so the feedback has to come
+    // from inside it - a don played here would fire on a press the window ignored.
+    const bool arcade = diff_sort_selector->is_arcade();
     if (is_l_kat_pressed(player_num)) {
         diff_sort_selector->input_left();
-        audio.play_sound("kat", VolumePreset::SOUND);
+        if (!arcade) audio.play_sound("kat", VolumePreset::SOUND);
     }
     if (is_r_kat_pressed(player_num)) {
         diff_sort_selector->input_right();
-        audio.play_sound("kat", VolumePreset::SOUND);
+        if (!arcade) audio.play_sound("kat", VolumePreset::SOUND);
     }
     if (is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) {
-        audio.play_sound("don", VolumePreset::SOUND);
+        if (!arcade) audio.play_sound("don", VolumePreset::SOUND);
         return diff_sort_selector->input_select();
     }
     return std::nullopt;
@@ -255,6 +260,11 @@ std::optional<std::string> SongSelectPlayer::handle_input_search() {
     }
     return std::nullopt;
 }
+
+// Opt-in skin feature (skin_config "option_neiro_row"): the 音色 row lives inside
+// the option panel, so the separate NEIRO slot is skipped by the cursor and its
+// panel is never opened.
+static bool neiro_in_options() { return tex.skin_flag("option_neiro_row"); }
 
 SongSelectState SongSelectPlayer::handle_input_selecting() {
     bool l_kat = is_l_kat_pressed(player_num);
@@ -304,7 +314,7 @@ SongSelectState SongSelectPlayer::handle_input_selecting() {
             if (selected_difficulty == Difficulty::MODIFIER) {
                 modifier_selector = ModifierSelector(player_num, &player_data);
                 chara->set_anim(AnimIndex::DON_SELECT_PANELUP);
-            } else if (selected_difficulty == Difficulty::NEIRO) {
+            } else if (selected_difficulty == Difficulty::NEIRO && !neiro_in_options()) {
                 neiro_selector = NeiroSelector(player_num, &player_data);
                 chara->set_anim(AnimIndex::DON_SELECT_PANELUP);
             } else if (selected_difficulty >= Difficulty::EASY) {
@@ -325,7 +335,9 @@ void SongSelectPlayer::navigate_difficulty_left() {
     if (is_ura && selected_difficulty == Difficulty::URA) {
         diff_selector_move_1->start();
         prev_diff = selected_difficulty;
-        selected_difficulty = (curr_diffs.size() == 1) ? Difficulty::NEIRO : curr_diffs[curr_diffs.size() - 3];
+        selected_difficulty = (curr_diffs.size() == 1)
+            ? (neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO)
+            : curr_diffs[curr_diffs.size() - 3];
     } else if (selected_difficulty == Difficulty::NEIRO || selected_difficulty == Difficulty::MODIFIER) {
         diff_selector_move_2->start();
         prev_diff = selected_difficulty;
@@ -339,7 +351,7 @@ void SongSelectPlayer::navigate_difficulty_left() {
     } else if (selected_difficulty == curr_diffs.front()) {
         diff_selector_move_2->start();
         prev_diff = selected_difficulty;
-        selected_difficulty = Difficulty::NEIRO;
+        selected_difficulty = neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO;
     } else {
         diff_selector_move_1->start();
         prev_diff = selected_difficulty;
@@ -363,7 +375,8 @@ void SongSelectPlayer::navigate_difficulty_right() {
     if ((selected_difficulty == Difficulty::ONI || selected_difficulty == Difficulty::URA) && has_ura && has_oni) {
         ura_toggle = (ura_toggle + 1) % 10;
         if (ura_toggle == 0) toggle_ura_mode();
-    } else if (selected_difficulty == Difficulty::NEIRO) {
+    } else if (selected_difficulty == Difficulty::NEIRO
+               || (selected_difficulty == Difficulty::MODIFIER && neiro_in_options())) {
         prev_diff = selected_difficulty;
         selected_difficulty = curr_diffs.front();
         diff_selector_move_2->start();
@@ -456,7 +469,19 @@ void SongSelectPlayer::draw_background_diffs(SongSelectState state) {
     float x_offset = ((int)player_num == 2) ? tex.skin_config[SC::SONG_SELECT_BG_DIFF_P2_OFFSET].x : 0.0f;
     float bounce_y  = -selected_diff_bounce->attribute;
     float bounce_y2 =  selected_diff_bounce->attribute;
-    int diff_frame     = (int)selected_difficulty;
+    // ROUND 34 (r34-songselectplayer-crash): curr_diffs can contain
+    // Difficulty::TOWER(5) / Difficulty::DAN(6) for a TJA that embeds a
+    // COURSE:Dan (or COURSE:Tower) chart alongside its normal courses -
+    // navigate_difficulty_right() happily walks the cursor onto them since
+    // they're just more entries in curr_diffs. diff_frame_oni already
+    // clamped to ONI for the highlight/text art (which only ships frames
+    // 0-3), but this unclamped diff_frame fed straight into
+    // GLOBAL::BACKGROUND_DIFF, which only ships frames 0-4 (EASY..URA) -
+    // frame 5/6 is out of range and TextureWrapper::draw_texture's
+    // crop_data->at(params.frame) throws std::out_of_range. Clamp to URA,
+    // the highest frame BACKGROUND_DIFF actually has, so a dan/tower pick
+    // reuses the URA background instead of indexing past the array.
+    int diff_frame     = (int)(std::min(Difficulty::URA, selected_difficulty));
     int diff_frame_oni = (int)(std::min(Difficulty::ONI, selected_difficulty));
 
     tex.draw_texture(GLOBAL::BACKGROUND_DIFF, {.frame=diff_frame, .x=x_offset, .y=bounce_y,  .y2=bounce_y2, .fade=std::min(0.5f, (float)selected_diff_fadein->attribute)});
@@ -468,8 +493,17 @@ void SongSelectPlayer::draw_background_diffs(SongSelectState state) {
 }
 
 void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade_in) {
-    if (selected_song && state == SongSelectState::SONG_SELECTED && !selector_handled_by_lua) {
-        draw_selector(is_half, diff_fade_in);
+    // ROUND 15 (r15-audit-select): PASS 1 of the skin's selector - the part the
+    // cabinet draws ABOVE the difficulty cards (player_cursor_N, depth 21/22 of
+    // `common_song_select_main_diff` sprite 46). Pass 0 - the yellow course frame
+    // / button glow, depth 7/10, which the cards sit on top of - already ran from
+    // the scene before Navigator::draw(). Splitting it is what fixes both the 1P
+    // bubble whose tail the card cut off and the 2P cursor that vanished entirely,
+    // without turning the frame into an opaque block over the cards.
+    // Both scenes go through this one call for pass 1, so 1P and 2P cannot drift.
+    if (selected_song && state == SongSelectState::SONG_SELECTED) {
+        try_lua_selector(is_half, diff_fade_in, 1);
+        if (!selector_handled_by_lua) draw_selector(is_half, diff_fade_in);
     }
     selector_handled_by_lua = false;
 
@@ -489,13 +523,16 @@ void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade
 
     if (player_num == PlayerNum::P1) {
         nameplate.draw(tex.skin_config[SC::SONG_SELECT_NAMEPLATE_1P].x, tex.skin_config[SC::SONG_SELECT_NAMEPLATE_1P].y);
-        chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_1P].x, tex.skin_config[SC::SONG_SELECT_CHARA_1P].y + (offset * 0.6f));
+        chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_1P].x, tex.skin_config[SC::SONG_SELECT_CHARA_1P].y + (offset * 0.6f), 1.0f, "SONG_SELECT_P1");
     } else {
         nameplate.draw(tex.skin_config[SC::SONG_SELECT_NAMEPLATE_2P].x, tex.skin_config[SC::SONG_SELECT_NAMEPLATE_2P].y);
-        chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_2P].x, tex.skin_config[SC::SONG_SELECT_CHARA_2P].y + (offset * 0.6f));
+        chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_2P].x, tex.skin_config[SC::SONG_SELECT_CHARA_2P].y + (offset * 0.6f), 1.0f, "SONG_SELECT_P2");
     }
 
-    if (neiro_selector.has_value())   neiro_selector->draw();
-    if (modifier_selector.has_value()) modifier_selector->draw();
+    // A skin that defines SongSelect:draw_option_panel repaints these boards
+    // itself (see SongSelectScript::draw_option_panel); otherwise the C++ panels
+    // draw exactly as before.
+    if (neiro_selector.has_value()    && !(script && script->draw_option_panel(this, 2))) neiro_selector->draw();
+    if (modifier_selector.has_value() && !(script && script->draw_option_panel(this, 1))) modifier_selector->draw();
     if (ura_switch.has_value()) ura_switch->draw();
 }

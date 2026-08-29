@@ -4,6 +4,16 @@
 #include "audio.h"
 #include "global_data.h"
 #include <spdlog/spdlog.h>
+#include <chrono>
+
+// Wall-clock helper used to report screen load cost; see PERF notes.
+struct LoadTimer {
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    double ms() const {
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - t0).count();
+    }
+};
 
 inline int virtual_to_screen_x(float virtual_x) {
     int win_w = ray::GetScreenWidth();
@@ -96,10 +106,15 @@ public:
         screen_init = false;
         spdlog::info("{} ended, transitioning to {} screen", screen_name, next_screen);
 
+        LoadTimer t;
         audio.unload_all_sounds();
         audio.unload_all_music();
+        double snd_ms = t.ms();
 
+        LoadTimer t2;
         tex.unload_textures();
+        spdlog::info("[perf] unload {}: sounds {:.1f} ms, textures {:.1f} ms",
+                     screen_name, snd_ms, t2.ms());
 
         return next_screen;
     }
@@ -127,7 +142,9 @@ protected:
         if (!screen_init) {
             screen_init = true;
             try {
+                LoadTimer t;
                 on_screen_start();
+                spdlog::info("[perf] SCREEN INIT {}: {:.1f} ms", screen_name, t.ms());
                 spdlog::info("{} initialized", screen_name);
             } catch (const std::exception& e) {
                 spdlog::critical("{} failed to initialize: {}", screen_name, e.what());

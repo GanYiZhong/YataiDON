@@ -1,20 +1,78 @@
 #include "text.h"
+#include <spdlog/spdlog.h>
 #include <math.h>
 
 FontManager::FontManager() {}
 
 void FontManager::init(const fs::path& font_path) {
     std::lock_guard<std::mutex> lock(font_mutex);
-    this->font_path = font_path;
-    for (int i = 32; i < 127; i++)
-        codepoint_cache.insert(i);
-    std::vector<int> codepoints(codepoint_cache.begin(), codepoint_cache.end());
     if (!exists(font_path)) {
         throw std::runtime_error("Failed to load font: " + font_path.string());
     }
-    font = ray::LoadFontEx(font_path.string().c_str(), max_font_size,
-                           codepoints.data(), (int)codepoints.size());
-    ray::SetTextureFilter(font.texture, ray::TEXTURE_FILTER_BILINEAR);
+    this->font_path = font_path;
+
+    // 1x1 opaque texture used only so raylib's `font.texture.id != 0` guards pass
+    // on deep copies handed to worker threads. It is never sampled: OutlinedText
+    // composes from the CPU-side glyph images.
+    if (sentinel_texture.id == 0) {
+        ray::Image px = ray::GenImageColor(1, 1, ray::BLANK);
+        sentinel_texture = ray::LoadTextureFromImage(px);
+        ray::UnloadImage(px);
+    }
+}
+
+void FontManager::evict_lru(int keep_size) {
+    while (fonts.size() > MAX_SIZED_FONTS) {
+        auto victim = fonts.end();
+        for (auto it = fonts.begin(); it != fonts.end(); ++it) {
+            if (it->first == keep_size) continue;
+            if (victim == fonts.end() || it->second.last_used < victim->second.last_used)
+                victim = it;
+        }
+        if (victim == fonts.end()) break;
+        spdlog::debug("font: evicting {}px atlas ({} codepoints), {} resident",
+                      victim->first, victim->second.codepoints.size(), fonts.size());
+        if (victim->second.loaded) ray::UnloadFont(victim->second.font);
+        fonts.erase(victim);
+    }
+}
+
+FontManager::SizedFont& FontManager::acquire(const std::string& text, int font_size) {
+    if (font_size < 1) font_size = 1;
+
+    SizedFont& entry = fonts[font_size];
+
+    bool reload = !entry.loaded;
+    if (entry.codepoints.empty()) {
+        for (int i = 32; i < 127; i++)
+            entry.codepoints.insert(i);
+    }
+
+    const char* ptr = text.c_str();
+    while (*ptr) {
+        int cp_size = 0;
+        int codepoint = ray::GetCodepointNext(ptr, &cp_size);
+        if (cp_size <= 0) break;
+        if (codepoint > 0 && entry.codepoints.insert(codepoint).second)
+            reload = true;
+        ptr += cp_size;
+    }
+
+    if (reload) {
+        if (entry.loaded) ray::UnloadFont(entry.font);
+        std::vector<int> codepoints(entry.codepoints.begin(), entry.codepoints.end());
+        entry.font = ray::LoadFontEx(font_path.string().c_str(), font_size,
+                                     codepoints.data(), (int)codepoints.size());
+        ray::SetTextureFilter(entry.font.texture, ray::TEXTURE_FILTER_BILINEAR);
+        entry.loaded = true;
+        spdlog::debug("font: {}px atlas -> {} codepoints, {}x{} texture ({} sizes resident)",
+                      font_size, codepoints.size(),
+                      entry.font.texture.width, entry.font.texture.height, fonts.size());
+    }
+
+    entry.last_used = ++use_clock;
+    evict_lru(font_size);   // never evicts `font_size` itself, so `entry` stays valid
+    return entry;
 }
 
 static ray::Font deep_copy_font(const ray::Font& src) {
@@ -41,63 +99,16 @@ static ray::Font deep_copy_font(const ray::Font& src) {
 
 ray::Font FontManager::get_font(const std::string& text, int font_size) {
     std::lock_guard<std::mutex> lock(font_mutex);
-
-    bool reload = false;
-
-    const char* ptr = text.c_str();
-    while (*ptr) {
-        int cp_size = 0;
-        int codepoint = ray::GetCodepointNext(ptr, &cp_size);
-        if (!codepoint_cache.count(codepoint)) {
-            codepoint_cache.insert(codepoint);
-            reload = true;
-        }
-        ptr += cp_size;
-    }
-
-    if (font_size > max_font_size) {
-        reload = true;
-        max_font_size = font_size;
-    }
-
-    if (reload) {
-        ray::UnloadFont(font);
-        std::vector<int> codepoints(codepoint_cache.begin(), codepoint_cache.end());
-        font = ray::LoadFontEx(font_path.string().c_str(), max_font_size,
-                               codepoints.data(), (int)codepoints.size());
-        ray::SetTextureFilter(font.texture, ray::TEXTURE_FILTER_BILINEAR);
-    }
-
-    return font;
+    return acquire(text, font_size).font;
 }
 
 ray::Font FontManager::copy_font(const std::string& text, int font_size) {
     std::lock_guard<std::mutex> lock(font_mutex);
-
-    bool reload = false;
-    const char* ptr = text.c_str();
-    while (*ptr) {
-        int cp_size = 0;
-        int codepoint = ray::GetCodepointNext(ptr, &cp_size);
-        if (!codepoint_cache.count(codepoint)) {
-            codepoint_cache.insert(codepoint);
-            reload = true;
-        }
-        ptr += cp_size;
-    }
-    if (font_size > max_font_size) {
-        reload = true;
-        max_font_size = font_size;
-    }
-    if (reload) {
-        ray::UnloadFont(font);
-        std::vector<int> codepoints(codepoint_cache.begin(), codepoint_cache.end());
-        font = ray::LoadFontEx(font_path.string().c_str(), max_font_size,
-                               codepoints.data(), (int)codepoints.size());
-        ray::SetTextureFilter(font.texture, ray::TEXTURE_FILTER_BILINEAR);
-    }
-
-    return deep_copy_font(font);
+    ray::Font copy = deep_copy_font(acquire(text, font_size).font);
+    // Detach from the atlas texture: the entry may be reloaded or LRU-evicted
+    // while the worker thread is still composing.
+    copy.texture = sentinel_texture;
+    return copy;
 }
 
 // Characters placed to the right of the preceding glyph at the same y,
@@ -181,7 +192,7 @@ static bool in_rotate_set(const std::string& s) {
 OutlinedText::OutlinedText(std::string text, int font_size,
                            ray::Color color, ray::Color outline_color,
                            bool is_vertical,
-                           int outline_thickness,
+                           float outline_thickness,
                            float spacing,
                            float v_advance)
     : text(std::move(text)),
@@ -502,9 +513,25 @@ void OutlinedText::draw(const DrawTextureParams& params) {
     if (!texture.has_value()) return;
 
     ray::Rectangle src = {0, 0, (float)texture->width, (float)texture->height};
+    float dx = params.x + x_offset;
+    float dy = params.y + y_offset;
+
+    // A text quad drawn at its native size can only LOSE sharpness to a
+    // fractional position: the texture is bilinear-filtered, so a .5 offset
+    // blends every texel 50/50 with its neighbour (measured: +34..69 % edge
+    // width). Centring math -- `x = cx - text.width / 2` -- lands on a half
+    // pixel whenever the width is odd, which is why the blur looked
+    // intermittent. Snap it here, the one place every OutlinedText goes
+    // through. Deliberately NOT applied when the caller is scaling the quad
+    // (x2/y2 != 0): there it is resampling on purpose and rounding the origin
+    // could shift a deliberate layout.
+    if (params.x2 == 0.0f && params.y2 == 0.0f) {
+        dx = roundf(dx);
+        dy = roundf(dy);
+    }
+
     ray::Rectangle dst = {
-        params.x + x_offset,
-        params.y + y_offset,
+        dx, dy,
         (float)texture->width  + params.x2,
         (float)texture->height + params.y2
     };

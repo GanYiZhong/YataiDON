@@ -37,6 +37,10 @@ protected:
 
     std::optional<DiffSortSelect> diff_sort_selector;
     std::pair<int,int> last_diff_sort = {-1, -1};
+    // ROUND 15: the arcade window's third row (表示順 / sort priority).
+    int last_diff_order = 1;
+    // Shared by both scenes: hand the arcade window's result to the navigator.
+    void apply_sort_window_result();
 
     std::optional<SearchBox> search_box;
 
@@ -51,6 +55,17 @@ protected:
 
     void poll_song_jump(double current_ms);
     double last_song_jump_poll_ms = -1e9;
+
+    // --- mid-song-select 2P join (cabinet: SecondPlayerJoinToEntry) -----------
+    // Opt-in per skin with skin_config `songselect_2p_join`. Off for every scene
+    // that is not the plain 1P song select: SongSelect2PScreen overrides update()
+    // wholesale so it never reaches this, and practice says no below.
+    virtual bool allows_second_player_join() { return true; }
+    // -1 = not requested; otherwise the engine-ms at which the un-joined seat hit,
+    // counted out over the arcade's 90-frame (1.5 s) `wait_entry_end_cnt` hold.
+    double join_request_ms = -1.0;
+    PlayerNum join_existing_seat = PlayerNum::P1;
+    std::optional<Screens> poll_second_player_join(double current_ms);
 
     virtual void draw_overlays();
 

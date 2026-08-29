@@ -28,7 +28,20 @@ public:
     PracticePlayer(std::optional<SongParser>& parser_ref, PlayerNum player_num_param,
                    int difficulty_param, bool is_2p_param, const Modifiers& modifiers_param)
         : Player(parser_ref, player_num_param, difficulty_param, is_2p_param, modifiers_param) {
-        gauge.reset();
+        // ROUND 18: `gauge.reset()` used to be here, which destroyed the soul
+        // gauge `Player`'s constructor had just built. That single line is what
+        // made 特訓 gauge-less: with `gauge` empty, `Player::draw()`'s gauge block
+        // is skipped, AND `Player::update()` never reaches
+        // `background->handle_gauge(...)` (it sits inside the same
+        // `else if (gauge.has_value())` arm, player.cpp:423-428), so the skin's
+        // arcade_gauge overlay was starved too. The cabinet's 特訓 is the ordinary
+        // enso screen - 39.06 has no training-specific graphics at all, only
+        // `sound\se_training.nus3bank`, and `lumen\enso\pause\pause_menu.nulm`
+        // sprite 47 carries a TRAINING(20) label next to normal(0)/rankmatch(9) -
+        // so the gauge belongs here. Keeping it is safe: practice has no fail-out
+        // path (`PracticeGameScreen::update` does not call `GameScreen::update`)
+        // and never builds a result, so a live gauge has no consumer that could
+        // end the session early.
         judge_counter = JudgeCounter();
     }
 
@@ -63,6 +76,10 @@ public:
     PracticeGameScreen() : GameScreen("game") {}
 
     void on_screen_start() override;
+    // ROUND 58: the base on_screen_start() builds the practice background
+    // directly from this (was: base built the chart-preset rig, then
+    // on_screen_start() re-emplaced the "PRACTICE" one over it).
+    std::string background_scene_preset() const override { return "PRACTICE"; }
     Screens on_screen_end(Screens next_screen) override;
     void init_tja(fs::path song) override;
     std::optional<Screens> update() override;

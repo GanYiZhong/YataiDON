@@ -1,4 +1,4 @@
-#include "box_manager.h"
+﻿#include "box_manager.h"
 #include "../../libs/global_data.h"
 
 BoxManager::BoxManager() : selected_box_index(0), is_2p(false), costume_menu_open(false) {

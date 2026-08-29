@@ -1,11 +1,14 @@
 #include "song_select.h"
 #include "../libs/input.h"
 #include "../libs/network.h"
+#include "../libs/automation.h"
+#include <filesystem>
 
 void SongSelectScreen::on_screen_start() {
     Screen::on_screen_start();
     audio.set_sound_volume("ura_switch", 0.25f);
     audio.set_sound_volume("add_favorite", 3.0f);
+    SongBox::reset_bgm_slot();
     audio.play_sound("bgm", VolumePreset::MUSIC);
     audio.play_sound("voice_enter", VolumePreset::VOICE);
 
@@ -36,6 +39,7 @@ void SongSelectScreen::on_screen_start() {
     song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
     select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { player->select_song(); });
     diff_select_timer = nullptr;
+    join_request_ms = -1.0;
 }
 
 void SongSelectScreen::select_song(SongBox* song) {
@@ -76,6 +80,19 @@ void SongSelectScreen::handle_input_diff_sorting() {
     }
 }
 
+// ROUND 15: the arcade window has no "chosen" input event - the third row's don
+// starts a 2 s hold and the result appears when the close fade has run out.
+void SongSelectScreen::apply_sort_window_result() {
+    if (!diff_sort_selector || !diff_sort_selector->is_arcade()) return;
+    auto r = diff_sort_selector->take_result();
+    if (!r) return;
+    diff_sort_selector.reset();
+    state = SongSelectState::BROWSING;
+    last_diff_sort  = {(*r)[0], (*r)[1]};
+    last_diff_order = (*r)[2];
+    navigator.apply_diff_sort((*r)[0], (*r)[1], (*r)[2]);
+}
+
 void SongSelectScreen::handle_input_search() {
     if (!search_box) return;
     auto result = player->handle_input_search();
@@ -101,6 +118,77 @@ void SongSelectScreen::poll_song_jump(double current_ms) {
     if (auto hash = network.take_song_jump_result()) {
         navigator.jump_to_song(*hash);
     }
+}
+
+// --- mid-song-select 2P join -------------------------------------------------
+//
+// The cabinet, decoded from 39.06 `Data/x64/script_lua/`:
+//
+//  * `song_select/song_select_all.lua` `SongSelectAllMain.Update` (l.1848) calls
+//    `SecondPlayerJoinToEntry()` every frame while `nextMode ~= SceneType.kEntry`.
+//  * `SecondPlayerJoinToEntry` (l.1609) runs `CheckEntry()` only when
+//    `songselectsong_:Get2PEntryEnableFlag()`; on a hit it plays
+//    `se_common_v12a / entry_2p_add`, sets `nextMode = SceneType.kEntry` and enters
+//    `EntryEnd`, which counts `wait_entry_end_cnt = 1.5 * Common.FPS` = 90 frames
+//    and then `Common.LuaFinish()`es the whole scene.  It is NOT an overlay and
+//    NOT a paused wheel - song select is destroyed and the game goes back to ENTRY.
+//  * `CheckEntry` (l.1580) is the input+credit gate: `need_cost <= now_coin or
+//    is_freePlay`, with `need_cost = GameCost2 - GameCost1` while `player_num == 1`
+//    and `now_coin` forced to 0 while `player_num == 2` (so a full 2P session can
+//    never re-trigger).  The input it reads is the UN-JOINED seat's own drum,
+//    either face (`Input.PLAYERn_OK or PLAYERn_CANCEL`, guarded by
+//    `is_joinPlayer[n] == false`).  We are always free play, so only the input
+//    half of that gate exists here.
+//  * The window is `playSongCount < 2 and player_num == 1`, set identically by
+//    `Set2PEntryEnable` (l.1806) and `song_select_song_main.lua` `StartWait`
+//    (l.271): the offer is live on the FIRST AND SECOND song select and gone from
+//    the third on.  `CreditSideVisible` (l.1622) shows the invite cloud on exactly
+//    the same condition, which is why `coin_overlay.lua` now checks it too.
+//  * There is no timeout and no cancel on the join: once it fires the scene is
+//    committed and the pair face ENTRY's own timer instead.
+//
+// The seat that is already in is `global_data.player_num` - `on_screen_start`
+// builds this screen's only `SongSelectPlayer` from it - so the seat we watch is
+// simply the other one, which makes 1P->2P and 2P->1P exactly symmetric.
+std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_ms) {
+    // Arcade `EntryEnd`: 90 frames of nothing, then the scene ends.
+    static constexpr double JOIN_WAIT_MS = 1.5 * 1000.0;
+    if (join_request_ms >= 0.0) {
+        if (current_ms - join_request_ms < JOIN_WAIT_MS) return std::nullopt;
+        join_request_ms = -1.0;
+        global_data.entry_join_pending = true;
+        global_data.entry_joined_seat  = join_existing_seat;
+        spdlog::info("[2P join] returning to ENTRY, {}P stays in", (int)join_existing_seat);
+        return on_screen_end(Screens::ENTRY);
+    }
+
+    if (!allows_second_player_join()) return std::nullopt;
+    if (!tex.skin_flag("songselect_2p_join")) return std::nullopt;
+    // `playSongCount < 2`.
+    if (global_data.songs_played >= 2) return std::nullopt;
+    // Already committed to a song / a dan course: the arcade's flag is cleared the
+    // moment the scene starts tearing down, and re-entering ENTRY from under a
+    // running transition would strand the loaded chart.
+    if (game_transition.has_value() || dan_transition.has_value()) return std::nullopt;
+    if (navigator.is_processing || navigator.inline_streaming) return std::nullopt;
+    // The arcade clears the flag for its own sub-screens (the shop at
+    // `song_select_all.lua:396`, the QR flow at `song_select_qr.lua:68`).  Ours are
+    // the sort window and the search box, both of which own the whole input plane.
+    if (state != SongSelectState::BROWSING && state != SongSelectState::SONG_SELECTED)
+        return std::nullopt;
+
+    const PlayerNum in  = (global_data.player_num == PlayerNum::P2) ? PlayerNum::P2 : PlayerNum::P1;
+    const PlayerNum out = (in == PlayerNum::P1) ? PlayerNum::P2 : PlayerNum::P1;
+    if (!is_l_don_pressed(out) && !is_r_don_pressed(out)) return std::nullopt;
+    // Drain the rest of this frame's dons on that seat so none survive into ENTRY.
+    while (is_l_don_pressed(out) || is_r_don_pressed(out)) {}
+
+    join_request_ms   = current_ms;
+    join_existing_seat = in;
+    audio.play_sound("don", VolumePreset::SOUND);          // CheckEntry: don_l / don_r
+    audio.play_sound("entry_2p_add", VolumePreset::SOUND); // SecondPlayerJoinToEntry
+    spdlog::info("[2P join] {}P asked to join from song select; {}P holds", (int)out, (int)in);
+    return std::nullopt;
 }
 
 void SongSelectScreen::handle_input(double current_ms) {
@@ -132,8 +220,13 @@ std::optional<Screens> SongSelectScreen::update() {
     allnet_indicator.update(current_time);
     diff_fade_out->update(current_time);
     script->update(current_time);
-    select_timer->update(current_time);
-    if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
+    // The two auto-pick timers are frozen while the 2P-join hold runs: the arcade
+    // is in `EntryEnd`, where `Timer` is no longer ticked, and a timer firing
+    // inside those 90 frames would start a song the scene is already leaving.
+    if (join_request_ms < 0.0) {
+        select_timer->update(current_time);
+        if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
+    }
     indicator->update(current_time);
     if (search_box) search_box->update(current_time);
 
@@ -142,18 +235,38 @@ std::optional<Screens> SongSelectScreen::update() {
             stats_future.wait();
             cached_stats = stats_future.get();
         }
-        diff_sort_selector.emplace(cached_stats, last_diff_sort.first, last_diff_sort.second);
+        diff_sort_selector.emplace(cached_stats, last_diff_sort.first, last_diff_sort.second,
+                                   script.get(), last_diff_order);
     }
     if (diff_sort_selector) {
         state = SongSelectState::DIFF_SORTING;
         diff_sort_selector->update(current_time);
+        apply_sort_window_result();
     }
 
     poll_song_jump(current_time);
-    handle_input(current_time);
+    // ROUND 26 (r26-gaugesliver): automation `gotosong <path>` -- see
+    // automation.h/.cpp and Navigator::jump_to_song_path. Testing-only, same
+    // shape as the network poll_song_jump() call directly above.
+    {
+        std::string jump_path;
+        if (automation_take_song_jump(jump_path)) {
+            navigator.jump_to_song_path(std::filesystem::path(jump_path));
+        }
+    }
+    // Polled before the player's own input, like the arcade's `Update`. While the
+    // 90-frame hold runs the scene is already committed to ENTRY, so nothing else
+    // may consume input - the arcade is in `EntryEnd`, not in `Main`, for those
+    // 1.5 s and cannot start a song either.
+    if (auto join = poll_second_player_join(current_time)) return join;
+    if (join_request_ms >= 0.0) {
+        clear_input_buffers();
+    } else {
+        handle_input(current_time);
+    }
 
     player->update(current_time);
-    if (player->is_ready && !game_transition.has_value()) {
+    if (player->is_ready && !game_transition.has_value() && join_request_ms < 0.0) {
         if (player->selected_difficulty >= Difficulty::EASY) {
             BaseBox* item = navigator.get_current_item();
             select_song((SongBox*)item);
@@ -166,14 +279,15 @@ std::optional<Screens> SongSelectScreen::update() {
 
     if (screen_init) navigator.update(current_time);
 
-    if (game_transition.has_value()) {
+    // ...and neither transition may complete out from under the join hold.
+    if (game_transition.has_value() && join_request_ms < 0.0) {
         game_transition->update(current_time);
         if (game_transition->is_finished()) {
             return on_screen_end(get_game_screen_target());
         }
     }
 
-    if (dan_transition.has_value()) {
+    if (dan_transition.has_value() && join_request_ms < 0.0) {
         dan_transition->update(current_time);
         if (dan_transition->is_finished()) {
             return on_screen_end(Screens::DAN_SELECT);
@@ -227,9 +341,12 @@ void SongSelectScreen::draw() {
     navigator.draw_background();
     player->draw_background_diffs(state);
     bool in_diff_select = player->selected_song && state == SongSelectState::SONG_SELECTED;
+    // ROUND 15: pass 0 of the skin's selector - the yellow course frame / button
+    // glow, which the cabinet keeps UNDER the difficulty cards. Pass 1 (the 1P/2P
+    // bubble) runs from SongSelectPlayer::draw, after the wheel.
     if (in_diff_select) {
         navigator.draw_diff_select_bg();
-        player->try_lua_selector(false, navigator.get_diff_fade_in());
+        player->try_lua_selector(false, navigator.get_diff_fade_in(), 0);
     }
     navigator.draw();
     script->draw_footer();
@@ -242,6 +359,20 @@ void SongSelectScreen::draw() {
 
     if (diff_sort_selector) diff_sort_selector->draw();
     if (search_box) search_box->draw();
-    if (game_transition.has_value()) game_transition->draw();
+    if (game_transition.has_value()) {
+        game_transition->draw();
+        // The arcade keeps the credit/free-play line visible over the song-loading
+        // screen; re-draw the coin overlay on top with in_transition set so the skin
+        // can drop the 2P invite / QR chip (see coin_overlay.lua).
+        global_data.in_transition = true;
+        coin_overlay.draw();
+        global_data.in_transition = false;
+    }
+    // The skin's top-most slot, above the whole song-select HUD. The dan
+    // shutter rig lives here; the engine's own DAN_TRANSITION quad (one
+    // fixed-x quad whose width animates, i.e. a wipe) still draws after it and
+    // a skin that wants to own the transition neutralises it with "y2": 0.
+    script->draw_top(dan_transition.has_value() ? (float)dan_transition->progress() : -1.0f);
+
     if (dan_transition.has_value()) dan_transition->draw();
 }

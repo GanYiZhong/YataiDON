@@ -7,6 +7,8 @@
 #include "../objects/game/gauge.h"
 #include "../objects/global/allnet_indicator.h"
 #include "../objects/global/coin_overlay.h"
+#include "../objects/global/nameplate.h"
+#include "../objects/global/chara_3d.h"
 
 class DanResultScreen : public Screen {
 public:
@@ -28,12 +30,88 @@ private:
     std::unique_ptr<OutlinedText>    hori_name;
     std::vector<std::unique_ptr<OutlinedText>> song_names;
 
-    bool is_page2 = false;
+    // ROUND 16 (r16-dan): the player Don and the nameplate. `dani_result.nulm`
+    // MC 437 carries `don_1p` (char 305, depth 17) and `plate_1p_instance`
+    // (char 306, depth 18) at alpha 1 from frame 0 to frame 434 -- i.e. on BOTH
+    // pages, never hidden. We drew neither.
+    Nameplate nameplate;
+    std::unique_ptr<Chara3D> chara;
 
-    void handle_input();
-    void draw_page1();
-    void draw_page2(double fade);
-    void draw_exam_info(double fade, float scale = 0.8f);
-    void draw_digit_counter(const std::string& digits, float margin_x, TexID id, int index,
-                             float y, double fade, float scale);
+    bool is_page2 = false;
+    // ms since the CURRENT page opened. The cabinet gates input and advances on
+    // this clock, so it is the whole reason DAN_RESULT is no longer static:
+    // DaniResultSongMain.lua kWaitTime_ 0.5s / kWaitEndTime_ 30s, and the same
+    // pair in DaniResultTotalMain.lua.
+    double page_start_ms = 0.0;
+
+    // ── ROUND 50 (r50-dani-visual-completion) ────────────────────────────────
+    // Page-2 count-up timeline (DaniResultTotalMain's state machine flattened
+    // into a precomputed schedule -- every duration is knowable up front since
+    // the values are final when the screen opens). All times are ms on the
+    // page-2 clock. Common.FPS = 120 for the Lua timers; the lumen clip frames
+    // stay 60 fps -- NEVER conflate the two.
+    double totals_start = 0;     // end_total: totals/score/gauge count-up begins
+    double totals_end   = 0;     // every totals counter + the gauge has landed
+    struct RowSchedule {
+        double land  = 0;        // row slides in (detail_in_0N)
+        double fill0 = 0;        // bar fill begins
+        double filld = 0;        // bar fill duration
+        double numin = 0;        // live digits appear (num_in), SE gauge_judgement
+    };
+    std::vector<RowSchedule> rows;
+    double stamp_at = 0;         // stamp_anm starts (StampSE fires)
+    double voice_at = 0;         // end_stamp (StampVoice + atmos)
+    bool page2_skipped = false;  // a don press mid-count-up -> everything lands
+    // one-shot SE latches
+    bool se_total_intro = false, se_countup = false, se_gauge_max = false,
+         se_stamp = false, se_voice = false;
+    std::vector<bool> se_row_fill, se_row_judge;
+    int  page1_plates_played = 0;   // partial_plate per landed song board
+
+    // The built-in tamashii gauge row (DaniResultTotalBase). Which exam row is
+    // the course's "gauge" exam; -1 = course has none (row column unchanged).
+    int    gauge_exam   = -1;
+    int    gauge_value  = 0;     // g_tamashiiGaugeValue_ (0..100)
+    int    gauge_border = 0;     // g_gaugeBorderValue_  (0..100)
+
+    // Rank persistence + reward flow (DaniResult.lua CheckReward +
+    // DaniResultReward). Computed once in on_screen_start.
+    bool shodan       = false;   // this run set a new best rank (昇段だドン due)
+    int  prev_best    = 0;       // stored rank before this run (0 = never)
+    bool celebrating  = false;   // the 昇段だドン overlay is up
+    double celebrate_start_ms = 0;
+    bool se_advance = false, se_shogo = false;
+
+    // ── ROUND 57 (r57-dani-leftovers) ────────────────────────────────────────
+    // Congrats-at-top-course (dani_result_congrats; DaniResult.lua:318-329 +
+    // DaniResultReward Congrat state): first pass of the library's highest
+    // course pops the full-width congratulation after the 昇段 celebration.
+    bool   congrats_due     = false;
+    bool   congrats_showing = false;
+    double congrats_start_ms = 0;
+    bool   se_congrats = false;
+    // Best-score bar (DaniResultTotalBase best_score_mc; value =
+    // score - stored best, shown only when positive and g_isBestScore_).
+    int  prev_best_score = 0;
+    bool best_score_show = false;
+    int  prev_arrival    = 0;    // stored arrival BEFORE this run (mask key)
+    void draw_best_score(double fade, double on_page);
+    void draw_congrats(double now);
+
+    void handle_input(double current_ms);
+    void build_page2_timeline();
+    void update_sounds(double now);
+    void apply_reward();
+    void draw_page1(double now);
+    void draw_page2(double fade, double now);
+    void draw_exam_info(double fade, double now, float scale = 0.8f);
+    void draw_gauge_row(const Exam& exam, float y, double fade, double now, float scale);
+    void draw_celebration(double now);
+    // Count-up-aware digit column: rolls ones-first, 0.5 s per digit
+    // (DaniResultSongScore.NumCounter), landing on the final value; digits not
+    // yet reached stay hidden ("none"). roll_t < 0 = land instantly.
+    void draw_digit_counter(const std::string& digits, float margin_x, TexID id,
+                             int index, float y, double fade, float scale,
+                             float x_off = 0.0f, double roll_t = -1.0);
+    void draw_chara_and_plate();
 };

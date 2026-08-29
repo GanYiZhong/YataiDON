@@ -177,8 +177,13 @@ void SettingsBox::update(double current_time_ms, bool selected) {
 
 void SettingsBox::draw_text() const {
     auto& box_tex = tex.textures[BOX::BOX];
-    float text_x = x + (box_tex->width  / 2.0f) - (label->width  / 2.0f);
-    float text_y = y + (box_tex->height / 2.0f) - (label->height / 2.0f);
+    // draw_texture adds the texture's own texture.json x/y to the x/y passed in,
+    // so the label has to add them too or it detaches from the plate the moment a
+    // skin uses that offset. (Both are 0 for PyTaikoGreen, so this is a no-op
+    // there; this skin uses y to lift the column clear of the top of the frame -
+    // BOX_INITIAL_Y is a hardcoded -50 and clipped the first category, see C-se-1.)
+    float text_x = x + box_tex->x[0] + (box_tex->width  / 2.0f) - (label->width  / 2.0f);
+    float text_y = y + box_tex->y[0] + (box_tex->height / 2.0f) - (label->height / 2.0f);
 
     if (is_selected) {
         label->draw({.x=text_x, .y=text_y});

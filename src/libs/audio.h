@@ -121,8 +121,13 @@ public:
     std::string load_sound(const fs::path& file_path, const std::string& name);
     void unload_sound(const std::string& name);
     void unload_all_sounds();
+    void store_sound(const std::string& name, const sound& snd);
     void play_sound(const std::string& name, VolumePreset volume_preset = VolumePreset::NONE);
+    bool has_sound(const std::string& name);
     void stop_sound(const std::string& name);
+    // ROUND 52 (r52-lua-divergence-fixes): lets Lua request a looping SE (the
+    // arcade result count_up_loop_*; the mixer already honours snd.loop).
+    void set_sound_loop(const std::string& name, bool loop);
     bool is_sound_playing(const std::string& name);
     void  set_sound_volume(const std::string& name, float volume);
     void  set_sound_pan(const std::string& name,   float pan);

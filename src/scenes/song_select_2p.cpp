@@ -1,9 +1,17 @@
 #include "song_select_2p.h"
 #include "../libs/input.h"
+// ROUND 52: automation gotosong 2P consumer
+#include "../libs/automation.h"
+#include <filesystem>
 
 void SongSelect2PScreen::on_screen_start() {
     SongSelectScreen::on_screen_start();
     player_2 = std::make_unique<SongSelectPlayer>(PlayerNum::P2);
+    // player (1P) gets this in SongSelectScreen::on_screen_start; 2P never did,
+    // so try_lua_selector(player_2) always fell through to the C++ selector and
+    // a skin script literally never saw player 2 on this screen (no 2P option
+    // panel offset, no 2P cursor bubble).
+    player_2->script = script.get();
 }
 
 static void init_player_diffs(SongSelectPlayer* p, SongBox* song) {
@@ -88,14 +96,26 @@ std::optional<Screens> SongSelect2PScreen::update() {
     if (search_box) search_box->update(current_time);
 
     if (navigator.diff_sort_ready() && !diff_sort_selector) {
-        diff_sort_selector.emplace(cached_stats, last_diff_sort.first, last_diff_sort.second);
+        diff_sort_selector.emplace(cached_stats, last_diff_sort.first, last_diff_sort.second,
+                                   script.get(), last_diff_order);
     }
     if (diff_sort_selector) {
         state = SongSelectState::DIFF_SORTING;
         diff_sort_selector->update(current_time);
+        apply_sort_window_result();
     }
 
     poll_song_jump(current_time);
+    // ROUND 52 (r52-lua-divergence-fixes): automation `gotosong <path>` gains
+    // its 2P consumer — same testing-only hook the 1P scene has carried since
+    // ROUND 26 (song_select.cpp), needed to drive the 2P-collab bug repro
+    // without a fragile blind wheel-walk.
+    {
+        std::string jump_path;
+        if (automation_take_song_jump(jump_path)) {
+            navigator.jump_to_song_path(std::filesystem::path(jump_path));
+        }
+    }
     handle_input(current_time);
 
     player->update(current_time);
@@ -151,10 +171,25 @@ void SongSelect2PScreen::draw() {
     navigator.draw_background();
     player->draw_background_diffs(state);
     player_2->draw_background_diffs(state);
+    // Same two hooks the 1P screen runs before the wheel: without them a skin
+    // that owns the difficulty selector (SongSelect:draw_selector) simply never
+    // gets called on the 2P screen and the arcade diff-select backdrop is
+    // missing. The backdrop is gated on the skin actually scripting it, so a
+    // skin that never had it (PyTaikoGreen) gets no new draw here.
+    bool same_diff = (player->selected_difficulty == player_2->selected_difficulty);
+    if (state == SongSelectState::SONG_SELECTED) {
+        if (script && script->has_box_bg()) navigator.draw_diff_select_bg();
+        // ROUND 15: pass 0 only (the frame under the cards). Pass 1 - the bubbles -
+        // runs from each player's draw(), after the wheel; drawing the whole selector
+        // here is what hid both players' cursors under the difficulty backboard.
+        // `same_diff` is the cabinet's own duo-cursor rule and replaces the hard-coded
+        // `true` this call used to pass.
+        if (player->selected_song)   player->try_lua_selector(same_diff, navigator.get_diff_fade_in(), 0);
+        if (player_2->selected_song) player_2->try_lua_selector(same_diff, navigator.get_diff_fade_in(), 0);
+    }
     if (screen_init) navigator.draw();
     script->draw_footer();
 
-    bool same_diff = (player->selected_difficulty == player_2->selected_difficulty);
     player->draw(state, same_diff, navigator.get_diff_fade_in());
     player_2->draw(state, same_diff, navigator.get_diff_fade_in());
 
@@ -164,5 +199,13 @@ void SongSelect2PScreen::draw() {
 
     if (diff_sort_selector) diff_sort_selector->draw();
     if (search_box) search_box->draw();
-    if (game_transition.has_value()) game_transition->draw();
+    if (game_transition.has_value()) {
+        game_transition->draw();
+        // The arcade keeps the credit/free-play line visible over the song-loading
+        // screen; re-draw the coin overlay on top with in_transition set so the skin
+        // can drop the 2P invite / QR chip (see coin_overlay.lua).
+        global_data.in_transition = true;
+        coin_overlay.draw();
+        global_data.in_transition = false;
+    }
 }

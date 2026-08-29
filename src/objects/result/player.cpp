@@ -8,7 +8,14 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
     int player_id = get_player_id(player_num);
     auto pd = scores_manager.get_player_data(player_id);
 
-    chara = make_chara_from_player_data(pd ? &*pd : nullptr);
+    // ROUND 34 (r34-result-2p-mirror): EntryPlayer (objects/entry/player.cpp:27,
+    // 105, 123, 127, 131) and SongSelectPlayer (objects/song_select/player.cpp:30)
+    // both pass `player_num == PlayerNum::P2` as Chara3D's `mirror` arg -- the
+    // established convention across every other screen that shows 1P/2P Dons
+    // side by side. ResultPlayer was the one screen that forgot it, so 2P's
+    // RESULT Don rendered facing the same way as 1P instead of mirrored to match
+    // its ENTRY/SONG_SELECT orientation. Reusing that same convention here.
+    chara = make_chara_from_player_data(pd ? &*pd : nullptr, is_2p);
     if (pd) {
         chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
         chara->apply_face(pd->chara_face_index);
@@ -23,13 +30,16 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
         pd ? pd->username : "", pd ? pd->title : "",
         player_num,
         pd ? pd->dan : -1, pd ? pd->gold : false, pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
+    // Arcade order (ScoreBase.lua numMc_[1..7]): good, ok, bad, dramroll, maxcombo,
+    // and the TOTAL SCORE LAST -- numMc_[6] is totalScore_.  Until round 15 "score"
+    // was first here, so our board filled the score before a single judge row.
     update_list = {
-        {"score",          sd.result_data.score},
         {"good",           sd.result_data.good},
         {"ok",             sd.result_data.ok},
         {"bad",            sd.result_data.bad},
+        {"total_drumroll", sd.result_data.total_drumroll},
         {"max_combo",      sd.result_data.max_combo},
-        {"total_drumroll", sd.result_data.total_drumroll}
+        {"score",          sd.result_data.score}
     };
 
     CrownType crown_type;
@@ -69,23 +79,61 @@ ResultPlayer::ResultPlayer(PlayerNum player_num, bool has_2p, bool is_2p)
               mods.display, mods.inverse, mods.random, mods.speed))
         return;
 
+    sol::optional<bool>   ci  = lua_object["count_up_instant"];
+    sol::optional<double> crm = lua_object["count_up_row_ms"];
+    sol::optional<double> csm = lua_object["count_up_score_ms"];
+    count_up_instant  = ci.value_or(false);
+    count_up_row_ms   = crm.value_or(count_up_row_ms);
+    count_up_score_ms = csm.value_or(count_up_score_ms);
+    // ROUND 52 (r52-lua-divergence-fixes): arcade count-up SE names + 1P gate
+    // (see player.h).
+    sol::optional<std::string> crs = lua_object["count_up_row_sound"];
+    sol::optional<std::string> css = lua_object["count_up_score_sound"];
+    sol::optional<bool>        c1p = lua_object["count_up_sound_1p_only"];
+    count_up_row_sound    = crs.value_or(count_up_row_sound);
+    count_up_score_sound  = css.value_or(count_up_score_sound);
+    count_up_sound_1p_only = c1p.value_or(count_up_sound_1p_only);
+
     fn_update     = lua_object["update"];
     fn_draw       = lua_object["draw"];
     fn_draw_gauge = lua_object["draw_gauge"];
+    fn_chara_pos  = lua_object["chara_pos"];
+    fn_nameplate_pos = lua_object["nameplate_pos"];
+}
+
+void ResultPlayer::assign_field(const std::string& field_name, const std::string& value) {
+    if      (field_name == "score")          score          = value;
+    else if (field_name == "good")           good           = value;
+    else if (field_name == "ok")             ok             = value;
+    else if (field_name == "bad")            bad            = value;
+    else if (field_name == "max_combo")      max_combo      = value;
+    else if (field_name == "total_drumroll") total_drumroll = value;
 }
 
 void ResultPlayer::update_score_animation(double current_ms, bool is_skipped) {
     if (is_skipped) {
         while (update_index < (int)update_list.size()) {
             auto& [field_name, value] = update_list[update_index];
-            std::string value_str = std::to_string(value);
-            if      (field_name == "score")          score          = value_str;
-            else if (field_name == "good")           good           = value_str;
-            else if (field_name == "ok")             ok             = value_str;
-            else if (field_name == "bad")            bad            = value_str;
-            else if (field_name == "max_combo")      max_combo      = value_str;
-            else if (field_name == "total_drumroll") total_drumroll = value_str;
+            assign_field(field_name, std::to_string(value));
             update_index++;
+        }
+    } else if (count_up_instant) {
+        // The cabinet's row cadence: ScoreBase.lua UpdateScoreDisplay lands rows 1..5
+        // every 50 frames (count_stop_c), then the score 100 frames later (don_big).
+        // No digit ever rolls -- StartCounter() is dead code on the result screen.
+        if (score_delay.has_value() && update_index < (int)update_list.size()
+            && current_ms > score_delay.value()) {
+            auto& [field_name, value] = update_list[update_index];
+            assign_field(field_name, std::to_string(value));
+            bool is_last = (update_index == (int)update_list.size() - 1);
+            // ROUND 52: skin-configurable names + the arcade's 1P-only gate
+            // (ScoreBase.lua plays the row/score SE only for player 1).
+            if (!count_up_sound_1p_only || player_num == PlayerNum::P1)
+                audio.play_sound(is_last ? count_up_score_sound : count_up_row_sound,
+                                 VolumePreset::SOUND);
+            update_index++;
+            score_delay.value() +=
+                (update_index == (int)update_list.size() - 1) ? count_up_score_ms : count_up_row_ms;
         }
     } else if (score_delay.has_value() && update_index < (int)update_list.size()) {
         if (current_ms > score_delay.value()) {
@@ -113,6 +161,7 @@ void ResultPlayer::update_score_animation(double current_ms, bool is_skipped) {
             }
         }
     }
+    if (rows_done_ms == 0 && update_index >= (int)update_list.size()) rows_done_ms = current_ms;
     if (update_index > 0 && !high_score_sound_played) {
         SessionData& sd = global_data.session_data[(int)player_num];
         if (sd.result_data.score > sd.result_data.prev_score) {
@@ -130,18 +179,79 @@ void ResultPlayer::update(double current_ms, bool fade_in_finished, bool is_skip
         }
     }
     update_score_animation(current_ms, is_skipped);
+    // ROUND 15: is_skipped is passed through so a skin can collapse its own
+    // post-count-up beats (crown, message, clear backdrop) the way the cabinet's
+    // isEffectSkip_ does.  Extra Lua arguments are ignored by a script that does
+    // not take them, so PyTaikoGreen is unaffected.
     call(fn_update, "ResultPlayer:update",
          current_ms, fade_in_finished,
-         score, good, ok, bad, max_combo, total_drumroll);
+         score, good, ok, bad, max_combo, total_drumroll, is_skipped);
     nameplate.update(current_ms);
     chara->update(current_ms);
 }
 
+// ROUND 19 (result press semantics, see Graphics/result/MAPPING.md ROUND 19).
+// `reveal_end_ms` is an OPTIONAL field on the result_player script: the script sets
+// it to the engine-clock ms of its MoveResultAction beat (crown settled + message
+// bubble + success backdrop), which is exactly where ResultMain.lua leaves the
+// `Crown` state and stops revealing anything.  Skins that do not set it (PyTaikoGreen)
+// fall back to the moment the last row of the board landed, so the behaviour is
+// defined for every skin without any skin having to change.
+double ResultPlayer::reveal_end_ms() {
+    if (lua_object.valid()) {
+        sol::optional<double> from_lua = lua_object["reveal_end_ms"];
+        if (from_lua && from_lua.value() > 0) return from_lua.value();
+    }
+    return rows_done_ms;
+}
+
 void ResultPlayer::draw() {
     call(fn_draw, "ResultPlayer:draw");
-    chara->draw(tex.skin_config[SC::RESULT_CHARA].x,
-                tex.skin_config[SC::RESULT_CHARA].y + ((int)is_2p * tex.screen_height / 2));
+    // Optional `chara_pos()` on the result_player script returns {x, y, scale}
+    // (any element may be omitted). Without it the Don is placed exactly where
+    // it always was: RESULT_CHARA plus the 2P half-screen offset, scale 1.
+    float cx = tex.skin_config[SC::RESULT_CHARA].x;
+    float cy = tex.skin_config[SC::RESULT_CHARA].y + ((int)is_2p * tex.screen_height / 2);
+    float cs = 1.0f;
+    if (fn_chara_pos.valid()) {
+        auto pos_opt = call_r<sol::table>(fn_chara_pos, "ResultPlayer:chara_pos");
+        if (pos_opt) {
+            sol::table& pos = pos_opt.value();
+            sol::optional<float> px = pos[1], py = pos[2], ps = pos[3];
+            cx = px.value_or(cx);
+            cy = py.value_or(cy);
+            cs = ps.value_or(cs);
+        }
+    }
+    chara->draw(cx, cy, cs);
     call(fn_draw_gauge, "ResultPlayer:draw_gauge");
-    nameplate.draw(tex.skin_config[SC::RESULT_NAMEPLATE].x,
-                   tex.skin_config[SC::RESULT_NAMEPLATE].y + (is_2p * tex.skin_config[SC::RESULT_NAMEPLATE].height));
+    // Optional `nameplate_pos()` on the result_player script returns {x, y, fade}
+    // (any element may be omitted), the exact mirror of `chara_pos()` above.
+    //
+    // WHY IT EXISTS.  The two boards of RESULT_2P are 956 px apart and the arcade
+    // puts `name_plate_L` at stage (206,970) and `name_plate_R` at (1713,970)
+    // (`result/result.nulm` `duet`, Graphics/result/MAPPING.md ROUND 11).  The
+    // fallback below -- which is all this engine ever had -- offsets the plate in
+    // **y only**, by RESULT_NAMEPLATE.height, so a skin whose plate is a single
+    // 408x96 canvas (height 0 in skin_config, i.e. no vertical stacking wanted)
+    // drew the 1P and the 2P plate on the SAME pixel of the LEFT board: the 2P
+    // plate is drawn second and covered the 1P one, and the right board had none.
+    // That is the 「2P mode 下 2P 的名牌不見」 report -- the plate was not missing,
+    // it was underneath.  Nothing in the skin could reach this: `Nameplate` has no
+    // Lua object and `result_player.lua` does not own the draw call.
+    float nx = tex.skin_config[SC::RESULT_NAMEPLATE].x;
+    float ny = tex.skin_config[SC::RESULT_NAMEPLATE].y
+             + (is_2p * tex.skin_config[SC::RESULT_NAMEPLATE].height);
+    float nf = 1.0f;
+    if (fn_nameplate_pos.valid()) {
+        auto pos_opt = call_r<sol::table>(fn_nameplate_pos, "ResultPlayer:nameplate_pos");
+        if (pos_opt) {
+            sol::table& pos = pos_opt.value();
+            sol::optional<float> px = pos[1], py = pos[2], pf = pos[3];
+            nx = px.value_or(nx);
+            ny = py.value_or(ny);
+            nf = pf.value_or(nf);
+        }
+    }
+    nameplate.draw(nx, ny, nf);
 }

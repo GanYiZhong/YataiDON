@@ -80,9 +80,14 @@ void WarningCharacters::update(double current_ms) {
 
     if (chara_1_frame->attribute != saved_frame) {
         saved_frame = chara_1_frame->attribute;
-        if (!shadow_fade->is_started) {
-            shadow_fade->start();
-        }
+        // C-ti-3 fix: the arcade caution clip cross-fades the OUTGOING pose on
+        // every one of the 25 pose changes. Gating this on `is_started` (which
+        // BaseAnimation never clears) played the ghost exactly once, on the
+        // first change, and left it dead for the remaining 24. restart() rearms
+        // the same animation from now; start() is only needed the first time to
+        // flip is_started.
+        if (!shadow_fade->is_started) shadow_fade->start();
+        else                          shadow_fade->restart();
     }
 }
 
@@ -143,7 +148,9 @@ void WarningScreen::update(double current_ms) {
     board->update(current_ms);
     fade_in->update(current_ms);
     fade_out->update(current_ms);
-    double delay = 566.67;
+    // C-ti-2 fix: caution.lua fires the voice-over on main_mc_.current_frame == 32,
+    // i.e. 32 / 60 fps = 533.33 ms. 566.67 was frame 34.
+    double delay = 533.33;
     double elapsed_time = current_ms - start_ms;
     warning_x->update(current_ms);
     characters->update(current_ms);

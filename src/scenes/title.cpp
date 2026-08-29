@@ -5,6 +5,12 @@
 
 void TitleScreen::on_screen_start() {
     Screen::on_screen_start();
+    // Screens are long-lived (LoopState::screens owns one instance each), but
+    // Screen::on_screen_end() runs tex.unload_textures(), which destroys every
+    // BaseAnimation this screen's attract objects hold raw pointers to. Anything
+    // still alive from the previous visit is therefore a use-after-free waiting
+    // to happen, so start every visit from a clean slate.
+    reset_attract_objects();
     load_videos();
     state = TitleState::OP_VIDEO;
     hit_taiko_text = std::make_unique<OutlinedText>(tex.skin_config[SC::HIT_TAIKO_TO_START].text[global_data.config->general.language], tex.skin_config[SC::HIT_TAIKO_TO_START].font_size, ray::WHITE, ray::BLACK, false, 4);
@@ -39,10 +45,39 @@ void TitleScreen::load_videos() {
     }
 }
 
-Screens TitleScreen::on_screen_end(Screens next_screen) {
+// Drops every attract-loop object. They hold raw BaseAnimation* borrowed from
+// TextureWrapper (get_animation / get_animation(..., copy=true) point into
+// `animations` and `copied_animations`), and both containers are wiped by
+// tex.unload_textures() on screen exit — so none of these may outlive a visit.
+void TitleScreen::reset_attract_objects() {
     op_video.reset();
     attract_video.reset();
+    warning_board.reset();
+    attract_camera.reset();
+    camera_cloud.reset();
+    bana_advert_1.reset();
+    bana_advert_2.reset();
+}
+
+Screens TitleScreen::on_screen_end(Screens next_screen) {
+    // Must happen before Screen::on_screen_end(), which unloads the textures,
+    // sounds and animations these objects still reference.
+    reset_attract_objects();
+    global_data.title_state = "";
+    global_data.title_state_start_ms = 0.0;
     return Screen::on_screen_end(next_screen);
+}
+
+// Publishes the current attract phase + its start time into global_data, so the
+// automation harness (and any future skin script) can distinguish and time the
+// four scenes that all live behind Screens::TITLE. See AUTOMATION.md.
+void TitleScreen::publish_state(double current_ms) {
+    static const char* names[] = {"OP_VIDEO", "WARNING", "ATTRACT_VIDEO", "ATTRACT_CAMERA"};
+    const char* name = names[(int)state];
+    if (global_data.title_state != name) {
+        global_data.title_state = name;
+        global_data.title_state_start_ms = current_ms;
+    }
 }
 
 void TitleScreen::scene_manager(double current_ms) {
@@ -120,6 +155,7 @@ std::optional<Screens> TitleScreen::update() {
     }
 
     scene_manager(current_ms);
+    publish_state(current_ms);
     if (is_l_don_pressed() || is_r_don_pressed()) {
         fade_out->start();
         audio.play_sound("don", VolumePreset::SOUND);

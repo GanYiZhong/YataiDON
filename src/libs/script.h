@@ -1,7 +1,9 @@
 #pragma once
 
 #include "texture.h"
+#include "perf.h"
 #include <sol/sol.hpp>
+#include <chrono>
 #include <spdlog/spdlog.h>
 
 class LuaScript {
@@ -14,7 +16,16 @@ protected:
     template<typename... Args>
     void call(sol::protected_function& fn, const std::string& context, Args&&... args) {
         if (!fn.valid()) return;
+        // r14-perf: per-hook Lua timing, off unless "luaperf on" was sent over
+        // the automation socket. Off, this is one relaxed atomic load.
+        const bool t_on = perf::lua_timing_enabled();
+        auto t0 = t_on ? std::chrono::steady_clock::now()
+                       : std::chrono::steady_clock::time_point{};
         auto result = fn(lua_object, std::forward<Args>(args)...);
+        if (t_on)
+            perf::lua_add(context.c_str(),
+                          std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - t0).count());
         if (!result.valid()) {
             sol::error err = result;
             spdlog::error("Lua error in {}: {}", context, err.what());
@@ -24,7 +35,14 @@ protected:
     template<typename Ret, typename... Args>
     sol::optional<Ret> call_r(sol::protected_function& fn, const std::string& context, Args&&... args) {
         if (!fn.valid()) return sol::nullopt;
+        const bool t_on = perf::lua_timing_enabled();
+        auto t0 = t_on ? std::chrono::steady_clock::now()
+                       : std::chrono::steady_clock::time_point{};
         auto result = fn(lua_object, std::forward<Args>(args)...);
+        if (t_on)
+            perf::lua_add(context.c_str(),
+                          std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - t0).count());
         if (!result.valid()) {
             sol::error err = result;
             spdlog::error("Lua error in {}: {}", context, err.what());

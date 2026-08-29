@@ -24,9 +24,17 @@ private:
     void load_sound();
 
 public:
+    // Data-out for skins, matching ModifierSelector::lua_rows(): the hit-sound
+    // set names and which one the cursor is on.
+    const std::vector<std::string>& lua_names() const { return sounds; }
+    int lua_index() const { return selected_sound; }
+
     bool is_finished;
     bool is_confirmed;
+    // Same split as ModifierSelector: `move` is the slide currently running and
+    // becomes move_out (animation 39, when the skin defines it) on confirm.
     MoveAnimation* move;
+    MoveAnimation* move_out = nullptr;
 
     NeiroSelector(PlayerNum player_num, PlayerData* player);
     void update(double current_ms);
