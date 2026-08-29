@@ -244,7 +244,16 @@ void TJAParser::get_metadata() {
                     region_code = to_lower(item.substr(8, 2));
                 }
                 std::string value = join_after_colon(item);
-                replace_all(value, "--", "");
+                if (value.rfind("++", 0) == 0) {
+                    metadata.subtitle_full_display = true;
+                    value = value.substr(2);
+                } else if (value.rfind("/ ", 0) == 0) {
+                    metadata.subtitle_full_display = true;
+                    value = value.substr(2);
+                } else if (value.rfind("--", 0) == 0) {
+                    metadata.subtitle_full_display = false;
+                    value = value.substr(2);
+                }
                 metadata.subtitle[region_code] = value;
 
                 if (metadata.subtitle.find("ja") != metadata.subtitle.end() &&

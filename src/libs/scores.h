@@ -1,6 +1,7 @@
 #pragma once
 
 #include "global_data.h"
+#include <chrono>
 #include <sqlite3.h>
 #include <mutex>
 
@@ -11,6 +12,11 @@
 // holds indeterminate values, and a garbage index reaches the skin: one session
 // read `dan = 69`, nameplate.lua drew frame 69 of a 25-frame texture and the
 // range-check error fired every frame (102,836 lines / 38 MB of log).
+inline int64_t unix_now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 struct PlayerData {
     int player_id            = 0;
     std::string username     = "";
@@ -86,8 +92,9 @@ public:
     ScoresManager(const fs::path& db_path);
     void py_taiko_import(const fs::path& old_db_path);
     void export_to_hiroba(const std::string& access_code, int player_id);
+    int sync_from_server(const std::string& access_code);
     std::optional<Score> get_score(std::string& hash, int difficulty, int player_id);
-    Score save_score(std::string& hash, int difficulty, int player_id, Score score);
+    Score save_score(std::string& hash, int difficulty, int player_id, Score score, int64_t played_at, const std::string& modifiers_json);
     void add_path_binding(const fs::path& path, const std::array<std::string, 5>& hashes);
     // By value on purpose: the maps below are written from the song select
     // (recording a freshly computed hash) while the loader thread reads them

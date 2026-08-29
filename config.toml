@@ -1,4 +1,5 @@
 [audio]
+asio_channel = [ 0 ]
 buffer_size = 128
 device_type = 0
 sample_rate = 44100
@@ -16,14 +17,12 @@ right_don = []
 right_kat = []
 
 [general]
-access_code = ''
 audio_offset = 0
 fps_counter = false
 judge_counter = false
 language = 'en'
 log_level = "info"
 nijiiro_notes = false
-online_play = false
 player_1_id = 1
 player_2_id = 2
 practice_mode_bar_delay = 1
@@ -34,6 +33,11 @@ timer_frozen = true
 touch_input = false
 visual_offset = 0
 webcam_number = -1
+
+[network]
+access_code = ''
+online_play = false
+sync_scores = false
 
 [keys]
 back_key = 'escape'

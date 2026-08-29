@@ -169,6 +169,8 @@ public:
 private:
     double target_sample_rate;
     unsigned long buffer_size;
+    std::vector<int> channel_offsets{0};
+    unsigned int rt_total_channels = 2;
     VolumeConfig volume_presets;
     bool is_ready;
     mutable std::shared_mutex rw_lock;

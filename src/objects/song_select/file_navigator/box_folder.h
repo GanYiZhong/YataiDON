@@ -8,6 +8,7 @@ public:
     int tja_count;
     bool is_osu_folder = false;
     std::map<int, Crown> crown;
+    std::map<int, Crown> crown_p2;
     bool entered = false;
     // The genre voice this box started, so closing only talks to the audio
     // engine when there is actually something to stop.

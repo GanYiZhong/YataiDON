@@ -12,6 +12,7 @@ private:
     Indicator           indicator;
     CoinOverlay         coin_overlay;
     AllNetIcon          allnet_indicator;
+    std::string         username_on_entry;
 
     std::optional<Screens> handle_input();
 

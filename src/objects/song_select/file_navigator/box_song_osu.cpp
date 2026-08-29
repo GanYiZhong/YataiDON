@@ -27,17 +27,7 @@ void SongBoxOsu::draw_closed() {
     float name_h = std::min((float)this->name->height, tex.skin_config[SC::SONG_BOX_NAME].height);
     this->name->draw({.x = name_x, .y = name_y, .y2 = name_h - this->name->height, .fade=fade->attribute});
 
-    int highest_key = -1;
-    for (int i = 0; i < (int)scores.size(); ++i) {
-        if (scores[i].has_value() && parser.metadata.course_data.count(i)) highest_key = std::max(highest_key, i);
-    }
-    if (highest_key >= 0) {
-        Score score = scores[highest_key].value();
-        int frame = std::min((int)Difficulty::URA, highest_key);
-        if      (score.crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
-        else if (score.crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
-        else if (score.crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=bx, .y=by, .fade=fade->attribute});
-    }
+    draw_box_crown(bx, by, fade->attribute);
 }
 
 void SongBoxOsu::draw_open() {
@@ -55,12 +45,8 @@ void SongBoxOsu::draw_open() {
 
     for (const auto& [diff, course] : parser.metadata.course_data) {
         if (Difficulty(diff) >= Difficulty::URA) continue;
-        tex.draw_texture(YELLOW_BOX::S_CROWN_OUTLINE, {.x=diff*offset, .fade=std::min((float)open_fade->attribute, 0.25f)});
-        if (scores[diff].has_value()) {
-            if      (scores[diff]->crown == Crown::DFC)   tex.draw_texture(YELLOW_BOX::S_CROWN_DFC,   {.x=diff*offset, .fade=open_fade->attribute});
-            else if (scores[diff]->crown == Crown::FC)    tex.draw_texture(YELLOW_BOX::S_CROWN_FC,    {.x=diff*offset, .fade=open_fade->attribute});
-            else if (scores[diff]->crown >= Crown::CLEAR) tex.draw_texture(YELLOW_BOX::S_CROWN_CLEAR, {.x=diff*offset, .fade=open_fade->attribute});
-        }
+        draw_diff_outline(diff*offset, 0.0f, std::min((float)open_fade->attribute, 0.25f));
+        draw_diff_crown(diff, diff*offset, 0.0f, open_fade->attribute);
     }
 
     if (global_data.config->general.display_bpm)

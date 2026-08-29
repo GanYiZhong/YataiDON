@@ -705,10 +705,10 @@ struct SongInfoFixture : public SandboxScreen::Fixture {
 
     uint32_t anchor_texture_id() override { return SONG_INFO::GENRE; }
 
-    void reset(double) override { active.emplace("Test Song", genre, 1); }
+    void reset(double) override { active.emplace("Test Song", "Test Subtitle", true, genre, 1); }
     void on_tab(double) override {
         genre = (genre + 1) % 9;
-        active.emplace("Test Song", genre, 1);
+        active.emplace("Test Song", "Test Subtitle", true, genre, 1);
     }
 
     void update(double ms) override { if (active) active->update(ms); }

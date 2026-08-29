@@ -24,6 +24,14 @@ enum class InputLogType {
     KAT_R = 3
 };
 
+struct RemoteScore {
+    std::string hash;
+    int difficulty;
+    Score score;
+};
+
+std::string modifiers_to_json(const Modifiers& modifiers);
+
 class NetworkClient {
 public:
     void update(double current_ms);
@@ -32,15 +40,26 @@ public:
 
     std::string register_user(const std::string& username);
     std::string map_to_json(const std::map<double, InputLogType>& my_map);
-    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log);
+    void submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log, int64_t played_at, const std::string& modifiers_json, bool chara_is_costume, int chara_cos_index);
 
     bool check_import_requested(const std::string& access_code);
     void clear_import_flag(const std::string& access_code);
 
     bool fetch_chara_colors(const std::string& access_code, ray::Color& color_1, ray::Color& color_2, ray::Color& color_3);
 
+    bool fetch_username(const std::string& access_code, std::string& username);
+    void update_username(const std::string& access_code, const std::string& username);
+
+    bool fetch_title(const std::string& access_code, std::string& title);
+    bool fetch_title_bg(const std::string& access_code, int& title_bg);
+
+    bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
+    void update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume);
+
     void poll_song_jump(const std::string& access_code);
     std::optional<std::string> take_song_jump_result();
+
+    std::vector<RemoteScore> fetch_scores(const std::string& access_code);
 
 private:
     void check_heartbeat();

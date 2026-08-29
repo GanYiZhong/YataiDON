@@ -7,11 +7,16 @@
 // `outline` key; a skin that never declared one keeps the historic hardcoded 5.
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
-SongInfo::SongInfo(const std::string& song_name, int genre, int song_num, int song_total)
+SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total)
     : song_name(song_name), genre(genre) {
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
+    // Upstream subtitle support, drawn with this skin's own outline rule.
+    if (show_subtitle && !subtitle.empty()) {
+        song_subtitle = std::make_unique<OutlinedText>(subtitle, tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false,
+                                                       skin_outline(tex.skin_config[SC::SONG_INFO_SUBTITLE]));
+    }
     // The gameplay plate's own outline, when the skin declared one on
     // `song_num_game`; otherwise the shared SC::SONG_NUM value.
     const SkinInfo* plate_cfg = tex.skin_entry("song_num_game");
@@ -71,8 +76,14 @@ void SongInfo::draw() {
 
     song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
 
+    if (song_subtitle) {
+        float sub_y = tex.skin_config[SC::SONG_INFO_SUBTITLE].y - song_subtitle->height / 2.0f;
+        song_subtitle->draw({.x=text_x - song_subtitle->width, .y=sub_y, .fade=1 - fade->attribute});
+    }
+
     if (genre < 9) {
-        tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
+        float genre_y_offset = song_subtitle ? song_subtitle->height : 0;
+        tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .y = genre_y_offset, .fade = 1 - fade->attribute,});
     }
 }
 

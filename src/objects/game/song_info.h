@@ -36,6 +36,7 @@ private:
     int genre;
     FadeAnimation* fade;
     std::unique_ptr<OutlinedText> song_title;
+    std::unique_ptr<OutlinedText> song_subtitle;
     std::unique_ptr<SongNum> song_num;
     // ROUND 17: built only when the caller passes a total AND the skin declares
     // `song_num_max` / `song_num_max_game`. Absent -> nothing drawn, i.e. every
@@ -44,7 +45,7 @@ private:
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, int genre, int song_num, int song_total = 0);
+    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0);
 
     void update(double current_ms);
     void draw();

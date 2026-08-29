@@ -3,6 +3,7 @@
 #include "../libs/input.h"
 #include "../libs/filesystem.h"
 #include "../libs/scores.h"
+#include "../libs/network.h"
 
 void save_config(const Config& config);
 
@@ -26,6 +27,7 @@ void SettingsScreen::on_screen_start() {
     indicator   = Indicator(Indicator::State::SELECT);
     coin_overlay   = CoinOverlay();
     allnet_indicator = AllNetIcon();
+    username_on_entry = scores_manager.player_1_data.username;
 
     audio.play_sound("bgm", VolumePreset::MUSIC);
     screen_init = true;
@@ -36,6 +38,11 @@ Screens SettingsScreen::on_screen_end(Screens next_screen) {
     scores_manager.save_player_data(scores_manager.player_1_data);
     scores_manager.save_player_data(scores_manager.player_2_data);
     spdlog::info("Settings saved");
+
+    const std::string& access_code = global_data.config->network.access_code;
+    if (!access_code.empty() && scores_manager.player_1_data.username != username_on_entry) {
+        network.update_username(access_code, scores_manager.player_1_data.username);
+    }
 
     audio.close_audio_device();
     fs::path sounds_path = fs::path("Skins") / global_data.config->paths.skin / "Sounds";

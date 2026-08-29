@@ -25,8 +25,10 @@ void Game2PScreen::init_tja(fs::path song) {
 
     global_data.session_data[(int)PlayerNum::P1].song_title = title;
     global_data.session_data[(int)PlayerNum::P1].song_subtitle = subtitle;
+    global_data.session_data[(int)PlayerNum::P1].song_subtitle_full_display = parser->metadata.subtitle_full_display;
     global_data.session_data[(int)PlayerNum::P2].song_title = title;
     global_data.session_data[(int)PlayerNum::P2].song_subtitle = subtitle;
+    global_data.session_data[(int)PlayerNum::P2].song_subtitle_full_display = parser->metadata.subtitle_full_display;
 
     if (fs::exists(parser->metadata.wave) && !song_music.has_value()) {
         song_music = audio.load_sound(parser->metadata.wave, "song");

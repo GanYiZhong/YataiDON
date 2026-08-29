@@ -11,6 +11,7 @@ private:
     void draw_overlays() override;
 
 protected:
+    bool is_2p_screen() override { return true; }
     Screens get_game_screen_target() override { return Screens::GAME_2P; }
 
     // ROUND 17 -- 段位道場 is a ONE-PLAYER mode on the cabinet, and the cabinet
