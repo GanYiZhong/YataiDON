@@ -47,6 +47,23 @@ ray::Color darken_color(const ray::Color& rgb) {
     );
 }
 
+BoxColors resolve_box_colors(const std::optional<ray::Color>& box_color,
+                              const std::optional<ray::Color>& back_color,
+                              const std::optional<ray::Color>& fore_color) {
+    BoxColors result;
+    result.box = box_color.has_value() ? box_color : back_color;
+    ray::Color default_outline = result.box.has_value() ? darken_color(result.box.value())
+                                                          : ray::Color(101, 0, 82, 255);
+    if (box_color.has_value()) {
+        result.outline = back_color.value_or(default_outline);
+        result.text = fore_color.value_or(ray::WHITE);
+    } else {
+        result.outline = fore_color.value_or(default_outline);
+        result.text = ray::WHITE;
+    }
+    return result;
+}
+
 
 const std::map<GenreIndex, std::array<std::optional<ray::Color>, 2>> DEFAULT_COLORS = {
     { GenreIndex::JPOP,        { ray::Color(32,  160, 186), ray::Color(0,   77,  104) } },

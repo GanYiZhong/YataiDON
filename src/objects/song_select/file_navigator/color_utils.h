@@ -1,11 +1,25 @@
 #pragma once
 
 #include "../../enums.h"
-#include "../../libs/color_utils.h"
+#include "../../../libs/color_utils.h"
 #include <optional>
 
 float rgb_to_hue(int r, int g, int b);
 float calculate_hue_shift(const ray::Color& source_rgb, const ray::Color& target_rgb);
 ray::Color darken_color(const ray::Color& rgb);
+
+struct BoxColors {
+    std::optional<ray::Color> box;
+    ray::Color outline;
+    ray::Color text;
+};
+
+// If box_color is set (#BOXCOLOR present), it is the box color, back_color
+// becomes the text outline, and fore_color becomes the text fill.
+// Otherwise back_color is the box color and fore_color is the outline
+// (legacy behavior), with text always white.
+BoxColors resolve_box_colors(const std::optional<ray::Color>& box_color,
+                              const std::optional<ray::Color>& back_color,
+                              const std::optional<ray::Color>& fore_color);
 
 extern const std::map<GenreIndex, std::array<std::optional<ray::Color>, 2>> DEFAULT_COLORS;

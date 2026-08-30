@@ -75,10 +75,11 @@ static bool alpha_less(const std::string& a, const std::string& b) {
 // collection's - but the game screen's genre label needs the song's own.
 static void apply_song_genre(SongBox* song, const BoxDef& box_def) {
     song->song_genre_index = box_def.genre_index;
-    if (box_def.fore_color.has_value())
-        song->fore_color = box_def.fore_color;
-    else if (box_def.back_color.has_value())
-        song->fore_color = darken_color(box_def.back_color.value());
+    if (!box_def.box_color.has_value() && !box_def.back_color.has_value() && !box_def.fore_color.has_value())
+        return;
+    BoxColors colors = resolve_box_colors(box_def.box_color, box_def.back_color, box_def.fore_color);
+    song->fore_color = colors.outline;
+    song->text_color = colors.text;
 }
 
 namespace ch = std::chrono;
@@ -935,6 +936,9 @@ BoxDef Navigator::parse_box_def(const fs::path& path) {
             auto it = TEXTURE_MAP.find(result.collection);
             if (it != TEXTURE_MAP.end()) result.texture_index = it->second;
             result.genre_index = get_genre_index(result.collection);
+        } else if (line.starts_with("#BOXCOLOR:")) {
+            result.box_color = parse_hex_color(get_value("#BOXCOLOR:"));
+            result.texture_index = TextureIndex::NONE;
         } else if (line.starts_with("#BACKCOLOR:")) {
             result.back_color = parse_hex_color(get_value("#BACKCOLOR:"));
             result.texture_index = TextureIndex::NONE;
