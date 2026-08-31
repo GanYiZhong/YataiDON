@@ -274,8 +274,8 @@ static void run_frame() {
 int main(int argc, char* argv[]) {
     spdlog::info("Starting YataiDON");
     set_working_directory_to_executable();
-    init_scores_manager();
     global_data.config = new Config(get_config());
+    init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
     unsigned int flags = ray::FLAG_WINDOW_RESIZABLE;
     if (global_data.config->video.vsync) {
         flags |= ray::FLAG_VSYNC_HINT;
