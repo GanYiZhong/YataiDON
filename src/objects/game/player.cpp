@@ -1493,13 +1493,8 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     tex.draw_texture(lane_icon_tex_id, {.y=y, .index=is_2p});
     int frame = is_dan ? 6 : difficulty;
     int index = is_dan ? 0 : is_2p;
-    if (tex.options.count(SCO::MODIFIERS_AFTER_DIFF_ICON) && tex.options.at(SCO::MODIFIERS_AFTER_DIFF_ICON)) {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
-        draw_modifiers(y);
-    } else {
-        draw_modifiers(y);
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
-    }
+    tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
+    draw_modifiers(y);
     if (judge_counter.has_value()) {
         judge_counter->draw();
     }
