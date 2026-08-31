@@ -124,8 +124,8 @@ private:
     void draw_outline(float x, float y);
     void draw_3d(float x, float y);
 public:
-    Chara3D(std::string& model_name, bool mirror = false);
-    Chara3D(std::string& head_name, std::string& body_name, bool mirror = false);
+    Chara3D(std::string& model_name, bool mirror = false, bool use_skin_config = false);
+    Chara3D(std::string& head_name, std::string& body_name, bool mirror = false, bool use_skin_config = false);
 
     ~Chara3D();
 
@@ -146,4 +146,4 @@ public:
 };
 
 struct PlayerData;
-std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror = false);
+std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror = false, bool use_skin_config = false);

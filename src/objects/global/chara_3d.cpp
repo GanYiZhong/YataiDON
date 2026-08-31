@@ -232,14 +232,15 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
         use_render_textures = false;
 }
 
-Chara3D::Chara3D(std::string& model_name, bool mirror) {
+Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
-    scale = tex.chara_3d_config.scale;
-    rot_x = tex.chara_3d_config.rot_x;
-    rot_y = tex.chara_3d_config.rot_y;
-    rot_z = tex.chara_3d_config.rot_z;
+    Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
+    scale = cfg.scale;
+    rot_x = cfg.rot_x;
+    rot_y = cfg.rot_y;
+    rot_z = cfg.rot_z;
 
     // Models has no inheritance mechanism of its own (unlike Graphics) — each asset
     // resolves against the child skin first, falling back to the parent's.
@@ -259,14 +260,15 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
     set_anim(anim_index);
 }
 
-Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror) {
+Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
-    scale = tex.chara_3d_config.scale;
-    rot_x = tex.chara_3d_config.rot_x;
-    rot_y = tex.chara_3d_config.rot_y;
-    rot_z = tex.chara_3d_config.rot_z;
+    Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
+    scale = cfg.scale;
+    rot_x = cfg.rot_x;
+    rot_y = cfg.rot_y;
+    rot_z = cfg.rot_z;
 
     fs::path head_path = tex.resolve_skin_path(fs::path("Models/head") / (head_name + ".glb"));
     fs::path body_path = tex.resolve_skin_path(fs::path("Models/body") / (body_name + ".glb"));
@@ -631,12 +633,12 @@ void Chara3D::draw(float x, float y) {
     ray::BeginMode2D(cam2d);
 }
 
-std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror) {
+std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror, bool use_skin_config) {
     if (pd && !pd->chara_is_costume) {
         std::string head_name = std::to_string(pd->chara_head_index);
         std::string body_name = std::to_string(pd->chara_body_index);
-        return std::make_unique<Chara3D>(head_name, body_name, mirror);
+        return std::make_unique<Chara3D>(head_name, body_name, mirror, use_skin_config);
     }
     std::string costume_name = pd ? std::to_string(pd->chara_cos_index) : "0";
-    return std::make_unique<Chara3D>(costume_name, mirror);
+    return std::make_unique<Chara3D>(costume_name, mirror, use_skin_config);
 }

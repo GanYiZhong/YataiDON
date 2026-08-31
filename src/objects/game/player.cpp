@@ -53,7 +53,7 @@ Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param
         pd ? pd->username : "", pd ? pd->title : "",
         global_data.player_num,
         pd ? pd->dan : -1, pd ? pd->gold : false, pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
-    chara = make_chara_from_player_data(pd ? &*pd : nullptr);
+    chara = make_chara_from_player_data(pd ? &*pd : nullptr, false, true);
     if (pd) {
         chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
         chara->apply_face(pd->chara_face_index);
