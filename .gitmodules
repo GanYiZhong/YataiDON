@@ -4,3 +4,6 @@
 [submodule "Skins/YataiDON-HSS"]
 	path = Skins/YataiDON-HSS
 	url = http://ese.tjadataba.se/Yonokid/YataiDON-HSS.git
+[submodule "Skins/YataiDONRed"]
+	path = Skins/YataiDONRed
+	url = http://ese.tjadataba.se/Yonokid/YataiDONRed.git

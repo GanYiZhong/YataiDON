@@ -395,6 +395,15 @@ void Player::update(double ms_from_start, double current_ms, std::optional<Backg
 }
 
 void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shader) {
+    if (is_balloon) {
+        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
+    } else {
+        if (is_2p) {
+            chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
+        } else {
+            chara->draw(tex.skin_config[SC::GAME_CHARA_P1].x, y + tex.skin_config[SC::GAME_CHARA_P1].y);
+        }
+    }
     tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
     if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
     if (branch_indicator.has_value()) {
@@ -1383,9 +1392,6 @@ void Player::draw_notes(double current_ms, float y) {
         return std::make_pair(x_position + judge_x, y_position + judge_y + y);
     };
 
-    // Two passes: all note bodies, then all moji. Alternating between note
-    // and moji textures per note flushes the sprite batch on every switch;
-    // grouped by texture the whole lane draws in a few batches
     for (auto it = draw_note_buffer.rbegin(); it != draw_note_buffer.rend(); ++it) {
         auto& note = *it;
         if (skip_note(note)) continue;
@@ -1425,11 +1431,6 @@ void Player::draw_song_timer(double current_ms, float y) {
 }
 
 void Player::draw_modifiers(float y) {
-    // These icons hang below the score cover for 1P. The 2P score cover is
-    // shifted down and mirrored vertically, so mirror each icon's offset
-    // within the cover as well: the stack pokes above the bar instead of
-    // below (otherwise the icons draw at the 1P-relative spot, hidden under
-    // the 2P nameplate / panel edge).
     auto icon_y = [&](uint32_t id) {
         if (!is_2p) return y;
         float cover_h = (float)tex.textures[LANE::LANE_SCORE_COVER]->y2[0];
@@ -1465,15 +1466,6 @@ void Player::draw_modifiers(float y) {
 }
 
 void Player::draw_lane_cover(float y) {
-    if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
-    } else {
-        if (is_2p) {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
-        } else {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P1].x, y + tex.skin_config[SC::GAME_CHARA_P1].y);
-        }
-    }
     tex.draw_texture(lane_cover_tex_id, {.y=y});
     if (is_dan) tex.draw_texture(LANE::DAN_LANE_COVER, {.y=y});
 }

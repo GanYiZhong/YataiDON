@@ -7,7 +7,7 @@ export PATH="$EMSDK:$EMSDK/upstream/emscripten:$PATH"
 BUILD_DIR="build-em"
 
 emcmake cmake -S . -B "$BUILD_DIR" -G Ninja
-cmake --build "$BUILD_DIR" -- -j$(nproc)
+cmake --build "$BUILD_DIR" -- -j"${JOBS:-$(( $(nproc) / 2 ))}"
 
 cp "$BUILD_DIR/bin/YataiDON.html" "$BUILD_DIR/bin/YataiDON.js" \
    "$BUILD_DIR/bin/YataiDON.wasm" "$BUILD_DIR/bin/YataiDON.data" .

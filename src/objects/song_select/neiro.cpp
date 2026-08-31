@@ -7,9 +7,7 @@ NeiroSelector::NeiroSelector(PlayerNum player_num, PlayerData* player) : player_
     is_confirmed = false;
     direction = -1;
 
-    std::filesystem::path neiro_list_path = std::filesystem::path("Skins")
-        / global_data.config->paths.skin
-        / "Sounds" / "hit_sounds" / "neiro_list.txt";
+    std::filesystem::path neiro_list_path = tex.resolve_skin_path("Sounds/hit_sounds/neiro_list.txt");
 
     std::ifstream neiro_list(neiro_list_path);
 
@@ -42,13 +40,11 @@ NeiroSelector::NeiroSelector(PlayerNum player_num, PlayerData* player) : player_
 
 void NeiroSelector::load_sound() {
     if (selected_sound == (int)sounds.size() - 1) return;
-    std::filesystem::path base = std::filesystem::path("Skins")
-        / global_data.config->paths.skin
-        / "Sounds" / "hit_sounds" / std::to_string(selected_sound);
+    fs::path base = fs::path("Sounds/hit_sounds") / std::to_string(selected_sound);
     if (selected_sound == 0) {
-        curr_sound = audio.load_sound(base / "don.wav", "hit_sound");
+        curr_sound = audio.load_sound(tex.resolve_skin_path(base / "don.wav"), "hit_sound");
     } else {
-        curr_sound = audio.load_sound(base / "don.ogg", "hit_sound");
+        curr_sound = audio.load_sound(tex.resolve_skin_path(base / "don.ogg"), "hit_sound");
     }
 }
 

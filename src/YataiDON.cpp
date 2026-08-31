@@ -298,7 +298,11 @@ int main(int argc, char* argv[]) {
     global_tex.init(root_skin_path / "Graphics");
     global_tex.load_screen_textures("global");
     script_manager.init(root_skin_path / "Scripts");
-    font_manager.init(root_skin_path / "Graphics/font.ttf");
+    fs::path font_path = root_skin_path / "Graphics/font.ttf";
+    if (!fs::exists(font_path) && tex.has_parent_skin()) {
+        font_path = tex.parent_root() / "Graphics/font.ttf";
+    }
+    font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
 
     scores_manager.player_1 = global_data.config->general.player_1_id;

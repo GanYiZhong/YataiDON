@@ -9,7 +9,7 @@ echo "Building YataiDON (Rebuild)..."
 echo ""
 
 # Build without cleaning
-cmake --build build -j$(nproc)
+cmake --build build -j"${JOBS:-$(( $(nproc) / 2 ))}"
 
 # Copy executable to root directory
 if [ -f build/bin/YataiDON ]; then

@@ -23,10 +23,6 @@ void TextureWrapper::init(const fs::path& skin_path) {
         screen_scale  = w / 1280.0f;
     }
 
-    // Parses one skin_config.json entry into a SkinInfo, storing it under its
-    // string key so Lua/runtime consumers can see keys the generated SC enum
-    // doesn't know about yet, and additionally under the SC enum when the key
-    // is recognized (used by hardcoded C++ reads via skin_config[SC::...]).
     auto load_entry = [this](const std::string& name, const Value& v, float scale) {
         float x = (v.HasMember("x") ? v["x"].GetFloat() : 0) * scale;
         float y = (v.HasMember("y") ? v["y"].GetFloat() : 0) * scale;
@@ -321,6 +317,7 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
 
     auto load_from_path = [&](const fs::path& folder, float tex_scale) {
         fs::path tex_json = folder / "texture.json";
+        if (!fs::exists(tex_json)) return;
 
         try {
             auto tex_config = read_json_file(tex_json);
@@ -378,8 +375,13 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
                     ++loaded_count;
 
                 } else {
-                    spdlog::error("Texture {} was not found in {}",
-                           tex_name, folder.string());
+                    auto existing = textures.find(tex_id);
+                    if (existing != textures.end()) {
+                        read_tex_obj_data(tex_mapping, existing->second.get(), tex_scale);
+                    } else {
+                        spdlog::error("Texture {} was not found in {}",
+                               tex_name, folder.string());
+                    }
                 }
             }
 
