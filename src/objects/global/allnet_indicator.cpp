@@ -10,7 +10,7 @@ AllNetIcon::AllNetIcon() {
 void AllNetIcon::update(double current_ms)
     {
         online = network.is_online();
-        call(fn_update, "AllNetIcon:update", current_ms, online);
+        call(fn_update, "AllNetIcon:update", current_ms, online, network.is_outdated());
     }
 void AllNetIcon::draw(float x, float y)
     {

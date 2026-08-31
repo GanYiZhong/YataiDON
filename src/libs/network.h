@@ -37,6 +37,7 @@ public:
     void update(double current_ms);
 
     bool is_online() const { return online; }
+    bool is_outdated() const { return outdated; }
 
     std::string register_user(const std::string& username);
     std::string map_to_json(const std::map<double, InputLogType>& my_map);
@@ -65,6 +66,7 @@ private:
     void check_heartbeat();
 
     bool online = false;
+    bool outdated = false;
 #if defined(NETWORK_ENABLED)
     std::optional<cpr::AsyncResponse> pending_heartbeat;
     static constexpr double HEARTBEAT_INTERVAL_MS = 30000.0;

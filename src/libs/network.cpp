@@ -44,6 +44,20 @@ std::string modifiers_to_json(const Modifiers& m) {
 
 namespace {
 
+// Compares dotted version strings numerically component by component (e.g. "1.2.0" < "1.10.0").
+bool version_less(const std::string& a, const std::string& b) {
+    size_t ai = 0, bi = 0;
+    while (ai < a.size() || bi < b.size()) {
+        int an = 0, bn = 0;
+        while (ai < a.size() && a[ai] != '.') an = an * 10 + (a[ai++] - '0');
+        while (bi < b.size() && b[bi] != '.') bn = bn * 10 + (b[bi++] - '0');
+        if (an != bn) return an < bn;
+        if (ai < a.size()) ai++;
+        if (bi < b.size()) bi++;
+    }
+    return false;
+}
+
 template <std::size_t N>
 struct ObfuscatedString {
     std::array<char, N> data{};
@@ -489,6 +503,14 @@ void NetworkClient::update(double current_ms) {
         online = response.status_code == 200;
         if (online != was_online) {
             spdlog::info("hiroba heartbeat: {}", online ? "online" : "offline");
+        }
+
+        if (online) {
+            rapidjson::Document doc;
+            if (!doc.Parse(response.text.c_str()).HasParseError() &&
+                doc.HasMember("min_client_version") && doc["min_client_version"].IsString()) {
+                outdated = version_less(CLIENT_VERSION, doc["min_client_version"].GetString());
+            }
         }
     }
 

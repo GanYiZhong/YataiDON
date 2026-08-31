@@ -1465,6 +1465,15 @@ void Player::draw_modifiers(float y) {
 }
 
 void Player::draw_lane_cover(float y) {
+    if (is_balloon) {
+        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
+    } else {
+        if (is_2p) {
+            chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
+        } else {
+            chara->draw(tex.skin_config[SC::GAME_CHARA_P1].x, y + tex.skin_config[SC::GAME_CHARA_P1].y);
+        }
+    }
     tex.draw_texture(lane_cover_tex_id, {.y=y});
     if (is_dan) tex.draw_texture(LANE::DAN_LANE_COVER, {.y=y});
 }
@@ -1506,15 +1515,6 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
             nameplate.draw(tex.skin_config[SC::GAME_NAMEPLATE_2P].x, y + tex.skin_config[SC::GAME_NAMEPLATE_2P].y);
         } else {
             nameplate.draw(tex.skin_config[SC::GAME_NAMEPLATE_1P].x, y + tex.skin_config[SC::GAME_NAMEPLATE_1P].y);
-        }
-    }
-    if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
-    } else {
-        if (is_2p) {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
-        } else {
-            chara->draw(tex.skin_config[SC::GAME_CHARA_P1].x, y + tex.skin_config[SC::GAME_CHARA_P1].y);
         }
     }
 
