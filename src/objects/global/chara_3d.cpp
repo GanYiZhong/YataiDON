@@ -212,18 +212,14 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     part_anim_count.push_back(anim_count);
 }
 
-static void init_shaders(ray::Shader& fxaa_shader, int& fxaa_size_loc,
-                          ray::Shader& outline_pass_shader, int& outline_pass_size_loc, int& outline_pass_thickness_loc,
+static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_size_loc, int& outline_fxaa_thickness_loc,
                           ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& outline_shader,
                           bool& use_render_textures) {
-    fxaa_shader   = load_shader("shader/pass.vs", "shader/fxaa.fs");
-    fxaa_size_loc = ray::GetShaderLocation(fxaa_shader, "texSize");
-
-    outline_pass_shader = load_shader("shader/pass.vs", "shader/outline_pass.fs");
-    outline_pass_size_loc = ray::GetShaderLocation(outline_pass_shader, "texSize");
-    outline_pass_thickness_loc = ray::GetShaderLocation(outline_pass_shader, "outlineThickness");
+    outline_fxaa_shader = load_shader("shader/pass.vs", "shader/outline_fxaa.fs");
+    outline_fxaa_size_loc = ray::GetShaderLocation(outline_fxaa_shader, "texSize");
+    outline_fxaa_thickness_loc = ray::GetShaderLocation(outline_fxaa_shader, "outlineThickness");
     float outline_thickness = 3.0f;
-    ray::SetShaderValue(outline_pass_shader, outline_pass_thickness_loc, &outline_thickness, ray::SHADER_UNIFORM_FLOAT);
+    ray::SetShaderValue(outline_fxaa_shader, outline_fxaa_thickness_loc, &outline_thickness, ray::SHADER_UNIFORM_FLOAT);
 
     null_shader    = load_shader(nullptr, "shader/null.fs");
     face_shader    = load_shader(nullptr, "shader/face.fs");
@@ -232,12 +228,12 @@ static void init_shaders(ray::Shader& fxaa_shader, int& fxaa_size_loc,
     float thickness = 0.0035f;
     ray::SetShaderValue(outline_shader, thickness_loc, &thickness, ray::SHADER_UNIFORM_FLOAT);
 
-    if (fxaa_shader.id == 0 || outline_pass_shader.id == 0)
+    if (outline_fxaa_shader.id == 0)
         use_render_textures = false;
 }
 
 Chara3D::Chara3D(std::string& model_name, bool mirror) {
-    init_shaders(fxaa_shader, fxaa_size_loc, outline_pass_shader, outline_pass_size_loc, outline_pass_thickness_loc,
+    init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
 
@@ -260,7 +256,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
 }
 
 Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror) {
-    init_shaders(fxaa_shader, fxaa_size_loc, outline_pass_shader, outline_pass_size_loc, outline_pass_thickness_loc,
+    init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
 
@@ -289,11 +285,9 @@ Chara3D::~Chara3D() {
         ray::UnloadModelAnimations(part_anims[p], part_anim_count[p]);
         ray::UnloadModel(parts[p]);
     }
-    ray::UnloadShader(fxaa_shader);
     ray::UnloadShader(null_shader);
     ray::UnloadShader(face_shader);
-    ray::UnloadShader(outline_pass_shader);
-    if (fxaa_target.id != 0) ray::UnloadRenderTexture(fxaa_target);
+    ray::UnloadShader(outline_fxaa_shader);
     if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
     ray::UnloadShader(outline_shader);
     for (auto& tex : face_textures)
@@ -574,7 +568,7 @@ void Chara3D::draw(float x, float y) {
         scene_target_w = rw;
         scene_target_h = rh;
         float ts[2] = {(float)rw, (float)rh};
-        ray::SetShaderValue(outline_pass_shader, outline_pass_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
+        ray::SetShaderValue(outline_fxaa_shader, outline_fxaa_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
         render_dirty = true;
     }
 
@@ -591,16 +585,6 @@ void Chara3D::draw(float x, float y) {
         return;
     }
 
-    if (fxaa_target.id == 0 || fxaa_target_w != rw || fxaa_target_h != rh) {
-        if (fxaa_target.id != 0) ray::UnloadRenderTexture(fxaa_target);
-        fxaa_target   = ray::LoadRenderTexture(rw, rh);
-        fxaa_target_w = rw;
-        fxaa_target_h = rh;
-        float ts[2] = {(float)rw, (float)rh};
-        ray::SetShaderValue(fxaa_shader, fxaa_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
-        render_dirty = true;
-    }
-
     if (x != last_draw_x || y != last_draw_y) {
         last_draw_x = x;
         last_draw_y = y;
@@ -612,9 +596,6 @@ void Chara3D::draw(float x, float y) {
     ray::EndMode2D();
     ray::EndBlendMode();
 
-    // Model pose/textures/position only change on animation ticks (well below
-    // display refresh), so the outline + composite passes are cached in
-    // fxaa_target and re-rendered only when something actually changed
     if (render_dirty) {
         render_dirty = false;
         ray::Camera3D cam3d = camera2d_to_3d(cam2d);
@@ -628,22 +609,15 @@ void Chara3D::draw(float x, float y) {
         ray::EndMode3D();
         ray::EndBlendMode();
         ray::EndTextureMode();
+    }
 
-        ray::BeginTextureMode(fxaa_target);
-        ray::ClearBackground(ray::BLANK);
-        ray::BeginShaderMode(outline_pass_shader);
+    {
+        ray::BeginShaderMode(outline_fxaa_shader);
         ray::DrawTextureRec(scene_target.texture,
             {0, 0, (float)rw, -(float)rh},
             {0, 0}, ray::WHITE);
         ray::EndShaderMode();
-        ray::EndTextureMode();
     }
-
-    ray::BeginShaderMode(fxaa_shader);
-    ray::DrawTextureRec(fxaa_target.texture,
-        {0, 0, (float)rw, -(float)rh},
-        {0, 0}, ray::WHITE);
-    ray::EndShaderMode();
 
     ray::BeginBlendMode(ray::BLEND_CUSTOM_SEPARATE);
     ray::BeginMode2D(cam2d);

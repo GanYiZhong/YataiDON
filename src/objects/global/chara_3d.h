@@ -100,12 +100,6 @@ private:
     bool model_valid = false;
     bool use_render_textures = true;
 
-    ray::Shader fxaa_shader;
-    int fxaa_size_loc = -1;
-    ray::RenderTexture2D fxaa_target = {};
-    int fxaa_target_w = 0;
-    int fxaa_target_h = 0;
-
     ray::RenderTexture2D scene_target = {};
     int scene_target_w = 0;
     int scene_target_h = 0;
@@ -119,9 +113,10 @@ private:
     ray::Shader null_shader;
     ray::Shader face_shader;
     ray::Shader outline_shader;
-    ray::Shader outline_pass_shader;
-    int outline_pass_size_loc = -1;
-    int outline_pass_thickness_loc = -1;
+
+    ray::Shader outline_fxaa_shader;
+    int outline_fxaa_size_loc = -1;
+    int outline_fxaa_thickness_loc = -1;
 
     void set_texture(fs::path& texture_path, int part_index, int material_index);
     void load_face_textures(fs::path& face_dir);
