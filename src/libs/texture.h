@@ -46,6 +46,13 @@ struct SkinInfo {
         : x(x), y(y), font_size(font_size), width(width), height(height), text(text) {}
 };
 
+struct Chara3DConfig {
+    float scale = 650.0f;
+    float rot_x = 181.25f;
+    float rot_y = 27.5f;
+    float rot_z = 0.0f;
+};
+
 struct TextureObject {
     std::string name;
     int width;
@@ -128,6 +135,7 @@ public:
     // this map lets them work without one.
     std::unordered_map<std::string, SkinInfo> skin_config_by_name;
     std::unordered_map<SCO, bool> options;
+    Chara3DConfig chara_3d_config;
     fs::path font_path;
     int screen_width;
     int screen_height;

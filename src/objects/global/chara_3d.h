@@ -90,10 +90,10 @@ private:
     bool mirror = false;
     double last_frame_ms = 0;
 
-    float scale = 650.0f;
-    float rot_x = 181.25f;
-    float rot_y = 27.5f;
-    float rot_z = 0.0f;
+    float scale;
+    float rot_x;
+    float rot_y;
+    float rot_z;
 
     AnimIndex prev_anim_idx = AnimIndex::DON_BALLOON_FAILURE;
     bool is_looping = true;

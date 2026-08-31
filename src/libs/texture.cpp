@@ -68,6 +68,16 @@ void TextureWrapper::init(const fs::path& skin_path) {
         load_entry(m.name.GetString(), m.value, 1.0f);
     }
 
+    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("chara_3d")) {
+        const Value& c3d = skin_config_file["screen"]["chara_3d"];
+        if (c3d.IsObject()) {
+            if (c3d.HasMember("scale"))  chara_3d_config.scale  = c3d["scale"].GetFloat();
+            if (c3d.HasMember("rot_x"))  chara_3d_config.rot_x  = c3d["rot_x"].GetFloat();
+            if (c3d.HasMember("rot_y"))  chara_3d_config.rot_y  = c3d["rot_y"].GetFloat();
+            if (c3d.HasMember("rot_z"))  chara_3d_config.rot_z  = c3d["rot_z"].GetFloat();
+        }
+    }
+
     if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("options")) {
         const Value& opts = skin_config_file["screen"]["options"];
         if (opts.IsObject()) {

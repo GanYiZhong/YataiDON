@@ -1485,17 +1485,20 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     for (GaugeHitEffect& anim : gauge_hit_effect) {
         anim.draw(y);
     }
-    draw_modifiers(y);
 
     combo_display.draw(y);
     if (combo_announce.has_value()) {
         combo_announce->draw(y + (tex.skin_config[SC::COMBO_ANNOUNCE_P2_Y_OFFSET].y * is_2p));
     }
     tex.draw_texture(lane_icon_tex_id, {.y=y, .index=is_2p});
-    if (is_dan) {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=6, .y=y});
+    int frame = is_dan ? 6 : difficulty;
+    int index = is_dan ? 0 : is_2p;
+    if (tex.options.count(SCO::MODIFIERS_AFTER_DIFF_ICON) && tex.options.at(SCO::MODIFIERS_AFTER_DIFF_ICON)) {
+        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
+        draw_modifiers(y);
     } else {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=difficulty, .y=y, .index=is_2p});
+        draw_modifiers(y);
+        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
     }
     if (judge_counter.has_value()) {
         judge_counter->draw();

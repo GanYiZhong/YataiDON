@@ -236,6 +236,10 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
+    scale = tex.chara_3d_config.scale;
+    rot_x = tex.chara_3d_config.rot_x;
+    rot_y = tex.chara_3d_config.rot_y;
+    rot_z = tex.chara_3d_config.rot_z;
 
     // Models has no inheritance mechanism of its own (unlike Graphics) — each asset
     // resolves against the child skin first, falling back to the parent's.
@@ -259,6 +263,10 @@ Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
                  null_shader, face_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
+    scale = tex.chara_3d_config.scale;
+    rot_x = tex.chara_3d_config.rot_x;
+    rot_y = tex.chara_3d_config.rot_y;
+    rot_z = tex.chara_3d_config.rot_z;
 
     fs::path head_path = tex.resolve_skin_path(fs::path("Models/head") / (head_name + ".glb"));
     fs::path body_path = tex.resolve_skin_path(fs::path("Models/body") / (body_name + ".glb"));
