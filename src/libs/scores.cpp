@@ -47,11 +47,17 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
 
     // user_version 3: 演奏スキップ (arcade 演奏オプション row 5). Appended, so a
     // version-2 DB keeps every existing column index and loads unchanged.
-    if (version < 3) {
-        sqlite3_exec(db_fsd,
-            "ALTER TABLE players ADD COLUMN modifier_skip BOOL NOT NULL DEFAULT 0;",
-            nullptr, nullptr, nullptr);
-    }
+    // Run UNCONDITIONALLY, not behind `version < 3`. This column was added
+    // under a local numbering while upstream used 3/4 for other migrations, so
+    // "user_version" means different things in the two lineages: a DB that
+    // reached 5 upstream never received this column, yet a version gate would
+    // skip it forever. get_player/save_player then fail outright ("no such
+    // column: modifier_skip"), taking the nameplate, the skip modifier and
+    // AUTO down with them. A duplicate ALTER on a DB that already has the
+    // column fails harmlessly here (errors are not collected).
+    sqlite3_exec(db_fsd,
+        "ALTER TABLE players ADD COLUMN modifier_skip BOOL NOT NULL DEFAULT 0;",
+        nullptr, nullptr, nullptr);
 
     // Upstream's own v3/v4 migrations, renumbered to 4/5 so a DB already at
     // our v3 (modifier_skip) still receives them. A duplicate ALTER on a DB
