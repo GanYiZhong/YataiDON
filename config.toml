@@ -60,7 +60,7 @@ right_don = [ 'C' ]
 right_kat = [ 'V' ]
 
 [paths]
-skin = 'TaikoRed'
+skin = 'PyTaikoGreen'
 tja_path = [ 'Songs' ]
 
 [video]
