@@ -54,13 +54,9 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
 
     sqlite3_exec(db_fsd, "PRAGMA user_version = 4;", nullptr, nullptr, nullptr);
 
-    if (version < 5) {
-        sqlite3_exec(db_fsd,
+    sqlite3_exec(db_fsd,
             "ALTER TABLE players ADD COLUMN modifier_skip BOOL NOT NULL DEFAULT 0;",
             nullptr, nullptr, nullptr);
-    }
-
-    sqlite3_exec(db_fsd, "PRAGMA user_version = 5;", nullptr, nullptr, nullptr);
 
     std::string create_players =
         "CREATE TABLE IF NOT EXISTS players"
