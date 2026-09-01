@@ -1,5 +1,6 @@
 #include "texture.h"
 #include "filesystem.h"
+#include "perf.h"   // ROUND 103: frame-stamped one-off-event recorder
 #include <spdlog/spdlog.h>
 #include <chrono>
 #include <thread>
@@ -586,6 +587,12 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
     if (folder_timer.ms() > 5.0)
         spdlog::debug("[perf]   folder {}/{}: {:.1f} ms ({} textures)",
                      screen_name, subset_key, folder_timer.ms(), loaded_count);
+    // ROUND 103: the spdlog::debug above is unreachable in practice - see the
+    // `log_level` bug fixed this round in config.cpp - and even fixed it has no
+    // frame index on it. This does, so a mid-gameplay folder load (the shape a
+    // Lua `tex.load_texture()` on a draw path produces) lines up with a spike
+    // row in `perfdump`'s CSV.
+    perf::note_event("load_folder", dedup_key, folder_timer.ms());
 }
 
 void TextureWrapper::unload_folder(const std::string& screen_name, const std::string& subset) {

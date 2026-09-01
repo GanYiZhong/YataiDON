@@ -69,7 +69,21 @@ protected:
 
     virtual void draw_overlays();
 
-    virtual bool hides_dan() { return false; }
+    // ROUND 83 (r83-dandojo-as-mode) — 「段位道場應該不要出現在演奏模式下」.
+    //
+    // The cabinet has no route from the song wheel into the dojo at all: 段位道場 is a
+    // MODE, appended to the mode-select list by `mode_select.lua CreateBoardList()`
+    // right after `GameMode.kEnso`, and `song_select_all.lua` never offers it as a
+    // genre folder. The folder-in-the-wheel was a YataiDON construction.
+    //
+    // This is the same mechanism ROUND 66 recorded for 2P (`SongSelect2PScreen`
+    // mirroring the cabinet's `RemoveDani()`), not a new one — `navigator.hide_dan`
+    // drops the `GenreIndex::DAN` folder in `navigator.cpp:662`.
+    //
+    // Keyed on the skin's `entry_dan` text, i.e. on whether the skin has a dojo MODE
+    // BOARD (see `BoxManager`, ROUND 83). A skin without one — PyTaikoGreen — keeps the
+    // folder, so the dojo can never become unreachable by hiding it here.
+    virtual bool hides_dan() { return tex.skin_entry("entry_dan") != nullptr; }
     virtual bool is_2p_screen() { return false; }
     virtual Screens get_game_screen_target() { return Screens::GAME; }
 

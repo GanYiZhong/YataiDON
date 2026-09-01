@@ -96,6 +96,33 @@ Navigator::~Navigator() {
         song_files_thread.join();
 }
 
+void Navigator::emit_wheel_event(int id) {
+    wheel_event = id;
+    ++wheel_event_seq;
+    if (id == WHEEL_EVENT_OPEN_BEGIN || id == WHEEL_EVENT_CLOSE_BEGIN)
+        wheel_leg_ms = get_current_ms();
+}
+
+// ROUND 85.  The cabinet's swap is a FRAME of the transition clip, not "whenever
+// the data is ready" -- OpenFolderState polls the board's own current_frame for
+// 114 and only then calls SetSongDataAll().  This engine's data becomes ready on
+// a loader thread, so without this the swap would land at a loader-dependent
+// time and the animation's start would be non-deterministic (the defect ROUND 61
+// documented and worked around).  Holding the swap to the clip frame makes it
+// deterministic in the other direction too: the transition is never SHORTER than
+// the cabinet's, so the genre board's furl and the song board's unfurl always get
+// their full 13 frames.  The engine's own genre_bg move already runs ~1100 ms, so
+// on the open leg this adds ~0-50 ms; on the close leg it restores the cabinet's
+// full 1150 ms window in place of our ~500 ms.
+// YATAIDON_R85_NOHOLD=1 restores the pre-r85 "swap as soon as ready" behaviour
+// for a one-binary A/B.
+bool Navigator::swap_is_early(int begin_id) const {
+    static const bool disabled = (std::getenv("YATAIDON_R85_NOHOLD") != nullptr);
+    if (disabled) return false;
+    if (wheel_event != begin_id) return false;   // not inside that leg
+    return (get_current_ms() - wheel_leg_ms) < kSwapDelayMs;
+}
+
 void Navigator::wait_for_song_files() {
     if (song_files_thread.joinable())
         song_files_thread.join();
@@ -148,6 +175,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
     open_index = 0;
 
 #ifndef __EMSCRIPTEN__
+    song_files_ready = false;                       // ROUND 95 -- see navigator.h
     song_files_thread = std::thread([this, songs_paths]() {
         // The walk itself is quick now that game data roots are stepped over;
         // the cost is opening and parsing every chart for its title. That is
@@ -186,6 +214,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
             });
         }
         for (std::thread& worker : pool) worker.join();
+        song_files_ready = true;                    // ROUND 95 -- release
     });
 #endif // !__EMSCRIPTEN__
 
@@ -206,6 +235,9 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    // ROUND 85: the cabinet's SecondLoading (ai_song_select_song_main.lua:218)
+    // plays select_on immediately -- no 508 ms hold.
+    emit_wheel_event(WHEEL_EVENT_SCENE_ENTRY);
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();
         is_inline = false;
@@ -429,6 +461,13 @@ void Navigator::flush_pending_boxes() {
         genre_bg_end = inline_state->first_song_index + inline_state->songs_count - 1;
     }
 
+    // ROUND 85: hold the content swap to the cabinet's clip frame (see
+    // swap_is_early).  Nothing else is touched -- loading_complete stays set and
+    // this block runs on a later frame instead.
+    if (loading_complete.load() && inline_state.has_value() &&
+        swap_is_early(WHEEL_EVENT_OPEN_BEGIN))
+        return;
+
     if (loading_complete.load()) {
         if (open_index >= items.size()) open_index = 0;
         if (inline_state.has_value()) {
@@ -474,6 +513,19 @@ void Navigator::flush_pending_boxes() {
         set_positions(false, 800);
         if (!items.empty()) items[open_index]->expand_box();
         is_processing = false;
+        // ROUND 85: THIS is our SetSongDataAll() -- the instant the opened
+        // folder's song boxes exist, are sorted and are placed.  On the cabinet
+        // the swap is instantaneous (the boards are already held and merely
+        // change what they display); here the songs load on a loader thread, so
+        // the swap lands whenever the load finishes.  Emitting the event HERE,
+        // rather than when `current_folder()` flips (which happens before the
+        // loader has even started -- ROUND 61 proved the flip-anchored leg drew
+        // zero frames), is what makes the board animation's start deterministic:
+        // the skin holds the clip on its own pre-swap frames -- the cabinet's
+        // 69-frame / 1150 ms hold+fade+furl window -- until this fires, then
+        // runs the unfurl from the real swap frame.
+        if (inline_streaming && inline_state.has_value())
+            emit_wheel_event(WHEEL_EVENT_OPEN_SWAP);
         inline_streaming = false;
         loading_complete = false;
     }
@@ -1115,7 +1167,17 @@ BoxDef Navigator::parse_box_def(const fs::path& path) {
     std::string key = path.string();
     auto it = box_def_cache.find(key);
     if (it != box_def_cache.end()) return it->second;
+    BoxDef result = parse_box_def_uncached(path);
+    box_def_cache[key] = result;
+    return result;
+}
 
+// ROUND 95 -- the same parse with the `box_def_cache` write removed, so a worker
+// thread can read a box.def without touching a Navigator member. `parse_box_def`
+// above is unchanged in behaviour: cache lookup, this parse, cache store.
+// (Needed by DanNavigator's off-thread course scan; `loader_thread` also calls
+// `parse_box_def`, so a second writer to the cache would have been a real race.)
+BoxDef Navigator::parse_box_def_uncached(const fs::path& path) {
     std::ifstream boxDef(path / "box.def");
     std::string line;
     BoxDef result;
@@ -1164,7 +1226,6 @@ BoxDef Navigator::parse_box_def(const fs::path& path) {
             result.fore_color = parse_hex_color(get_value("#FORECOLOR:"));
         }
     }
-    box_def_cache[key] = result;
     return result;
 }
 
@@ -1196,6 +1257,8 @@ bool Navigator::has_def_file(const std::filesystem::path& path) {
 
 void Navigator::exit_inline() {
     if (!inline_state) return;
+    // ROUND 85: CloseFolderState -> GotoAndPlay("return") (clip f150).
+    emit_wheel_event(WHEEL_EVENT_CLOSE_BEGIN);
     InlineState& state = *inline_state;
 
     // Kick off fade_out on all inserted items
@@ -1214,6 +1277,9 @@ void Navigator::exit_inline() {
 }
 
 void Navigator::begin_inline_load() {
+    // ROUND 85: SelectGenreFolder (ai_song_select_song_main.lua:1027) starts
+    // `genre_deceide` on the genre board, the song board and the wheel at once.
+    emit_wheel_event(WHEEL_EVENT_OPEN_BEGIN);
     // Opening a folder rebuilds the wheel around a "back" box whose genre is not
     // the folder's; the backdrop must stay on the genre the cursor opened.
     bg_genre_pending = false;
@@ -1868,6 +1934,10 @@ void Navigator::set_positions(bool init, float duration) {
 
 void Navigator::navigate(int delta, bool snap) {
     if (items.empty() || inline_streaming) return;
+    // ROUND 85: MoveCursor -> Scroll -> Main -> ProcKanbanWaitCountToSelectOn,
+    // i.e. the 61-tick (508 ms) hold before select_on.  Emitted after the guard
+    // so a rejected navigate does not fire an event.
+    emit_wheel_event(WHEEL_EVENT_CURSOR_MOVE);
     items[open_index]->close_box();
     last_bg_genre_index = bg_genre_index;
     bg_genre_pending = false;
@@ -1918,6 +1988,9 @@ void Navigator::enter_diff_select() {
 }
 
 void Navigator::exit_diff_select() {
+    // ROUND 85: ReLoading + CourseBackFlag (l.256-257) plays select_on
+    // immediately -- growth with no 508 ms hold.
+    emit_wheel_event(WHEEL_EVENT_COURSE_BACK);
     items[open_index]->exit_box();
     set_positions(false, 500);
     for (auto& box : items) {
@@ -1986,6 +2059,9 @@ void Navigator::update(double current_ms) {
             if (!items[i]->fade->is_finished || !genre_bg->is_complete()) { all_done = false; break; }
         }
 
+        // ROUND 85: same hold on the `return` leg -- kCloseFolderChangeFrame 219.
+        if (all_done && swap_is_early(WHEEL_EVENT_CLOSE_BEGIN)) all_done = false;
+
         if (all_done) {
             pending_inline_folder = nullptr;
             items.erase(items.begin() + state.first_song_index,
@@ -1999,6 +2075,9 @@ void Navigator::update(double current_ms) {
             items[open_index]->exit_box();
             genre_bg.reset();
             is_processing = false;
+            // ROUND 85: kCloseFolderChangeFrame = 219 -- the genre board's
+            // content is back and the reveal (unfurl f220..f232) starts here.
+            emit_wheel_event(WHEEL_EVENT_CLOSE_SWAP);
         }
     }
 

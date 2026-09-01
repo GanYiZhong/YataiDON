@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "config.h"
 #include "ray.h"
 #include "parsers/tja.h"
@@ -70,6 +72,91 @@ struct Exam {
     bool gothrough = true;
 };
 
+// ROUND 67 -- the cabinet's exam-bar colour state machine, ONE copy shared by
+// GAME_DAN's in-play row and DAN_RESULT's page-2 card.
+//
+// Primary source: 39.06 `script_lua/dani_result/DaniResultDetailBase.lua`
+//   * `GaugeColorChange(mc, gaugeNum, gaugeType, isMax, goodGauge)` :617
+//   * `CheckMax(gaugeType, odaiNum, GoodBorder)` :671  -- note it tests the
+//     GOLD border (`odaiGoodBorder_`), NOT the pass border, so the rainbow is
+//     the 金合格 presentation and a merely-passed condition is flat #FFA2B7.
+//   * `InitDetailAll` :92 -- gauge = floor(100 * odaiNum / odaiBorder) clamped
+//     to 100, then `100 - gauge` for a 未満 (counting-down) condition, and
+//     `odaiGaugeGoodBorder = 100 - floor(100 * odaiGoodBorder / odaiBorder)`.
+//
+// The returned name is a frame label of `dani_result_detail.nulm` sprite 49
+// (`score_l_gauge_bar_mc`) / sprite 156 (`score_m_gauge_bar_mc`), whose own
+// authored colour transforms on the fill shape (#47, cmul=[0,0,0,256] +
+// cadd=<RGB>, i.e. a flat TINT of a white rectangle) are:
+//   up_50 #FACD23   up_80 #FAFF36   up_100 #FFA2B7
+//   down_80 #FB7C4D down_100 #FFA2B7
+//   empty  -- no fill placed at all
+//   max    -- NO flat fill; `score_l_rainbow_mc` (char 41) is what shows, an
+//             81-frame loop that scrolls one 972 px gradient period by
+//             972/80 = 12.15 px per 60 fps frame.
+//
+// ROUND 78 -- the LIVE gate. `DaniResultDetailBase.CheckMax` is the RESULT
+// screen's rule and has no notion of time; the cabinet's in-play row is driven
+// by CHN05's `App::DojoEnsoGraphicNormaGage` (0x14010E??0, the big norma-type
+// switch), which is NOT the same state machine:
+//
+//   counting-UP norma (良の数 / スコア / 叩ける数 / 連打数 -- switch cases 2/5/7/8)
+//       state<12 && value >= gold                      -> "max"        state 12
+//       state<11 && value >= red + 0.66*(gold-red)     -> "max_soon2"  state 11
+//       state<10 && value >= red + 0.33*(gold-red)     -> "max_soon"   state 10
+//       state< 9 && value >= red                       -> "up_100"     state  9
+//     i.e. `max` IS immediate on reaching the gold border. Unchanged here.
+//
+//   counting-DOWN norma (可の数 / 不可の数 未満 -- switch cases 3/4)
+//       remaining == 0                                 -> "fail"
+//       state<7 && (near-fail test)                    -> "fail_soon"  state  7
+//       state<5 && gold still held && IsJustBeforeEndSong() -> "max_soon2" state 5
+//       state<4 && gold still held && IsNearEndSong()       -> "max_soon"  state 4
+//       else                                           -> up_80 / CheckGageColor
+//     There is NO `max` branch at all in cases 3/4: a 未満 row is NEVER promoted
+//     to the rainbow while the song is playing. `remaining > red - gold` is
+//     exactly CheckMax's own `count < gold`, so the value test is the same one;
+//     the cabinet simply refuses to show it until the song is nearly over.
+//     That is the user report 「不是永遠都顯示彩色，是等到演奏快全部結束的時候，
+//     才會顯示」: a `不可の数 3 未満` row is trivially gold-satisfied on the first
+//     note, so a value-only test paints it rainbow from bar one and holds it.
+//
+//   App::TaikoCorePlayer::IsNearEndSong       (0x1401459B0)
+//       return total_onpu * 0.10f > remaining_onpu     -- last 10 % of the chart
+//   App::TaikoCorePlayer::IsJustBeforeEndSong (0x140145AB0)
+//       return total_onpu * 0.05f > remaining_onpu     -- last  5 %
+//
+// `live` is false on DAN_RESULT and in `save_result_data()` (the SETTLED state),
+// so the result screen is unchanged and only the in-play row is gated.
+inline std::string dan_bar_state(const Exam& exam, int value,
+                                 bool live = false,
+                                 bool near_end = false,
+                                 bool just_before_end = false) {
+    const bool down = (exam.range == "less");
+    // CheckMax
+    if (exam.gold > 0 && ((down && value < exam.gold) || (!down && value >= exam.gold))) {
+        if (!live || !down) return "max";
+        if (just_before_end) return "max_soon2";
+        if (near_end)        return "max_soon";
+        // fall through to the flat palette -- no `max` during play
+    }
+    int gauge = (exam.red > 0)
+        ? (int)std::floor(100.0 * (double)value / (double)exam.red) : 100;
+    if (gauge > 100) gauge = 100;
+    if (down) { gauge = 100 - gauge; if (gauge < 0) gauge = 0; }
+    if (gauge <= 0) return "empty";
+    if (!down) {
+        if (gauge <= 49) return "up_50";
+        if (gauge <= 99) return "up_80";
+        return "up_100";
+    }
+    const int good = (exam.red > 0 && exam.gold > 0)
+        ? 100 - (int)std::floor(100.0 * (double)exam.gold / (double)exam.red) : 100;
+    if (gauge < 30)    return "down_80";
+    if (gauge <= good) return "up_80";
+    return "down_100";
+}
+
 struct DanSongEntry {
     fs::path song_path;
     int genre_index = 0;
@@ -120,6 +207,10 @@ struct DanResultExam {
     // exam takes the arcade's all-three rule: all three songs gold -> 2, all
     // three at least red -> 1, else 0.
     int tier = 0;
+    // ROUND 67 -- the cabinet's own bar-colour state (a label of
+    // dani_result_detail.nulm sprite 49). See dan_bar_state() below.
+    std::string bar_state = "empty";
+    std::string song_state[3] = {"empty", "empty", "empty"};
 };
 
 struct DanResultData {
@@ -206,6 +297,12 @@ struct GlobalData {
     // Name of the screen currently running (screens_to_string), so skin
     // scripts shared across screens can tell where they are drawn.
     std::string current_screen = "LOADING";
+    // ROUND 86 — the screen we came FROM (screens_to_string), stamped by the screen-change
+    // block in YataiDON.cpp. A screen whose behaviour differs per entry path needs this:
+    // DAN_SELECT plays the WHOLE 段位道場 intro when it was entered from the ENTRY mode
+    // board (the cabinet's own IntroductionMain) but only the reveal half when SONG_SELECT
+    // has already drawn the shutter closing. Empty before the first change.
+    std::string previous_screen;
     // True only while a screen re-draws its coin overlay on top of the song-loading
     // (rainbow) transition; exposed to Lua as tex.in_transition() so skins can draw a
     // reduced overlay (arcade shows only the credit text over the loading screen).
@@ -271,6 +368,19 @@ struct GlobalData {
     // it lives for the run and is deliberately not written to the config.
     // Not part of SessionData: that is reset after every song.
     std::vector<int> last_difficulty = std::vector<int>(3, -1);
+    // ROUND 66 (r66-danselect-empty-after-course): the 段位道場 folder each seat
+    // entered the dojo through, indexed like session_data. Empty until they
+    // pick one.
+    //
+    // This is the same shape, and for the same reason, as `last_difficulty`:
+    // it is a SELECTION CONTEXT that has to outlive a played course, and
+    // `SessionData` does not. `DanResultScreen::on_screen_end` calls
+    // `reset_session()`, which default-constructs slots 1 and 2 — wiping
+    // `SessionData::selected_dan_folder` — and DAN_RESULT's own exit screen is
+    // DAN_SELECT, which then re-scanned the now-empty path and drew an EMPTY
+    // dojo (see dan_select.cpp DanSelectScreen::on_screen_start). Written by
+    // SONG_SELECT next to `selected_dan_folder`, never cleared.
+    std::vector<fs::path> dan_folder = std::vector<fs::path>(3);
 
     GlobalData() {
         // Initialize vectors with default-constructed elements

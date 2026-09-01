@@ -473,7 +473,19 @@ std::string handle_command(const std::string& line) {
         return perf::dump_csv(path) ? ("OK " + path) : ("ERR cannot write " + path);
     }
 
-    if (cmd == "perfreset") { perf::reset(); perf::lua_reset(); return "OK reset"; }
+    if (cmd == "perfreset") { perf::reset(); perf::lua_reset(); perf::events_reset(); return "OK reset"; }
+
+    // ROUND 103: the one-off-event log (texture folder loads, font-atlas
+    // rebuilds, Chara3D render-target creation), each stamped with the frame
+    // index of `perfdump`'s series so a hitch can be ATTRIBUTED and not just
+    // located. Empty unless the engine was started with YATAIDON_R103_TRACE set.
+    if (cmd == "perfevents") {
+        std::string path;
+        if (!(is >> path)) return "ERR usage: perfevents <path.csv>";
+        if (!perf::events_enabled())
+            return "ERR event recorder is off (start the engine with YATAIDON_R103_TRACE=1)";
+        return perf::dump_events(path) ? ("OK " + path) : ("ERR cannot write " + path);
+    }
 
     if (cmd == "luaperf") {
         std::string sub;

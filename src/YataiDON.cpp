@@ -30,6 +30,7 @@
 #include "scenes/game_practice.h"
 #include "scenes/input_cali.h"
 #include "scenes/input_test.h"
+#include "scenes/copyright.h"
 #include "scenes/loading.h"
 #include "scenes/result.h"
 #include "scenes/result_2p.h"
@@ -344,12 +345,21 @@ static bool screen_fade_applies(Screens from, Screens to) {
     }
     // the boot screen ends on its own white flash into TITLE (`attract/notice` depth 6)
     if (from == Screens::LOADING) return false;
+    // ROUND 79: COPYRIGHT is a boot-chain scene; the cabinet hard-cuts into it out of
+    // the notice white-out and hard-cuts out of it into BNLogo, so no fade either side.
+    if (from == Screens::COPYRIGHT || to == Screens::COPYRIGHT) return false;
     // ROUND 17: SONG_SELECT -> DAN_SELECT is owned by the 段位道場 shutter. The rig
     // closes the doors on SONG_SELECT and OPENS them on DAN_SELECT (the cabinet's
     // `loading_dani_intro` f187..200, drawn through Indicator::draw_top), so a black
     // plate here would sit on top of the reveal and hide it - exactly the defect this
     // exclusion list exists for.
     if (from == Screens::SONG_SELECT && to == Screens::DAN_SELECT) return false;
+    // ROUND 86: ENTRY -> DAN_SELECT is the cabinet's OWN route into the dojo (the 段位道場
+    // mode board), and there the whole `loading_dani_intro` runs on DAN_SELECT starting from
+    // label `in` (f5), whose first ~50 frames are a full-screen black scrim (`#1@3` alpha 1
+    // to f55). The intro therefore already owns the blackout; a generic plate on top of it
+    // would only hide the reveal, exactly as on the SONG_SELECT route above.
+    if (from == Screens::ENTRY && to == Screens::DAN_SELECT) return false;
     return true;
 }
 
@@ -432,6 +442,16 @@ static void run_frame() {
     FMARK("0h:after_screen_draw");
     auto t_drw1 = std::chrono::steady_clock::now();
 
+    // ROUND 103: a screen-level marker for a slow DRAW phase. Deliberately
+    // separate from the Chara3D sub-timers: if `slow_draw` fires on a frame
+    // and `chara3d_slow_draw` does NOT, the cost is somewhere else in the
+    // screen's draw and I must not blame the mascot for it.
+    if (perf::events_enabled()) {
+        const double dms =
+            std::chrono::duration<double, std::milli>(t_drw1 - t_upd1).count();
+        if (dms > 5.0) perf::note_event("slow_draw", drew_screen, dms);
+    }
+
     // Scripted `goto <SCREEN>`: only ever consulted when the screen did not ask
     // for a transition itself, and routed through the screen's own
     // on_screen_end() so teardown matches a normal change. No-op without
@@ -452,6 +472,10 @@ static void run_frame() {
             L.screen_fade_start = g_frame_ms;
         else
             L.screen_fade_start = 0.0;
+        // ROUND 86 — stamped BEFORE current_screen is overwritten; DAN_SELECT reads it in
+        // on_screen_start to tell the ENTRY mode-board entry (whole intro movie) from the
+        // SONG_SELECT shutter hand-off (reveal half only).
+        global_data.previous_screen = global_data.current_screen;
         L.current_screen = next_screen.value();
         global_data.current_screen = screens_to_string(L.current_screen);
         global_data.input_locked = 0;
@@ -700,6 +724,7 @@ int main(int argc, char* argv[]) {
     L.screens[Screens::SONG_SELECT]     = std::make_unique<SongSelectScreen>();
     L.screens[Screens::SONG_SELECT_2P]  = std::make_unique<SongSelect2PScreen>();
     L.screens[Screens::LOADING]         = std::make_unique<LoadingScreen>();
+    L.screens[Screens::COPYRIGHT]       = std::make_unique<CopyrightScreen>();
     L.screens[Screens::GAME]            = std::make_unique<GameScreen>();
     L.screens[Screens::GAME_2P]         = std::make_unique<Game2PScreen>();
     L.screens[Screens::GAME_PRACTICE]   = std::make_unique<PracticeGameScreen>();

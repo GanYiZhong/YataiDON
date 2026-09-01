@@ -10,6 +10,20 @@
 #include <cmath>
 #include <algorithm>
 #include <climits>
+#include <chrono>   // ROUND 95 -- the course-scan worker's wait/poll
+#include <cstdlib>
+
+// ROUND 64 — the cabinet's IntroductionMain -> DaniSelectMain hand-off.
+//
+// `loading_dani_intro`'s DAN_SELECT leg is arcade frames 182..262 (the kanji fade, the
+// shutter opening, the scrim clearing and the background's push-in cross-fade — see
+// Scripts/song_select/dan_doors.lua), 80 frames at the cabinet's 60 fps CLIP rate (not
+// Common.FPS = 120, which is the script tick). `timer_:StartCount()` runs on the first
+// frame of DaniSelectMain, i.e. immediately after that leg.
+static constexpr double DAN_INTRO_MS      =  80.0 * 1000.0 / 60.0;   // 1333.3, f182..262
+// ROUND 86 — entered from the ENTRY mode board there is no song-select half, so the whole
+// movie plays here: label `in` (f5) .. `end` (f262) = 257 frames.
+static constexpr double DAN_INTRO_FULL_MS = 257.0 * 1000.0 / 60.0;   // 4283.3, f5..262
 
 int DanNavigator::total_notes_for(const std::vector<DanSongEntry>& songs) {
     int total = 0;
@@ -42,7 +56,8 @@ Exam DanNavigator::parse_exam(const rapidjson::Value& e) {
     return exam;
 }
 
-std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value& chart) {
+std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value& chart,
+                                                          std::pair<std::string, std::string>* titles_out) {
     try {
         std::string chart_title    = chart["title"].GetString();
         std::string chart_subtitle = chart.HasMember("subtitle") ? chart["subtitle"].GetString() : "";
@@ -58,10 +73,23 @@ std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value
         int level = sp.metadata.course_data.count(diff)
             ? sp.metadata.course_data.at(diff).level : 10;
 
+        // ROUND 95 -- keep the display strings off THIS parse (see dan_select.h).
+        if (titles_out && global_data.config) {
+            const std::string& lang = global_data.config->general.language;
+            titles_out->first  = sp.metadata.title.count(lang)
+                ? sp.metadata.title.at(lang)
+                : (sp.metadata.title.count("en") ? sp.metadata.title.at("en") : std::string());
+            titles_out->second = sp.metadata.subtitle.count(lang)
+                ? sp.metadata.subtitle.at(lang) : std::string();
+        }
+
         int genre = (int)GenreIndex::NAMCO;
         fs::path box_def_dir = path_opt->parent_path().parent_path();
+        // ROUND 95 -- the UNCACHED parse. This runs on the course-scan worker,
+        // and `Navigator::parse_box_def` writes `box_def_cache`, which
+        // `Navigator::loader_thread` also writes. Same parse, no shared write.
         if (fs::exists(box_def_dir / "box.def"))
-            genre = (int)navigator.parse_box_def(box_def_dir).genre_index;
+            genre = (int)Navigator::parse_box_def_uncached(box_def_dir).genre_index;
 
         // ROUND 57 — optional per-song `"hidden": true` (the arcade's
         // is_hiddens[idx], see DanSongEntry in global_data.h).
@@ -75,7 +103,13 @@ std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value
     }
 }
 
-std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
+// ROUND 95 — everything the old `load_dan_box` did EXCEPT constructing the
+// `DanBox`. Worker-safe by construction: filesystem, rapidjson, SongParser and
+// read-only globals only. The one thing that had to change to make that true is
+// the box.def lookup, which used to go through `navigator.parse_box_def` and so
+// wrote `Navigator::box_def_cache` -- a member `loader_thread` also writes.
+// `Navigator::parse_box_def_uncached` is that same parse without the cache store.
+std::optional<DanBoxData> DanNavigator::load_dan_box_data(const fs::path& json_path) {
     auto doc = read_json_file(json_path);
     std::string title = doc["title"].GetString();
     int color = doc["color"].GetInt();
@@ -105,13 +139,17 @@ std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
     if (dan_index < 0 || dan_index > 24) dan_index = -1;
 
     std::vector<DanSongEntry> songs;
+    std::vector<std::pair<std::string, std::string>> song_titles;   // ROUND 95
     if (doc.HasMember("charts")) {
         for (auto& chart : doc["charts"].GetArray()) {
-            if (auto entry = load_song_entry(chart))
+            std::pair<std::string, std::string> t;
+            if (auto entry = load_song_entry(chart, &t)) {
                 songs.push_back(*entry);
+                song_titles.push_back(std::move(t));
+            }
         }
     }
-    if (songs.empty()) return nullptr;
+    if (songs.empty()) return std::nullopt;
 
     std::vector<Exam> exams;
     if (doc.HasMember("exams")) {
@@ -119,46 +157,170 @@ std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
             exams.push_back(parse_exam(e));
     }
 
-    auto box = std::make_unique<DanBox>(json_path, title, color, songs, exams, total_notes_for(songs));
-    box->dan_rank = rank;
-    box->dan_index = dan_index;   // ROUND 50
+    DanBoxData d;
+    d.json_path   = json_path;
+    d.title       = title;
+    d.color       = color;
+    d.rank        = rank;
+    d.dan_index   = dan_index;   // ROUND 50
+    d.songs       = songs;
+    d.song_titles = song_titles;   // ROUND 95
+    d.exams       = exams;
+    d.total_notes = total_notes_for(songs);
     // ROUND 57 — optional course-level `"gaiden": true` (Cabinet.GaidenDaniInfo
     // semantics: no 昇段/nameplate/congrats on a pass; see DanResultData).
-    box->gaiden = doc.HasMember("gaiden") && doc["gaiden"].IsBool() &&
-                  doc["gaiden"].GetBool();
+    d.gaiden = doc.HasMember("gaiden") && doc["gaiden"].IsBool() &&
+               doc["gaiden"].GetBool();
+    return d;
+}
+
+// ROUND 95 — the main-thread half: `DanBox` reaches `tex`, so it is only ever
+// built here.
+std::unique_ptr<DanBox> DanNavigator::make_box(const DanBoxData& d) {
+    auto box = std::make_unique<DanBox>(d.json_path, d.title, d.color,
+                                        d.songs, d.exams, d.total_notes);
+    box->dan_rank  = d.rank;
+    box->dan_index = d.dan_index;
+    box->gaiden    = d.gaiden;
+    box->song_titles = d.song_titles;   // ROUND 95 -- see DanBox::load_text()
     return box;
 }
 
-void DanNavigator::init(const std::vector<fs::path>& song_paths) {
-    boxes.clear();
-    selected_index = 0;
+std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
+    auto d = load_dan_box_data(json_path);
+    if (!d) return nullptr;
+    return make_box(*d);
+}
+
+// ROUND 66 (r66-danselect-empty-after-course) -- one root's worth of the dan
+// walk, split out of init() so the same code can serve both the caller's roots
+// and the default-library fallback below. Returns how many courses it added.
+//
+// Every reason to refuse a root is now checked and LOGGED here rather than left
+// to the exception handler. The reported defect ("段位道場 is empty after I
+// finish a course") arrived as
+//     DanNavigator: error loading : filesystem error: recursive directory
+//     iterator cannot open directory: Not a directory []
+// -- an EMPTY root_path, which `fs::recursive_directory_iterator("")` turns into
+// exactly that throw. Going through the catch made a bad input indistinguishable
+// from a broken library, and the screen then presented zero courses, which is a
+// dead end for the player (no course can be picked, and the only way out is the
+// back key).
+// ROUND 95 -- `scan_root`'s body, producing DanBoxData rather than DanBox, so it
+// can run on the course-scan worker. `scan_root` below is unchanged in behaviour
+// (this, then construct) and every ROUND 66 refusal/log is still made here.
+int DanNavigator::scan_root_data(const fs::path& root_path, std::vector<DanBoxData>& out) {
+    if (root_path.empty()) {
+        spdlog::warn("DanNavigator: skipping an empty dan root path");
+        return 0;
+    }
+    std::error_code ec;
+    if (!fs::is_directory(root_path, ec)) {
+        spdlog::warn("DanNavigator: skipping dan root '{}': not a directory ({})",
+                     root_path.string(), ec ? ec.message() : "no such directory");
+        return 0;
+    }
+    // A path at or inside a game's data holds no dan.json, only tens of
+    // thousands of chart files this walk would crawl through.
+    if (!gen4::find_data_root(root_path).empty() ||
+        !green::find_data_root(root_path).empty()) return 0;
+
+    int added = 0;
+    try {
+        auto it = fs::recursive_directory_iterator(
+            root_path, fs::directory_options::skip_permission_denied);
+        for (; it != fs::end(it); ++it) {
+            if (scan_abort.load()) break;          // ROUND 95 -- cheap bail-out
+            const auto& entry = *it;
+            if (entry.is_directory() &&
+                (gen4::find_data_root(entry.path()) == entry.path() ||
+                 green::find_data_root(entry.path()) == entry.path())) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (entry.path().filename() == "dan.json") {
+                if (auto d = load_dan_box_data(entry.path())) {
+                    out.push_back(std::move(*d));
+                    added++;
+                }
+            }
+        }
+    } catch (const std::exception& ex) {
+        spdlog::warn("DanNavigator: error loading {}: {}", root_path.string(), ex.what());
+    }
+    return added;
+}
+
+int DanNavigator::scan_root(const fs::path& root_path) {
+    std::vector<DanBoxData> data;
+    int added = scan_root_data(root_path, data);
+    for (const DanBoxData& d : data) boxes.push_back(make_box(d));
+    return added;
+}
+
+// ROUND 95 — the worker body. Produces data; touches no member except
+// `scan_abort` (atomic). Everything below used to be the first half of `init()`.
+std::vector<DanBoxData> DanNavigator::scan_all_data(const std::vector<fs::path>& song_paths) {
+    std::vector<DanBoxData> data;
+
+    // ROUND 95 -- `navigator.song_files` has exactly one writer,
+    // `Navigator::song_files_thread`, and no reader synchronisation; this walk
+    // reads it through `find_song_by_title`. On the main thread that race was
+    // already there; from a worker it would be a second concurrent reader. Wait
+    // it out HERE, on the worker, so the render loop is never the thing blocked.
+    // (`song_files_ready` starts true, so an engine that never preloads or a
+    // build with no such thread does not wait at all.)
+    while (!navigator.song_files_ready.load() && !scan_abort.load())
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+
+    // ROUND 95 -- TEST HOOK, off unless the env var is set. On this machine's
+    // library the scan (~2.1 s) is FASTER than the intro's 2950 ms cover, so the
+    // "animation finishes first" branch of the rendezvous is never exercised by a
+    // plain run. YATAIDON_R95_STALL=<ms> delays the worker so the clamp can be
+    // measured live rather than only unit-tested. Nothing reads it in normal play.
+    if (const char* stall = std::getenv("YATAIDON_R95_STALL")) {
+        const int ms = std::atoi(stall);
+        for (int i = 0; i < ms && !scan_abort.load(); i += 10)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     for (const fs::path& root_path : song_paths) {
-        // A path at or inside a game's data holds no dan.json, only tens of
-        // thousands of chart files this walk would crawl through.
-        if (!gen4::find_data_root(root_path).empty() ||
-            !green::find_data_root(root_path).empty()) continue;
-        try {
-            auto it = fs::recursive_directory_iterator(
-                root_path, fs::directory_options::skip_permission_denied);
-            for (; it != fs::end(it); ++it) {
-                const auto& entry = *it;
-                if (entry.is_directory() &&
-                    (gen4::find_data_root(entry.path()) == entry.path() ||
-                     green::find_data_root(entry.path()) == entry.path())) {
-                    it.disable_recursion_pending();
-                    continue;
-                }
-                if (entry.path().filename() == "dan.json") {
-                    if (auto box = load_dan_box(entry.path())) {
-                        boxes.push_back(std::move(box));
-                    }
-                }
-            }
-        } catch (const std::exception& ex) {
-            spdlog::warn("DanNavigator: error loading {}: {}", root_path.string(), ex.what());
-            }
-    };
+        if (scan_abort.load()) return data;
+        scan_root_data(root_path, data);
+    }
+
+    // ROUND 66 -- degrade to the whole library rather than to nothing.
+    //
+    // An empty ribbon is unrecoverable from inside the screen, so ONE bad root
+    // must not be able to produce it. The library roots are where SONG_SELECT
+    // itself found the 段位道場 folder in the first place
+    // (`song_select.cpp`: `navigator.init(global_data.config->paths.tja_path)`),
+    // so re-walking them rediscovers `Songs/11 Dan Dojo` (and any other course
+    // library) exactly the way the first entry did. Deliberately independent of
+    // whatever fixed the caller's path: this is the last line of defence.
+    if (data.empty() && global_data.config) {
+        for (const fs::path& lib_root : global_data.config->paths.tja_path) {
+            if (scan_abort.load()) return data;
+            if (std::find(song_paths.begin(), song_paths.end(), lib_root) != song_paths.end())
+                continue;
+            scan_root_data(lib_root, data);
+        }
+        if (!data.empty())
+            spdlog::warn("DanNavigator: the requested dan root yielded nothing; "
+                         "recovered {} course(s) by re-scanning the song library",
+                         data.size());
+    }
+    return data;
+}
+
+// ROUND 95 — MAIN THREAD ONLY. Turns a finished data vector into the live
+// ribbon. `boxes` is untouched by anything else until this runs, so draw() and
+// update() can never observe a half-built strip.
+void DanNavigator::publish(std::vector<DanBoxData>&& data) {
+    boxes.clear();
+    selected_index = 0;
+    boxes.reserve(data.size());
+    for (const DanBoxData& d : data) boxes.push_back(make_box(d));
 
     if (boxes.empty()) { spdlog::warn("DanNavigator: no dan courses found"); return; }
 
@@ -191,6 +353,80 @@ void DanNavigator::init(const std::vector<fs::path>& song_paths) {
     set_positions(true, 0);
     boxes[selected_index]->expand_box();
     for (auto& b : boxes) b->fade_in(100);
+}
+
+// ── ROUND 95 — the async course scan ─────────────────────────────────────────
+//
+// The reported defect: 「他現在比較像先載入dan, 才載入段位道場動畫，你要邊放動畫邊讓
+// 他同時載入dan」. `init()` blocked the render loop, and `on_screen_start` called it
+// BEFORE arming the intro movie, so the wall-clock order was scan-then-animate.
+// `begin_init()` starts the same walk on a worker and returns immediately, so
+// `on_screen_start` can arm the movie first and the two overlap.
+//
+// The worker owns nothing shared: it writes only into its own local vector and
+// hands that over once, under `scan_mutex`, with `scan_done` as the release. See
+// scan_all_data() for the two Navigator hazards that had to be closed for that to
+// be true.
+void DanNavigator::begin_init(const std::vector<fs::path>& song_paths) {
+    abort_init();                     // idempotent; a re-entry joins the old one
+    boxes.clear();
+    selected_index = 0;
+    scan_done.store(false);
+    scan_abort.store(false);
+    scan_published = false;
+    { std::lock_guard<std::mutex> lock(scan_mutex); scan_result.clear(); }
+
+    scan_thread = std::thread([this, song_paths]() {
+        std::vector<DanBoxData> data;
+        try {
+            data = scan_all_data(song_paths);
+        } catch (const std::exception& ex) {
+            // FAIL-SOFT: a throw here must not take the screen with it (a
+            // generated-table `require` failure once killed the whole result
+            // screen). Publish whatever was gathered; an empty ribbon is at
+            // least escapable with the back key.
+            spdlog::error("DanNavigator: course scan threw: {}", ex.what());
+        } catch (...) {
+            spdlog::error("DanNavigator: course scan threw (unknown)");
+        }
+        {
+            std::lock_guard<std::mutex> lock(scan_mutex);
+            scan_result = std::move(data);
+        }
+        scan_done.store(true);        // release: publisher for scan_result
+    });
+}
+
+bool DanNavigator::poll_init() {
+    if (scan_published) return true;
+    if (!scan_thread.joinable()) return false;
+    if (!scan_done.load()) return false;   // acquire
+    scan_thread.join();
+    std::vector<DanBoxData> data;
+    { std::lock_guard<std::mutex> lock(scan_mutex); data = std::move(scan_result); scan_result.clear(); }
+    publish(std::move(data));
+    scan_published = true;
+    return true;
+}
+
+void DanNavigator::abort_init() {
+    scan_abort.store(true);
+    if (scan_thread.joinable()) scan_thread.join();
+    scan_abort.store(false);
+    scan_done.store(false);
+    scan_published = false;
+    { std::lock_guard<std::mutex> lock(scan_mutex); scan_result.clear(); }
+}
+
+DanNavigator::~DanNavigator() { abort_init(); }
+
+// The synchronous path, kept so every other caller (and YATAIDON_R95_LEGACY)
+// behaves exactly as it did before ROUND 95: begin, wait, publish.
+void DanNavigator::init(const std::vector<fs::path>& song_paths) {
+    begin_init(song_paths);
+    while (scan_thread.joinable() && !scan_done.load())
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    poll_init();
 }
 
 // Reads the ribbon geometry a skin declared, falling back to the values that
@@ -294,10 +530,29 @@ DanBox* DanNavigator::get_current() {
 }
 
 void DanNavigator::update(double current_ms) {
+    // ROUND 95 -- at most ONE text build per frame.
+    //
+    // Found while measuring the r95 rendezvous, and it is a second, smaller
+    // instance of the same defect: `load_text()` builds this course's
+    // OutlinedText objects (font rasterisation), and on the frame the ribbon is
+    // first laid out EVERY on-screen box needs one at once. The r95 stall trace
+    // (`scratchpad/r95/TIMELINE.md`) caught the render loop dropping to 0 frames
+    // for ~1 s immediately after the courses landed -- i.e. right on the intro's
+    // reveal, the most visible moment on the screen.
+    //
+    // Spreading it one box per frame is the cabinet's own shape here: its
+    // `SceneDaniSelect::Preparing` (CHN05 decompile :601) runs exactly one
+    // `EnsoDataManager::UpdateDataTable` slice per frame while the Lua scene
+    // keeps drawing. Worst case is one box per frame over the ribbon, ~26 frames
+    // = ~217 ms at 120 fps, and a box is never DRAWN before its text exists
+    // because draw() and this walk share the same on-screen test.
+    bool built_one = false;
     for (auto& b : boxes) {
         bool on_screen = b->position > -156 * tex.screen_scale && b->position < tex.screen_width + 144 * tex.screen_scale;
-        if (on_screen && !b->text_loaded)
+        if (on_screen && !b->text_loaded && !built_one) {
             b->load_text();
+            built_one = true;
+        }
         b->update(current_ms);
     }
 }
@@ -415,6 +670,26 @@ void DanSelectScreen::on_screen_start() {
     last_moved    = 0;
     modifier_selector.reset();
 
+    // ROUND 73 (QA defect 4) -- the 1P Don + nameplate, built exactly the way
+    // DanResultScreen builds its pair (scenes/dan_result.cpp on_screen_start).
+    {
+        auto pd = scores_manager.get_player_data(get_player_id(global_data.player_num));
+        chara = make_chara_from_player_data(pd ? &*pd : nullptr);
+        if (pd) {
+            chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
+            chara->apply_face(pd->chara_face_index);
+        } else {
+            chara->set_don_colors(chara_default_color_1(get_player_id(global_data.player_num)),
+                                  chara_default_color_2(get_player_id(global_data.player_num)),
+                                  {249, 240, 225, 255});
+        }
+        chara->set_anim(AnimIndex::DON_NORMAL);
+        nameplate = Nameplate(pd ? pd->username : "", pd ? pd->title : "",
+                              global_data.player_num,
+                              pd ? pd->dan : -1, pd ? pd->gold : false,
+                              pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
+    }
+
     // ROUND 32 -- see dan_select.h: anchors the cabinet's free-running
     // 100 ms input-enable pulse to when the wheel becomes interactive.
     wheel_locked     = false;
@@ -437,11 +712,236 @@ void DanSelectScreen::on_screen_start() {
     if (auto pd = scores_manager.get_player_data(get_player_id(global_data.player_num)))
         dan_player_data = *pd;
 
-    fs::path dan_folder = global_data.session_data[(int)global_data.player_num].selected_dan_folder;
-    dan_navigator.init({dan_folder});
+    // ROUND 66 (r66-danselect-empty-after-course) -- the reported defect:
+    // 「當我完成一次段位，回到段位畫面」 the dojo came back EMPTY, with
+    //     DanNavigator: error loading : filesystem error: recursive directory
+    //     iterator cannot open directory: Not a directory []
+    // in the log -- an EMPTY root path (the format arg is root_path.string()).
+    //
+    // Cause: `SessionData::selected_dan_folder` is written ONCE, by SONG_SELECT
+    // (song_select/player.cpp select_song), and `DanResultScreen::on_screen_end`
+    // calls `reset_session()`, which default-constructs session_data[1] and [2].
+    // DAN_RESULT's exit screen is DAN_SELECT, so the second entry to the dojo
+    // always read a wiped path. Both dan return paths go through DAN_RESULT
+    // (natural course end and ROUND 47's fail-out), so both were affected.
+    //
+    // `GlobalData::dan_folder` is the same path in a slot reset_session() does
+    // not touch (same rationale as `last_difficulty`). Prefer the session value
+    // so nothing changes on the FIRST entry, and restore it from the persistent
+    // copy when the session has been reset, so everything downstream that reads
+    // `selected_dan_folder` sees a live path again.
+    SessionData& sd_boot = global_data.session_data[(int)global_data.player_num];
+    if (sd_boot.selected_dan_folder.empty() &&
+        (int)global_data.player_num < (int)global_data.dan_folder.size())
+        sd_boot.selected_dan_folder = global_data.dan_folder[(int)global_data.player_num];
+    fs::path dan_folder = sd_boot.selected_dan_folder;
+
+    // ── ROUND 95 (r95-danselect-concurrent-intro) ───────────────────────────
+    //
+    // 「他現在比較像先載入dan, 才載入段位道場動畫，你要邊放動畫邊讓他同時載入dan」
+    //
+    // ROUND 64's ordering — CORRECTED BY ROUND 95, in place rather than silently
+    // rewritten (house style; see ROUND 87's correction of ROUND 47). It read
+    //
+    //     dan_navigator.init({dan_folder});   // blocking, multi-second
+    //     screen_start_ms = get_current_ms(); // "AFTER the scan on purpose, so
+    //                                         //  the intro window is wall-clock
+    //                                         //  from the first frame that
+    //                                         //  actually renders"
+    //
+    // That reasoning was SOUND FOR A BLOCKING SCAN -- anchoring the window to the
+    // screen change would have made the doors jump straight to open on the first
+    // frame the render loop came back. But it bakes in the wrong wall-clock order:
+    // the movie whose entire purpose is to hide the load ran AFTER it. ROUND 64's
+    // comment is superseded; the scan is no longer blocking, so the anchor no
+    // longer has to hide behind it.
+    //
+    // New order: stamp the clock, arm the movie, THEN start the scan on a worker.
+    // The rendezvous (both completion orders) is documented on `scan_ready` in
+    // dan_select.h and implemented in tick_timer() + publish_scan_state().
+    select_timer.reset();
+    timer_started   = false;
+    timer_fired     = false;
+    screen_start_ms = get_current_ms();
+    scan_ready      = false;
+    scan_ready_ms   = 0;
+    scan_begin_ms   = screen_start_ms;
+    traced_end      = false;
+    legacy_blocking = (std::getenv("YATAIDON_R95_LEGACY") != nullptr);
+    trace_timeline  = (std::getenv("YATAIDON_R95_TRACE")  != nullptr);
+
+    if (legacy_blocking) {
+        // The pre-ROUND-95 order, kept behind an env gate so the before/after
+        // timeline is one binary rather than two builds (a stale exe has made a
+        // whole A/B meaningless in this project before).
+        if (trace_timeline) spdlog::info("R95 scan begin (legacy blocking) t=+0.00 ms");
+        dan_navigator.init({dan_folder});
+        screen_start_ms = get_current_ms();          // ROUND 64's anchor, verbatim
+        scan_ready      = true;
+        scan_ready_ms   = screen_start_ms;
+        if (trace_timeline)
+            spdlog::info("R95 scan end   (legacy blocking) t=+{:.2f} ms  courses={}",
+                         screen_start_ms - scan_begin_ms, dan_navigator.boxes.size());
+    } else {
+        if (trace_timeline) spdlog::info("R95 scan begin t=+0.00 ms (worker)");
+        dan_navigator.begin_init({dan_folder});
+    }
+
+    // ─── ROUND 86 (r86) — the 段位道場 introduction movie, on BOTH entry paths ────
+    //
+    // Reported defect 2: 「段位道場的進入動畫消失了」. Root cause is a one-line gate in
+    // the skin, not in the movie: `Scripts/song_select/dan_doors.lua` splits the clip in
+    // two halves, and `M.armed_open` — the flag `M.draw_open()` (l.418) refuses to run
+    // without — is set in exactly ONE place, `M.draw()` (l.386-389), the SONG_SELECT half.
+    // ROUND 83's new ENTRY -> DAN_SELECT route never touches SONG_SELECT, so the flag was
+    // never set and the DAN_SELECT half returned false on every frame.
+    //
+    // The cabinet's own route into the dojo is the mode board, and there the WHOLE movie
+    // runs on DAN_SELECT: `dani_select_introduction_main.lua` loads
+    // `enso_dani/loading_dani/loading_dani_intro` as the top layer of the scene and
+    // `dani_select_all.lua`'s IntroductionMain plays `mc_main.main:GotoAndPlay("in")` —
+    // label `in` = frame 5 — through stop@248 and out@253..262. It opens on a full-screen
+    // black (`#1@3` alpha 1.0 for f0..55, easing to 0.5 by f62 — Scripts/anim/dani_intro.lua),
+    // which is why ENTRY -> DAN_SELECT also needs no generic screen fade (YataiDON.cpp
+    // screen_fade_applies). So: from ENTRY play f5..262, from SONG_SELECT keep ROUND 64's
+    // f182..262 reveal, because the close+stamp half has already been drawn over the wheel.
+    const bool from_entry = (global_data.previous_screen == "ENTRY");
+    if (script_manager.lua)
+        (*script_manager.lua)["__hss_dan_intro"] = from_entry ? "full" : "open";
+    intro_ms = from_entry ? DAN_INTRO_FULL_MS : DAN_INTRO_MS;
+    // ROUND 95 -- the skin reads this every frame; make sure it is defined on the
+    // first one, before draw_open() can ever see a nil.
+    publish_scan_state(screen_start_ms);
+    if (trace_timeline)
+        spdlog::info("R95 intro arm  t=+{:.2f} ms  leg={}  intro_ms={:.1f}  cover_ms={:.1f}",
+                     get_current_ms() - scan_begin_ms, from_entry ? "full(f5..262)" : "open(f182..262)",
+                     intro_ms, intro_ms - DAN_INTRO_MS);
+}
+
+// ── ROUND 95 — the engine half of the clamp ──────────────────────────────────
+//
+// `__hss_dan_ready` is written EVERY frame (not one-shot like ROUND 86's
+// `__hss_dan_intro`): `Scripts/song_select/dan_doors.lua` M.draw_open() holds the
+// clip on f182 -- doors shut, scrim up, the last frame before anything behind
+// them is visible -- while it is false, and re-anchors on f182 the frame it turns
+// true. Same construction as ROUND 85's f113 clamp on the genre board.
+//
+// This is also where the scan's completion is picked up (`poll_init`, main
+// thread) and where the FAIL-SOFT timeout lives: a scan that has not landed
+// within SCAN_TIMEOUT_MS stops holding the reveal, so the player gets an empty
+// but escapable ribbon rather than a permanent black scrim. The worker's later
+// publish simply fills the ribbon in.
+void DanSelectScreen::publish_scan_state(double current_ms) {
+    if (!scan_ready) {
+        if (dan_navigator.poll_init()) {
+            scan_ready    = true;
+            scan_ready_ms = current_ms;
+            if (trace_timeline)
+                spdlog::info("R95 scan end   t=+{:.2f} ms  courses={}",
+                             current_ms - scan_begin_ms, dan_navigator.boxes.size());
+        } else if (current_ms - scan_begin_ms > SCAN_TIMEOUT_MS) {
+            scan_ready    = true;
+            scan_ready_ms = current_ms;
+            spdlog::error("DanNavigator: course scan still running after {:.0f} ms; "
+                          "opening the dojo anyway (the ribbon will fill in when it lands)",
+                          SCAN_TIMEOUT_MS);
+        }
+    } else {
+        // Still poll: after a timeout the worker may land later, and the ribbon
+        // must appear when it does.
+        dan_navigator.poll_init();
+    }
+    if (script_manager.lua)
+        (*script_manager.lua)["__hss_dan_ready"] = scan_ready;
+}
+
+// ROUND 86 — `intro_ms` (set in on_screen_start) is the leg this entry actually plays;
+// the two constants and the reasoning are at the top of this file.
+//
+// ROUND 95 — and it is no longer a plain `screen_start_ms + intro_ms` deadline,
+// because the movie no longer runs after the load: it runs OVER it. The clip's
+// reveal (f182..f262, DAN_INTRO_MS) cannot begin before the ribbon exists, so
+//
+//     cover_ms     = intro_ms - DAN_INTRO_MS      2950.0 (ENTRY) / 0.0 (SONG_SELECT)
+//     reveal_start = max(screen_start_ms + cover_ms, scan_ready_ms)
+//     intro_end    = reveal_start + DAN_INTRO_MS
+//
+// which is exactly the formula dan_doors.lua's clamp+re-anchor produces, so the
+// credit clock and the movie can never disagree about when the screen went live.
+// This is the cabinet's `DaniSelectMain` gate (`if daniselectdani_.is_setUpAllOk
+// == true then this.timer_:StartCount()`, dani_select_all.lua:126-128): the clock
+// starts at max(intro end, board ready), NOT at the intro's end alone. And the
+// intro is never cut short when the scan wins the race -- the cabinet's
+// `Is_EndAnimation` is `mc_main.main:IsPlay() == false`, purely the clip.
+std::optional<Screens> DanSelectScreen::tick_timer(double current_ms) {
+    if (!timer_started) {
+        const double cover_ms     = intro_ms - DAN_INTRO_MS;
+        const double reveal_start = std::max(screen_start_ms + cover_ms,
+                                             scan_ready ? scan_ready_ms : current_ms);
+        if (!scan_ready || current_ms < reveal_start + DAN_INTRO_MS) return std::nullopt;
+        if (trace_timeline && !traced_end) {
+            traced_end = true;
+            spdlog::info("R95 intro end / screen ready t=+{:.2f} ms  (reveal began +{:.2f} ms)",
+                         current_ms - scan_begin_ms, reveal_start - scan_begin_ms);
+        }
+        timer_started = true;
+        select_timer  = std::make_unique<Timer>(100, current_ms, [this]() {
+            timer_fired = true;
+        });
+    }
+    if (!select_timer) return std::nullopt;
+    select_timer->update(current_ms);
+
+    if (!timer_fired) return std::nullopt;
+    timer_fired = false;
+    if (state == SongSelectState::BROWSING) {
+        // DaniSelectMain's IsZero branch: TimeUpBegin + se_common_v12a/don_big,
+        // which decides the course under the cursor -- the same path a don
+        // takes, so it goes through open_confirm().
+        audio.play_sound("don_big", VolumePreset::SOUND);
+        open_confirm(current_ms);
+        return std::nullopt;
+    }
+    // ConfirmationMain's `Timeup` state walks selectIndex onto 挑戦する
+    // (kselectYes = 2, lines 133-145) and decides it, then StopCount()s.
+    if (modifier_selector.has_value()) modifier_selector.reset();
+    confirm_index = CONFIRM_YES;
+    select_timer.reset();
+    audio.play_sound("don", VolumePreset::SOUND);
+    return on_screen_end(Screens::GAME_DAN);
+}
+
+// ROUND 64 -- the "a course was decided" path, shared by a don on the wheel and
+// by the wheel's own time-up (dani_select_all.lua:155-168, which runs the same
+// ReStartDaniSelect -> ConfirmationMain hand-off for both).
+void DanSelectScreen::open_confirm(double current_ms) {
+    audio.play_sound("confirm_box", VolumePreset::SOUND);
+    audio.play_sound("dan_confirm", VolumePreset::VOICE);
+    confirm_fade->start();
+    state = SongSelectState::SONG_SELECTED;
+    // Every visit to the dialog starts on the cabinet's own default,
+    // 挑戦しない (`selectIndex = 3`), not on whatever the last visit left.
+    confirm_index = CONFIRM_NO;
+    modifier_selector.reset();
+    // ROUND 21 -- StartWait's 500 ms input-dead window, see dan_select.h.
+    confirm_opened_at = current_ms;
+    // ROUND 64 -- dani_select_all.lua:159-163. The dialog gets AT LEAST 30 s:
+    // a clock already under 30 (or one that has just run out) is reset to 30
+    // and restarted, a healthier one is left alone.
+    if (select_timer) {
+        const int left = select_timer->time();
+        if (left >= 0 && left < 30)
+            select_timer = std::make_unique<Timer>(30, current_ms, [this]() {
+                timer_fired = true;
+            });
+    }
 }
 
 Screens DanSelectScreen::on_screen_end(Screens next_screen) {
+    // ROUND 95 -- leaving the screen (back key, or a course decided before the
+    // scan finished) must never leave the worker running against a navigator that
+    // is about to be re-inited. abort_init() is a no-op once it has published.
+    dan_navigator.abort_init();
     DanBox* current = dan_navigator.get_current();
     if (current && next_screen == Screens::GAME_DAN) {
         SessionData& sd = global_data.session_data[(int)global_data.player_num];
@@ -524,16 +1024,7 @@ void DanSelectScreen::handle_input_browsing(double current_ms) {
         wheel_locked = true;
     } else if (!wheel_locked && confirm) {
         audio.play_sound("don", VolumePreset::SOUND);
-        audio.play_sound("confirm_box", VolumePreset::SOUND);
-        audio.play_sound("dan_confirm", VolumePreset::VOICE);
-        confirm_fade->start();
-        state = SongSelectState::SONG_SELECTED;
-        // Every visit to the dialog starts on the cabinet's own default,
-        // 挑戦しない (`selectIndex = 3`), not on whatever the last visit left.
-        confirm_index = CONFIRM_NO;
-        modifier_selector.reset();
-        // ROUND 21 -- StartWait's 500 ms input-dead window, see dan_select.h.
-        confirm_opened_at = current_ms;
+        open_confirm(current_ms);   // ROUND 64: shared with the wheel time-up
     }
 }
 
@@ -585,10 +1076,18 @@ std::optional<Screens> DanSelectScreen::handle_input_selected() {
 std::optional<Screens> DanSelectScreen::update() {
     Screen::update();
     double current_ms = get_current_ms();
+    // ROUND 95 -- FIRST: pick the worker's result up (main thread) and republish
+    // `__hss_dan_ready` for this frame, before anything else can draw.
+    publish_scan_state(current_ms);
     allnet_indicator.update(current_ms);
     dan_navigator.update(current_ms);
     indicator->update(current_ms);
     confirm_fade->update(current_ms);
+    // ROUND 73 (QA defect 4) -- the Don breathes/blinks on this screen exactly as
+    // it does on DAN_RESULT; without the tick it would stand on frame 0.
+    nameplate.update(current_ms);
+    if (chara) chara->update(current_ms);
+    if (auto next = tick_timer(current_ms)) return next;   // ROUND 64
 
     if (state == SongSelectState::BROWSING) {
         handle_input_browsing(current_ms);
@@ -693,6 +1192,37 @@ void DanSelectScreen::draw() {
 
     dan_navigator.draw();
 
+    // ROUND 73 (QA defect 4) -- the 1P Don + nameplate, at the cabinet's OWN
+    // registration points on THIS screen (not another screen's anchor).
+    //
+    // `dani_select.nulm` sprite 315 (`main`) places, with the matrix constant
+    // across the whole 260-frame timeline and alpha 256 from f30 on:
+    //     depth 7  don_1p             tx (-740, 246)
+    //     depth 8  plate_1p_instance  tx (-740, 430)
+    // Sprite 315's own origin is stage (960,540) -- proved on the same frame by
+    // `window_instance` and `qricon_instance`, two full-screen overlays whose
+    // authored content is in absolute stage coords and which are placed at
+    // exactly (-960,-540). So screen = local + (960,540):
+    //     don_1p reg    = (220, 786)
+    //     plate_1p reg  = (220, 970)
+    // Converting to our objects' anchors with the SAME two offsets ROUND 16
+    // measured and dan_result.cpp uses (Chara3D anchors at the feet = reg +
+    // (-33,+148); Nameplate is drawn from its top-left = reg - (196.6, 48)):
+    //     chara      -> (187.0, 934.0)
+    //     nameplate  -> ( 23.4, 922.0)
+    //
+    // SCALE: `don_1p` (char 294) places its `don1p` child with matrix a=d=0.8,
+    // so the cabinet draws the dan-select Don at 80 %, unlike DAN_RESULT's 1.0.
+    // (This does NOT contradict ROUND 64's "the board is 1:1": that finding was
+    // about the board, sprite 185, and it still measures 1:1 -- the 0.8 lives
+    // inside the Don's own container, one level below the board.)
+    //
+    // Drawn here so the z-order matches the cabinet's depths: over the board and
+    // the task-name plates, under `window_instance` (the confirmation dialog,
+    // drawn immediately below) and under the timer/QR/indicator layers.
+    if (chara) chara->draw(187.0f, 934.0f, 0.8f);
+    nameplate.draw(23.4f, 922.0f);
+
     if (state == SongSelectState::SONG_SELECTED) {
         draw_confirm_overlay();
         // Over the dialog, as the cabinet's `option_instance` (root depth 13)
@@ -703,6 +1233,15 @@ void DanSelectScreen::draw() {
     indicator->draw(tex.skin_config[SC::DAN_SELECT_INDICATOR].x, tex.skin_config[SC::DAN_SELECT_INDICATOR].y);
     tex.draw_texture(GLOBAL::DAN_SELECT, {});
     allnet_indicator.draw();
+
+    // ROUND 64 -- the credit clock. `timer_instance` is root depth 14 in
+    // dani_select.nulm, above every board and plate and below only the QR icon
+    // and the introduction movie, so it is drawn here: over the ribbon and the
+    // DAN_SELECT plate, under Indicator::draw_top's shutter. Its screen
+    // position is the timer movie's own and is therefore identical to
+    // SONG_SELECT's (Graphics/global/timer/texture.json), which is exactly what
+    // the cabinet does -- one timer movie, one place on screen.
+    if (select_timer) select_timer->draw();
 
     // ROUND 17: the skin's top-most slot on this screen, above the coin overlay,
     // the DAN_SELECT plate and the allnet chip. The 段位道場 shutter's SECOND half

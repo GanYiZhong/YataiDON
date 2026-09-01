@@ -68,10 +68,61 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
     end_x = tex.skin_config[SC::GAUGE_HIT_EFFECT_NOTE].x;
     end_y = tex.skin_config[SC::GAUGE_HIT_EFFECT_NOTE].y;
 
+    // ------------------------------------------------------------------
+    // ROUND 109 -- the 2P seat.  `Player::draw_overlays(y)` is ALREADY handed
+    // that seat's lane top (game.cpp:638-639 -> 276 / 540) and NoteArc::draw
+    // paints at `y + y_i`, so adding `offset_2p` (264) here too counted the
+    // same 264 twice: the shipped 2P arc began at screen y 818 instead of 554,
+    // i.e. below its own lane on the background band, dived past y 1087 and
+    // landed 60 px short of the badge.  That is the reported defect.
+    //
+    // Cabinet (enso/onpu/onp_jump.nulm, sprite 78 frame 0 `don1p` = char 12 vs
+    // frame 5 `don2p` = char 14, both dumped `--all --leaves`):
+    //   * the two seats START at the SAME lane-local point, (618,110) centre =
+    //     (522,14) top-left -> start_y takes NO 2P offset;
+    //   * they END mirrored about the lane block -- 1P centre lane-local -30
+    //     (30 above the block top), 2P +294 (30 below the block bottom).
+    // The end offset is therefore 324 in top-left terms, which is exactly the
+    // number `GaugeHitEffect` already adds from `gauge_hit_effect_note.height`
+    // (`pos_data.height * is_2p`).  Sharing that one key keeps the flying note
+    // and the badge burst on the same point by construction instead of by
+    // coincidence.
+    // ------------------------------------------------------------------
     if (player_num == PlayerNum::P2) {
-        this->start_y += tex.skin_config[SC::OFFSET_2P].y;
-        end_y += tex.skin_config[SC::OFFSET_2P].y;
+        end_y += tex.skin_config[SC::GAUGE_HIT_EFFECT_NOTE].height;
     }
+
+    // The note glyph is drawn from its TOP-LEFT, but every cabinet coordinate
+    // and every pivot below is in the note's CENTRE frame, so carry the
+    // half-note offset explicitly.  (Was inside the balloon block; the ordinary
+    // arc needs it too now.)
+    {
+        uint32_t nid = static_cast<uint32_t>(tex.get_enum("notes/" + std::to_string((int)note_type)));
+        auto nit = tex.textures.find(nid);
+        if (nit != tex.textures.end() && nit->second) {
+            half_w = nit->second->width * 0.5f;
+            half_h = nit->second->height * 0.5f;
+        }
+    }
+
+    // Shared by the balloon rig and by the ordinary arc: turn a declared pivot
+    // (note-CENTRE frame, lane-local) plus this arc's own start/end into the
+    // circle the cabinet sweeps.
+    auto set_circle = [&](float px, float py) {
+        pivot_x = px;
+        pivot_y = py;
+        float sx = this->start_x + half_w, sy = this->start_y + half_h;
+        float ex = end_x + half_w,         ey = end_y + half_h;
+        float r0 = std::hypot(sx - pivot_x, sy - pivot_y);
+        float r1 = std::hypot(ex - pivot_x, ey - pivot_y);
+        arc_radius = 0.5f * (r0 + r1);
+        arc_a0 = std::atan2(sy - pivot_y, sx - pivot_x) * 57.29577951f;
+        arc_a1 = std::atan2(ey - pivot_y, ex - pivot_x) * 57.29577951f;
+        // Always take the short way round, over the top (or bottom for 2P).
+        while (arc_a1 - arc_a0 > 180.0f)  arc_a1 -= 360.0f;
+        while (arc_a1 - arc_a0 < -180.0f) arc_a1 += 360.0f;
+        circular = true;
+    };
 
     // ------------------------------------------------------------------
     // Arcade balloon path: a circle about a skin-declared pivot, not a
@@ -81,36 +132,24 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
     // ------------------------------------------------------------------
     if (is_balloon) {
         if (const SkinInfo* p = tex.skin_entry("note_arc_balloon_pivot"); p && (p->x != 0 || p->y != 0)) {
-            // The pivot is declared where the cabinet has it: in the note's
-            // CENTRE frame.  NoteArc itself works in top-left-of-the-note
-            // coordinates, so carry the half-note offset explicitly.
-            {
-                uint32_t nid = static_cast<uint32_t>(tex.get_enum("notes/" + std::to_string((int)note_type)));
-                auto nit = tex.textures.find(nid);
-                if (nit != tex.textures.end() && nit->second) {
-                    half_w = nit->second->width * 0.5f;
-                    half_h = nit->second->height * 0.5f;
+            float px = p->x, py = p->y;
+            if (player_num == PlayerNum::P2) {
+                // ROUND 109 (measured): the cabinet's 2P geki clip (sprite 70)
+                // carries the SAME note path as `don2p` -- sprite 78 frames
+                // 95..99 shape 47 reproduce frames 5..9 shape 8 exactly -- so
+                // when a 2P pivot for the ordinary arc is declared, reuse it
+                // here: one path, one circle.
+                if (const SkinInfo* q = tex.skin_entry("note_arc_pivot_2p"); q && (q->x != 0 || q->y != 0)) {
+                    px = q->x;
+                    py = q->y;
+                } else {
+                    // Legacy, and now known to be only approximate: mirroring
+                    // the 1P pivot through the note's own start line.  Kept for
+                    // skins that declare no 2P pivot.
+                    py = 2.0f * (this->start_y + half_h) - p->y;
                 }
             }
-            pivot_x = p->x;
-            pivot_y = p->y;
-            float sx = this->start_x + half_w, sy = this->start_y + half_h;
-            float ex = end_x + half_w,        ey = end_y + half_h;
-            if (player_num == PlayerNum::P2) {
-                // The cabinet ships a separate 2P rig (sprite 70) that is the
-                // vertical mirror of the 1P one; mirroring the pivot through
-                // the note's own start line reproduces its endpoints.
-                pivot_y = 2.0f * sy - pivot_y;
-            }
-            float r0 = std::hypot(sx - pivot_x, sy - pivot_y);
-            float r1 = std::hypot(ex - pivot_x, ey - pivot_y);
-            arc_radius = 0.5f * (r0 + r1);
-            arc_a0 = std::atan2(sy - pivot_y, sx - pivot_x) * 57.29577951f;
-            arc_a1 = std::atan2(ey - pivot_y, ex - pivot_x) * 57.29577951f;
-            // Always take the short way round, over the top (or bottom for 2P).
-            while (arc_a1 - arc_a0 > 180.0f)  arc_a1 -= 360.0f;
-            while (arc_a1 - arc_a0 < -180.0f) arc_a1 += 360.0f;
-            circular = true;
+            set_circle(px, py);
         }
         if (const SkinInfo* a = tex.skin_entry("note_arc_balloon_angles"); a) {
             art_a0 = a->x; art_a1 = a->y; art_cut = a->width;
@@ -121,6 +160,26 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
         if (const SkinInfo* f = tex.skin_entry("note_arc_balloon_frames"); f) {
             ph_reveal = (int)f->x; ph_hold = (int)f->y; ph_wipe = (int)f->width; ph_end = (int)f->height;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // ROUND 109 -- the ORDINARY note arc is not a Bezier in the cabinet either.
+    // Both seats are a constant-angular-rate sweep on a circle of radius ~720:
+    // fitting a circle to the 31 flight frames of `onp_jump` sprite 12 (1P) and
+    // sprite 14 (2P) leaves a max residual of 1.33 / 1.26 px, and the swept
+    // angle departs from linear by at most 0.053 deg, so the whole 30-frame
+    // flight is reproduced to <=1.35 px.
+    //   1P  centre (1269.22, 415.14)  r 719.48  sweep -154.89 -> -38.24 deg
+    //   2P  centre (1282.19, -167.83) r 720.10  sweep +157.30 -> +39.93 deg
+    // The two are SEPARATELY AUTHORED clips, not one clip mirrored (see the
+    // header note), which is why each seat gets its own key.  Both keys are
+    // optional: a skin that declares neither keeps the quadratic Bezier below
+    // byte for byte.
+    // ------------------------------------------------------------------
+    if (!circular) {
+        const SkinInfo* p = tex.skin_entry(player_num == PlayerNum::P2 ? "note_arc_pivot_2p"
+                                                                      : "note_arc_pivot");
+        if (p && (p->x != 0 || p->y != 0)) set_circle(p->x, p->y);
     }
 
     if (circular) {

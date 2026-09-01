@@ -252,6 +252,20 @@ void Player::autoplay_manager(double ms_from_start, double current_ms, std::opti
         } else {
             subdivision_in_ms = static_cast<int>(ms_from_start / ((240000.0 / bpm) / 24.0));
         }
+        // ROUND 76 (r76-gamedan-band-and-autoplay): env-gated trace for the
+        // "AUTO stops hitting rolls/balloons from dan song 2" report. Prints
+        // only while a roll/balloon is actually active, so it costs nothing on
+        // a normal run. `sub` <= `last` here IS the bug signature: the
+        // subdivision counter restarted with the new song's clock while
+        // `last_subdivision` still carried song 1's final value.
+        static const bool r76_trace = std::getenv("YATAIDON_R76_AUTO") != nullptr;
+        if (r76_trace) {
+            spdlog::info("[r76auto] ms_from_start={:.1f} bpm={:.3f} sub={:.0f} last={} "
+                         "roll={} balloon={} fire={}",
+                         ms_from_start, bpm, subdivision_in_ms, last_subdivision,
+                         (int)is_drumroll, (int)is_balloon,
+                         (int)(subdivision_in_ms > last_subdivision));
+        }
         if (subdivision_in_ms > last_subdivision) {
             last_subdivision = subdivision_in_ms;
             hit_type = DrumType::DON;
@@ -417,6 +431,23 @@ void Player::evaluate_branch(double current_ms) {
 }
 
 void Player::update(double ms_from_start, double current_ms, std::optional<Background>& background) {
+    // ROUND 80 (r80-gauge-layering-recheck): cache the live Background so
+    // Player::draw() can call its per-lane gauge-overlay hook at the RIGHT
+    // POINT IN THE FRAME (immediately after this lane's Gauge::draw), instead
+    // of the skin painting it from Background:draw_fore() -- the last Lua
+    // paint of the whole GAME HUD. See MAPPING_hud ROUND 80 defect 1: on the
+    // cabinet the soul gauge is ONE graphic (`tamashiigage/tamashii_gage`,
+    // datatable/enso_post.bin target 0 row 12 of 33), drawn UNDER don_enso,
+    // lane_left, taiko, onp_jump, hit_effect, course, score, combo_number and
+    // the rest -- not on top of them. `draw()` takes no Background parameter
+    // and giving it one would touch every caller (game.cpp / game_2p.cpp /
+    // game_dan.cpp / game_practice.cpp, three of them owned by other agents
+    // this session), so the pointer is latched here, in the function that
+    // already receives it every frame. Never dangles: update() and draw() run
+    // in the same frame from the same screen, and the pointer is only ever
+    // read between them.
+    bg_hook = background.has_value() ? &background.value() : nullptr;
+
     // Live counters for the automation `state` command (see global_data.h).
     // Data-out only; player 1 / the single player of a 1P game.
     // `is_2p` (not player_num) is the lane flag: a 1P game started on the right
@@ -587,6 +618,11 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
         } else {
             gauge->draw(y);
         }
+        // ROUND 80 (r80-gauge-layering-recheck): the skin's arcade gauge
+        // overlay (the 50x21 segment redraw) belongs HERE, glued to the
+        // engine's own gauge, not at the end of the frame. Fail-soft: a skin
+        // without a `draw_gauge` hook is never called and nothing changes.
+        if (bg_hook) bg_hook->draw_gauge(player_num);
     }
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
@@ -646,6 +682,11 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
         } else {
             gauge->draw(y);
         }
+        // ROUND 80 (r80-gauge-layering-recheck): the skin's arcade gauge
+        // overlay (the 50x21 segment redraw) belongs HERE, glued to the
+        // engine's own gauge, not at the end of the frame. Fail-soft: a skin
+        // without a `draw_gauge` hook is never called and nothing changes.
+        if (bg_hook) bg_hook->draw_gauge(player_num);
     }
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
@@ -796,6 +837,36 @@ void Player::reset_chart() {
     is_balloon = false;
     curr_balloon_count = 0;
     kusudama_shared_hits = 0;
+    // ROUND 76 (r76-gamedan-band-and-autoplay): `last_subdivision` belongs to
+    // THIS block and was the only member of it that never got reset.
+    //
+    // autoplay_manager() drives drumrolls/balloons off a 1/24-measure counter
+    // derived from `ms_from_start` -- the PER-SONG clock (game_dan.cpp:621,
+    // `ms_from_start = current_ms - start_ms`, with start_ms re-based by
+    // change_song()). Every other autoplay timestamp on Player is taken from
+    // `current_ms`, the monotonic wall clock, so nothing else noticed. A dan
+    // course reuses ONE Player across all songs (reload_for_dan -> reset_chart),
+    // so at the end of dan song 1 `last_subdivision` held that song's final
+    // subdivision index; song 2's clock then restarted at 0 (in fact NEGATIVE
+    // for the length of ROUND 69's between-song interstitial) and
+    // `subdivision_in_ms > last_subdivision` stayed false for the whole song.
+    // Result: from song 2 onwards AUTO silently stopped hitting every drumroll,
+    // balloon and kusudama, while ordinary notes -- which run off the
+    // don_notes/kat_notes queues that reset_chart DOES refill -- kept working.
+    // That is exactly the user's report. Same class as ROUND 39's stale
+    // `movie` optional and ROUND 66's `selected_dan_folder`.
+    //
+    // Resetting here rather than in reload_for_dan also fixes the same freeze
+    // on the practice screen's backward seek (player.cpp's seek path calls
+    // reset_chart too), where a jump to an earlier bar previously left the
+    // counter ahead of the new clock.
+    //
+    // YATAIDON_R76_DISABLE reverts to the pre-round behaviour so before/after
+    // evidence can be driven from ONE binary (ROUND 45 precedent).
+    {
+        static const bool r76_disabled = std::getenv("YATAIDON_R76_DISABLE") != nullptr;
+        if (!r76_disabled) last_subdivision = -1;
+    }
     is_branch = false;
     branch_condition = "";
     branch_p_count = 0;
@@ -2099,7 +2170,45 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
         }
     }
     if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y, 1.0f, "GAME_BALLOON");
+        // ROUND 108 (r108-2p-balloon-don): CLOSES ROUND 98's "GAME 2P NOT
+        // AUDITED" gap for the balloon-time draw site.
+        //
+        // In the cabinet the balloon-time Don is NOT a lane-relative HUD
+        // element -- it is a CHILD OF THE BALLOON RIG. `action_fusen.nulm`
+        // sprite 55 (`main`, at stage centre 960,540) holds four siblings at
+        // constant local transforms across all 85 frames:
+        //     don       tx -364 ty -256  -> stage (596, 284)   <-- the Don
+        //     fusen     tx -122 ty -156  -> stage (838, 384)   (balloon body)
+        //     fukidashi tx -230 ty -380  -> stage (730, 160)   (count bubble)
+        // (re-dumped this round with `lumen_anim_dump --sprite 55 --all
+        // --leaves --auto-stop`; agrees with ROUND 104/106/107 to the pixel).
+        // The whole document is placed once per seat by `enso_post.bin` part 27
+        // `onpu/action_fusen`, playerNo 0 -> y 0, playerNo 1 -> y 444. So the
+        // Don takes the SAME +444 the bubble and the body take -- one rig, one
+        // offset -- and the engine's share of that is `444 - 264 = 180`,
+        // i.e. exactly `balloon_counter_2p_offset`.
+        //
+        // We were giving it only the 264 lane pitch (`y` alone), so our 2P
+        // balloon Don sat 180 px ABOVE its own bubble and its own balloon.
+        // Measured on ROUND 107's `after2p_02.png`: balloon-body ink minus
+        // Don draw y is -85 for 1P but +96 for 2P, a 181 px discrepancy that
+        // is 0 in the cabinet.  That single error is what the user reported
+        // twice over -- 「3d don要再低一點」 and 「878的浮出要再高一點」 are the
+        // same 180 px seen from the Don's side and from the bubble's side.
+        // The bubble itself is NOT moved: measured against the user's own
+        // 878 frame it is already within -7 px of the cabinet in BOTH seats
+        // (the known lane-top family offset).
+        //
+        // Gated on `balloon_counter` because `is_balloon` is ALSO true for a
+        // kusudama (see check_kusudama / line ~1163), and `action_kusudama`
+        // has no playerNo-1 row in any target -- the cabinet draws ONE shared
+        // kusudama, so its Don must not take a per-seat offset.
+        float rig_2p_y = 0.0f;
+        if (is_2p && balloon_counter.has_value()) {
+            if (const SkinInfo* p2 = tex.skin_entry("balloon_counter_2p_offset"))
+                rig_2p_y = p2->y;
+        }
+        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y + rig_2p_y, 1.0f, "GAME_BALLOON");
     } else {
         if (is_2p) {
             chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y, 1.0f, "GAME_P2");

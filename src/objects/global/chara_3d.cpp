@@ -2,7 +2,9 @@
 #include "../../libs/animation.h"
 #include "../../libs/camera_utils.h"
 #include "../../libs/global_data.h"
+#include "../../libs/perf.h"   // ROUND 103: lazy render-target event recorder
 #include "../../libs/scores.h"
+#include <cstdlib>   // ROUND 103: getenv for YATAIDON_R103_DISABLE
 #include <fstream>
 #include <rapidjson/document.h>
 namespace ray {
@@ -368,7 +370,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
     if (getenv("YATAIDON_R30_NO_RT")) use_render_textures = false;
     this->mirror = mirror;
 
-    // Models has no inheritance mechanism of its own (unlike Graphics) — each asset
+    // Models has no inheritance mechanism of its own (unlike Graphics) ??each asset
     // resolves against the child skin first, falling back to the parent's.
     fs::path model_path = tex.resolve_skin_path(fs::path("Models/cos") / (model_name + ".glb"));
     fs::path anim_path  = tex.resolve_skin_path("Models/animations.glb");
@@ -384,6 +386,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror) {
     load_face_anims(skin_anim_path);
 
     set_anim(anim_index);
+    prewarm_render_targets();   // ROUND 103
 }
 
 Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror) {
@@ -409,6 +412,7 @@ Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror) {
     load_face_anims(skin_anim_path);
 
     set_anim(anim_index);
+    prewarm_render_targets();   // ROUND 103
 }
 
 Chara3D::~Chara3D() {
@@ -842,6 +846,85 @@ static void r34_dump_backbuffer_sample(const char* label, int cx, int cy) {
 }
 // END TEMP ROUND34 DIAGNOSTIC (declaration)
 
+// ---------------------------------------------------------------------------
+// ROUND 103 (r103-frametime): `scene_target` and `fxaa_target` used to be
+// created INSIDE draw(), on the first frame this Chara3D was ever drawn.
+//
+// That is a lazy full-screen GPU allocation on a draw path, and it is one of
+// the things the user meant by ??憭??怠蝚砌?甈∟??亦????～? Each
+// Chara3D owns TWO of them, and a 2P game has two Chara3D instances, so four
+// full-screen render targets (colour + depth each) were being allocated in
+// the middle of gameplay frames.
+//
+// Measured on `build/bin/YataiDON.exe` (03:49, -O2), 2P, target_fps = 120,
+// ~11,000 game frames per run, using the existing env gates:
+//
+//   mascot off  (YATAIDON_R34_NOCHARA)  draw p50 0.156  p99 0.631  MAX  2.05 ms
+//   no RT chain (YATAIDON_R30_NO_RT)    draw p50 0.490  p99 1.895  MAX  9.22 ms
+//   shipped (RT chain on)               draw p50 0.832  p99 1.881  MAX 22.37 ms
+//                                       (and MAX 532.84 ms in another run)
+//
+// The fix is PREWARM, not "make the allocation faster": the targets are now
+// created in the constructors, which run during screen init behind the
+// loading screen / transition where a hitch is invisible. draw() still calls
+// this, so a genuine render-size change is still handled - it just no longer
+// pays for the FIRST one mid-gameplay.
+//
+// `YATAIDON_R103_DISABLE` restores the old lazy-on-first-draw behaviour, so a
+// before/after A/B comes from ONE binary instead of two (this project has been
+// burned by a stale exe making an A/B two runs of identical code). Same
+// house pattern as YATAIDON_R45_DISABLE / R48_DISABLE / R55_DISABLE / R76_DISABLE.
+// ---------------------------------------------------------------------------
+void Chara3D::ensure_render_targets(int rw, int rh) {
+    if (rw <= 0 || rh <= 0) return;
+
+    if (scene_target.id == 0 || scene_target_w != rw || scene_target_h != rh) {
+        perf::PerfTimer rt_timer;
+        if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
+        scene_target = ray::LoadRenderTexture(rw, rh);
+        perf::note_event("chara3d_scene_target",
+                         std::to_string(rw) + "x" + std::to_string(rh),
+                         rt_timer.ms());
+        if (scene_target.id == 0) {
+            spdlog::warn("Chara3D: render texture unavailable, using direct render");
+            use_render_textures = false;
+        }
+        scene_target_w = rw;
+        scene_target_h = rh;
+        float ts[2] = {(float)rw, (float)rh};
+        ray::SetShaderValue(outline_pass_shader, outline_pass_size_loc, ts,
+                            ray::SHADER_UNIFORM_VEC2);
+        render_dirty = true;
+    }
+
+    // Only the render-texture path needs the FXAA target; the direct-render
+    // fallback never touches it, so do not allocate one for it.
+    if (!use_render_textures) return;
+
+    if (fxaa_target.id == 0 || fxaa_target_w != rw || fxaa_target_h != rh) {
+        perf::PerfTimer rt_timer;
+        if (fxaa_target.id != 0) ray::UnloadRenderTexture(fxaa_target);
+        fxaa_target = ray::LoadRenderTexture(rw, rh);
+        perf::note_event("chara3d_fxaa_target",
+                         std::to_string(rw) + "x" + std::to_string(rh),
+                         rt_timer.ms());
+        fxaa_target_w = rw;
+        fxaa_target_h = rh;
+        float ts[2] = {(float)rw, (float)rh};
+        ray::SetShaderValue(fxaa_shader, fxaa_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
+        render_dirty = true;
+    }
+}
+
+// ROUND 103: the prewarm call the two constructors make. Kept out of line so
+// the `YATAIDON_R103_DISABLE` decision lives in exactly one place.
+void Chara3D::prewarm_render_targets() {
+    static const bool disabled = std::getenv("YATAIDON_R103_DISABLE") != nullptr;
+    if (disabled) return;
+    if (!model_valid) return;
+    ensure_render_targets(ray::GetRenderWidth(), ray::GetRenderHeight());
+}
+
 void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
     if (!model_valid) return;
     // TEMP ROUND34 DIAGNOSTIC (r34-chara3d-matrix) - A/B probe: skip the
@@ -861,19 +944,7 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
     int rw = ray::GetRenderWidth();
     int rh = ray::GetRenderHeight();
 
-    if (scene_target.id == 0 || scene_target_w != rw || scene_target_h != rh) {
-        if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
-        scene_target   = ray::LoadRenderTexture(rw, rh);
-        if (scene_target.id == 0) {
-            spdlog::warn("Chara3D: render texture unavailable, using direct render");
-            use_render_textures = false;
-        }
-        scene_target_w = rw;
-        scene_target_h = rh;
-        float ts[2] = {(float)rw, (float)rh};
-        ray::SetShaderValue(outline_pass_shader, outline_pass_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
-        render_dirty = true;
-    }
+    ensure_render_targets(rw, rh);
 
     if (!use_render_textures) {
         ray::Camera2D cam2d = compute_camera2d(tex.screen_width, tex.screen_height);
@@ -898,16 +969,6 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
         return;
     }
 
-    if (fxaa_target.id == 0 || fxaa_target_w != rw || fxaa_target_h != rh) {
-        if (fxaa_target.id != 0) ray::UnloadRenderTexture(fxaa_target);
-        fxaa_target   = ray::LoadRenderTexture(rw, rh);
-        fxaa_target_w = rw;
-        fxaa_target_h = rh;
-        float ts[2] = {(float)rw, (float)rh};
-        ray::SetShaderValue(fxaa_shader, fxaa_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
-        render_dirty = true;
-    }
-
     if (x != last_draw_x || y != last_draw_y) {
         last_draw_x = x;
         last_draw_y = y;
@@ -916,8 +977,27 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
 
     ray::Camera2D cam2d = compute_camera2d(tex.screen_width, tex.screen_height);
 
+    // ROUND 103 second pass. The render-target hypothesis was WRONG (measured:
+    // all four allocations cost 5.03 ms total and all land on the GAME screen's
+    // frame 0, behind the transition), so these sub-timers exist to find what
+    // in this draw actually costs the 327-561 ms the traces keep catching.
+    // Only ever emits when a section is genuinely slow, so a normal frame adds
+    // nothing to the log.
+    const bool r103 = perf::events_enabled();
+    perf::PerfTimer draw_timer;
+    double t_scene = 0.0, t_outline_pass = 0.0;
+
+    // ROUND 103 third pass. The second pass measured the whole call at 342.79 ms
+    // with scene=0.4 / outline_pass=0.0 / blit=0.0 -- i.e. the cost is in NONE
+    // of the three passes, so it has to be here. `EndMode2D()` is not a
+    // bookkeeping call: raylib's EndMode2D calls rlDrawRenderBatchActive(),
+    // which SUBMITS the whole frame's accumulated 2D batch. Whoever ends 2D
+    // mode first is charged for every 2D draw the frame has queued so far,
+    // which in GAME is the entire background + lane + notes + HUD.
+    perf::PerfTimer flush_timer;
     ray::EndMode2D();
     ray::EndBlendMode();
+    const double t_flush2d = r103 ? flush_timer.ms() : 0.0;
 
     // Model pose/textures/position only change on animation ticks (well below
     // display refresh), so the outline + composite passes are cached in
@@ -925,6 +1005,7 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
     if (render_dirty) {
         render_dirty = false;
         ray::Camera3D cam3d = camera2d_to_3d(cam2d);
+        perf::PerfTimer scene_timer;   // ROUND 103
 
         ray::BeginTextureMode(scene_target);
         ray::ClearBackground(ray::BLANK);
@@ -949,6 +1030,9 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
         // scene_target by draw_outline()/draw_3d() just now?
         r34_dump_pixel_readback(debug_label ? debug_label : "unlabeled(cached-scene)", scene_target);
 
+        t_scene = scene_timer.ms();          // ROUND 103
+        perf::PerfTimer outline_timer;       // ROUND 103
+
         ray::BeginTextureMode(fxaa_target);
         ray::ClearBackground(ray::BLANK);
         ray::BeginShaderMode(outline_pass_shader);
@@ -966,8 +1050,10 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
         // probe below, which runs on every frame, not just this one.
         R34SamplePoint r34_pt = r34_dump_pixel_readback(debug_label ? debug_label : "unlabeled(cached-fxaa)", fxaa_target);
         if (r34_pt.x != -1) { r34_sample_x = r34_pt.x; r34_sample_y = r34_pt.y; }
+        t_outline_pass = outline_timer.ms();   // ROUND 103
     }
 
+    perf::PerfTimer blit_timer;   // ROUND 103
     ray::BeginShaderMode(fxaa_shader);
     ray::DrawTextureRec(fxaa_target.texture,
         {0, 0, (float)rw, -(float)rh},
@@ -980,8 +1066,28 @@ void Chara3D::draw(float x, float y, float scale_mul, const char* debug_label) {
     // the offscreen texture?
     r34_dump_backbuffer_sample(debug_label ? debug_label : "unlabeled(post-blit)", r34_sample_x, r34_sample_y);
 
+    const double t_blit = r103 ? blit_timer.ms() : 0.0;
+
+    perf::PerfTimer restore_timer;   // ROUND 103
     ray::BeginBlendMode(ray::BLEND_CUSTOM_SEPARATE);
     ray::BeginMode2D(cam2d);
+    const double t_restore = r103 ? restore_timer.ms() : 0.0;
+
+    // ROUND 103: only a genuinely slow chara draw is logged, so this stays
+    // silent on the ~0.4 ms/instance normal frame and fires exactly on the
+    // hitches the traces keep catching.
+    if (r103) {
+        const double total = draw_timer.ms();
+        if (total > 5.0) {
+            char buf[192];
+            snprintf(buf, sizeof(buf),
+                     "%s flush2d=%.1f scene=%.1f outline_pass=%.1f blit=%.1f "
+                     "restore=%.1f",
+                     debug_label ? debug_label : "?",
+                     t_flush2d, t_scene, t_outline_pass, t_blit, t_restore);
+            perf::note_event("chara3d_slow_draw", buf, total);
+        }
+    }
 }
 
 std::unique_ptr<Chara3D> make_chara_from_player_data(const PlayerData* pd, bool mirror) {

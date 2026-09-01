@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>   // ROUND 103: std::getenv for the YATAIDON_R103_TRACE gate
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -109,6 +110,55 @@ void reset() {
     g_all.clear();
     g_all_screen.clear();
     g_by_screen.clear();
+}
+
+// ---------------------------------------------------------------------------
+// ROUND 103: one-off-event recorder. See perf.h for why this exists.
+// ---------------------------------------------------------------------------
+namespace {
+struct Event {
+    size_t      frame;     // index into the per-frame recorder's series
+    const char* kind;      // static string literal, never freed
+    std::string detail;
+    double      ms;
+};
+std::mutex         g_ev_mtx;
+std::vector<Event> g_events;
+}  // namespace
+
+bool events_enabled() {
+    // One-time getenv, then a plain bool. Deliberately NOT re-read: an
+    // instrument that can be switched on mid-run would make a trace's meaning
+    // depend on when it was switched.
+    static const bool on = std::getenv("YATAIDON_R103_TRACE") != nullptr;
+    return on;
+}
+
+void note_event(const char* kind, const std::string& detail, double ms) {
+    if (!events_enabled()) return;
+    size_t frame;
+    { std::lock_guard<std::mutex> lk(g_mtx); frame = g_all.size(); }
+    std::lock_guard<std::mutex> lk(g_ev_mtx);
+    if (g_events.size() > 200000) return;   // never grows unbounded
+    g_events.push_back({frame, kind, detail, ms});
+}
+
+void events_reset() {
+    std::lock_guard<std::mutex> lk(g_ev_mtx);
+    g_events.clear();
+}
+
+bool dump_events(const std::string& path) {
+    std::lock_guard<std::mutex> lk(g_ev_mtx);
+    std::ofstream out(path);
+    if (!out) return false;
+    out << "frame,kind,ms,detail\n";
+    out.setf(std::ios::fixed);
+    out.precision(3);
+    for (const auto& e : g_events)
+        out << e.frame << "," << e.kind << "," << e.ms << ","
+            << "\"" << e.detail << "\"\n";
+    return true;
 }
 
 std::string stats_json() {

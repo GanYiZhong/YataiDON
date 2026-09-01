@@ -49,7 +49,11 @@ enum class Screens {
     SKIN_VIEWER,
     SANDBOX,
     GAME_OVER,
-    INPUT_TEST
+    INPUT_TEST,
+    // ROUND 79: the cabinet's boot-time COPYRIGHT scene (attract/copyright.nulm).
+    // Appended at the END on purpose - the automation harness addresses screens
+    // by their integer value, so inserting in the middle would renumber them.
+    COPYRIGHT
 };
 
 inline std::string screens_to_string(Screens screen) {
@@ -75,7 +79,8 @@ inline std::string screens_to_string(Screens screen) {
         "SKIN_VIEWER",
         "SANDBOX",
         "GAME_OVER",
-        "INPUT_TEST"
+        "INPUT_TEST",
+        "COPYRIGHT"
     };
     return names[static_cast<int>(screen)];
 }

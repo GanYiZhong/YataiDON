@@ -2,6 +2,8 @@
 
 #include <array>
 #include "game.h"
+#include "../objects/game/dan_between.h"
+#include "../objects/game/exam_caption.h"
 
 struct DanExamInfo {
     float   progress     = 0;
@@ -9,6 +11,10 @@ struct DanExamInfo {
     int     counter_value = 0;
     int     red_value    = 0;
     std::string bar_texture;
+    // ROUND 67 -- the cabinet's own colour state (dan_bar_state()); the legacy
+    // three-bucket `bar_texture` stays as the Lua `handle_dan` API's `bar`.
+    std::string bar_state = "empty";
+    std::string song_state[3] = {"empty", "empty", "empty"};
     std::string exam_type;
     std::string exam_range;
     // ROUND 19 -- the cabinet's two row shapes (Exam::gothrough).
@@ -40,15 +46,29 @@ private:
     Gauge dan_gauge{GaugeMode::DAN, PlayerNum::P1, 1};  // initialized properly in init_dan()
 
     std::vector<bool> exam_failed;
-    // ROUND 47 (r47-dani-full-replication) -- the cabinet interrupts the whole
-    // course the moment an exam becomes unpassable (a 未満/less cutoff busted
-    // mid-song, or a per-song 以上/more quota missed at its own song's end):
-    // the remaining songs are never reached (DaniResult.lua's g_unreach_ rows,
-    // whose mere existence proves an early-out path feeds this screen) and
-    // every exam is judged failed (CheckResultDetail returns 0 outright when
-    // g_maxReachNum_ ~= 3). failed_out freezes the run: the Player stops
-    // updating (judgement counts freeze at the bust value, as on the cabinet),
-    // the music stops, and the result ribbon starts after FAILOUT_RESULT_DELAY.
+    // ROUND 87 CORRECTS ROUND 47. R47's claim here -- "the cabinet interrupts
+    // the whole course the moment an exam becomes unpassable" -- is WRONG, and
+    // was the user's 「條件達成失敗他就直接退出了」 bug. It inferred a mid-song
+    // early-out from DaniResult.lua's g_unreach_ rows; those rows are a
+    // CONSEQUENCE of a SONG-BOUNDARY termination, not evidence of a mid-song
+    // one. App::DojoEnsoGameManager::CheckEnsoEnd
+    // (D:\tlb_test_harness\decompiled\src\DojoEnsoGameManager.obj.c:1473)
+    // writes the course end-state `ed+112` in exactly four places, and the
+    // block that consults the norma results (:1580-1598) is entirely inside
+    // `if (*(_BYTE*)(ed + 4332))` -- a flag raised ONLY at :1622-1627 after
+    // TaikoCorePlayer::IsAllOnpuEnd() has held for 10 consecutive frames, and
+    // cleared on any frame it is false. The verdict is therefore read at the
+    // song's NATURAL END and nowhere else: final song -> state 1 (ordinary
+    // completion, norma not even consulted, :1583-1585); non-final + failed
+    // norma -> state 6, course ends WITHOUT advancing (:1594); non-final + ok
+    // -> state 5, advance (:1596). The one genuinely mid-song cut is state 4,
+    // the 演奏スキップ (:1660-1663). A failed exam therefore lets the song play
+    // out, exactly as the user reported it must.
+    // The `g_maxReachNum_ ~= 3 -> every exam fails` rule still holds, because
+    // state 6 does leave the remaining songs unreached.
+    // failed_out is now only entered at a song boundary (state 6) or by a skip
+    // (state 4): it freezes the run -- the Player stops updating, the music
+    // stops, and the result ribbon starts after FAILOUT_RESULT_DELAY.
     bool   failed_out    = false;
     double failed_out_at = 0.0;
     // ROUND 32 (r32-audit-gamedan): which song(s) of a NON-gothrough exam have
@@ -59,7 +79,17 @@ private:
 
     //DanTransition dan_transition;
 
+    // ROUND 69 (r69-dan-song-transition) -- the cabinet's between-song fusuma +
+    // next-song-name reveal (App::DojoEnsoGraphicFusuma / dani_enso_between.nulm).
+    // Armed by change_song(); its `open` label is what releases start_song().
+    DanBetween between;
+
     std::unique_ptr<OutlinedText> hori_name;
+
+    // ROUND 70 -- the condition threshold captions ("<N> 以上" / "<N> ％"), one
+    // proportional text run each, cached because the strings only change when
+    // an exam does. Cleared in on_screen_end() BEFORE the font manager goes.
+    ExamCaptionCache exam_captions;
 
     // Cumulative stat tracking across songs
     int prev_good = 0, prev_ok = 0, prev_bad = 0, prev_drumroll = 0;
@@ -85,10 +115,13 @@ private:
     // shared verbatim with GameScreen -- init_skip()/push_skip_state()/
     // draw_skip() are reused unmodified via inheritance (game.h, all public,
     // no dan-specific state needed). Only the "10th hit" action needs a
-    // dan-aware body (a skip ends the CURRENT song of the course, not the
-    // whole exam, and must recount THIS song's bad notes against a
-    // multi-song cumulative Player -- see Player::cut_to_end's baseline
-    // params). Because GameScreen::poll_skip()'s own tenth-hit line calls
+    // dan-aware body: ROUND 68 corrected what that action IS -- a dan skip
+    // ends the WHOLE COURSE at once and lands on DAN_RESULT (the cabinet's
+    // enso state 4 is not in DojoEnsoGameManager's advance-to-next-song
+    // branch; see the ROUND 68 block in game_dan.cpp) -- and it must still
+    // recount THIS song's bad notes against a multi-song cumulative Player
+    // (see Player::cut_to_end's baseline params). Because
+    // GameScreen::poll_skip()'s own tenth-hit line calls
     // `do_skip()` unqualified and non-virtually, it can never reach a
     // same-named override here, so the rim-counting body is duplicated
     // (poll_skip_dan) purely to redirect that one call -- everything above

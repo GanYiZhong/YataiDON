@@ -1,15 +1,50 @@
-#include "gauge.h"
+﻿#include "gauge.h"
 #include "../../libs/texture.h"
 #include <cmath>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
 
+// ROUND 80 (r80-gauge-layering-recheck): the rainbow ("fever") strip's cel
+// duration, in ms.
+//
+// The cabinet's rainbow is an 8-cel cross-fading flip-book, not a scroll:
+// `enso_normal/enso/tamashiigage/tamashii_gage.nulm` places the `rainbow`
+// instance at depth 55 of the gauge clip (char 32 for the 1P oni plate) and
+// that clip's inner sprite, character 31, holds the eight cels as eight
+// shapes -- ids 15, 17, 19, 21, 23, 25, 27, 29 at depths 0..7, with a ninth
+// placement of id 15 at depth 8 closing the loop. Cel k reaches alpha 1 on
+// sprite-31 frame 5k exactly, and the incoming cel k+1 ramps
+// 51/102/154/205/256 of 256 over the five frames in between -- measured for
+// every k in 0..7 with `lumen_anim_dump --sprite 31 --all --leaves`. So one
+// cel lasts FIVE stage frames and the whole loop is 40 frames.
+//
+// The stage runs at 60 fps (the movie header's own rate), so a cel is
+// 5/60 s = 83.3333 ms and the loop is 666.667 ms. This used to be a
+// hard-coded 75.0 ms (600 ms loop), i.e. the animation ran 11.1 % fast.
+//
+// The DAN gauge's own movie (`enso_dani/enso/tamashiigauge/tamashii_gauge`,
+// fever clip sprite 136 -> inner sprite 110) is authored identically -- eight
+// cels, alpha 1 on frame 5k, the same 51/102/154/205 ramp, 41 frames total --
+// so the one constant is correct for both modes.
+//
+// Common.FPS (120) is the SCRIPT tick rate and has nothing to do with this:
+// lumen clip frames are 60 fps. Do not conflate the two.
+constexpr double kRainbowCelMs = 1000.0 / 60.0 * 5.0;   // 83.3333...
+
+// ROUND 96 (r96-soulgauge-cellgrid): the cabinet's soul-gauge separator
+// overlay (tamashii_gage shape 33) is drawn with colour-transform
+// Amul = 77/256. ROUND 80 measured that value and reached it in TWO passes --
+// this engine's invented 0.15 plus the child skin's 0.17647 second pass in
+// arcade_gauge.lua -- which is 0.30 only where the skin's pass actually
+// reached. One pass at the real value is the same colour everywhere.
+constexpr float kOverlayAlpha = 77.0f / 256.0f;         // 0.30078125
+
 // ============================================================================
-// ROUND 48 (r48-soulgauge-chn-port) — CHN05 soul-gauge model
+// ROUND 48 (r48-soulgauge-chn-port) ??CHN05 soul-gauge model
 //
 // Runtime mechanism (ported verbatim from the decoded CHN05 Taiko.exe,
-// D:\tlb_test_harness\decompiled\specs\gauge_rank.md §1a/§1b/§1c and
-// research/note_judgement.md §7):
+// D:\tlb_test_harness\decompiled\specs\gauge_rank.md 禮1a/禮1b/禮1c and
+// research/note_judgement.md 禮7):
 //   UpdateTamashii (0x140134140):
 //     delta = (float)((float)(ratio * point[kind] * mult) * (1/65536))
 //     with ratio = TamashiiRatio[0] = 65536 in every one of the 19,158 corpus
@@ -20,25 +55,25 @@
 //   IsNormaClear (0x1400E5B10): cleared iff soul >= TamashiiNorm.
 //   IsTamashiiMax (0x1400E5C60): rainbow iff soul >= 10000.
 //   Display (EnsoGraphicTamashiiGage::Process 0x140132440):
-//     cell = (int)(soul / 10000 * 50)  — 50 cells; this engine keeps its
+//     cell = (int)(soul / 10000 * 50)  ??50 cells; this engine keeps its
 //     87-unit gauge_length as the equivalent display derivation
 //     (soul / 10000 * 87) so draw()/the skin overlay stay unchanged.
 //   Rolls/balloons/kusudama never touch the gauge (their handlers never call
-//   UpdateGamePlayInfo) — already true here (ROUND 44 M7).
+//   UpdateGamePlayInfo) ??already true here (ROUND 44 M7).
 //
-// Per-chart words: the arcade reads TamashiiPoint[良/可/不可] + TamashiiNorm
+// Per-chart words: the arcade reads TamashiiPoint[????銝] + TamashiiNorm
 // from each fumen's course header. TJA carries none of these, so the words
 // are regenerated with the AUTHORING generator recovered from the full CHN05
 // corpus (6,386 charts dumped, 4,721 unbranched+level-known fitted,
-// 99.39% exact (良,可,不可) triple match — scratchpad/r48_corpus_scan.py /
+// 99.39% exact (????銝) triple match ??scratchpad/r48_corpus_scan.py /
 // r48_solve2.py / r48_final_check.py):
 //     raw     = TamashiiNorm / (n_notes * clear_rate)
-//     良       = round(raw)
-//     可       = round(raw * ok_mult)        ok_mult: 0.75 (e/n/h), 0.5 (oni)
-//     不可     = -round(raw * loss_mult)
+//     ??      = round(raw)
+//     ??      = round(raw * ok_mult)        ok_mult: 0.75 (e/n/h), 0.5 (oni)
+//     銝     = -round(raw * loss_mult)
 // where n_notes counts discrete judgeable notes only (don/ka/big, matching
 // Player::reset_chart's gauge_total_notes), TamashiiNorm is fixed per tier
-// (easy 6000, normal 7000, hard 7000, oni 8000 — corpus-constant across all
+// (easy 6000, normal 7000, hard 7000, oni 8000 ??corpus-constant across all
 // 1520 songs per tier), and clear_rate / loss_mult are per-tier-per-level
 // constants solved by interval intersection over the corpus (all solved
 // intervals in ENGINE_BINDINGS.md ROUND 48).
@@ -74,11 +109,11 @@ const ChnGaugeRow CHN_ONI[10] = {
 // TamashiiNorm per tier (corpus-constant: every e=6000, n=7000, h=7000,
 // m/x=8000 across all 1520 songs).
 const int CHN_NORMA[4] = {6000, 7000, 7000, 8000};
-// ok (可) multiplier per tier: 0.75 easy/normal/hard, 0.5 oni (corpus-exact).
+// ok (?? multiplier per tier: 0.75 easy/normal/hard, 0.5 oni (corpus-exact).
 const float CHN_OKM[4] = {0.75f, 0.75f, 0.75f, 0.5f};
 // Clear-zone art tier: the three gauge plates' gold zones sit at segments
 // 30/35/40 of 50 = raw soul 6000/7000/8000, so hard (norma 7000) uses the
-// NORMAL-position art — CHN05's norm table, not Green's hard-at-79% layout.
+// NORMAL-position art ??CHN05's norm table, not Green's hard-at-79% layout.
 const int CHN_ART[4] = {0, 1, 1, 2};
 
 int chn_round(double x) {
@@ -238,7 +273,7 @@ Gauge Gauge::make_result(GaugeMode mode, PlayerNum player_num, float gauge_lengt
             // r48: CHN05 result state. gauge_length arrives as the 87-unit
             // display value (soul / 10000 * 87), so recover the raw soul and
             // apply IsNormaClear / IsTamashiiMax against the CHN05 norma
-            // (hard = 7000, same as normal — not Green's clear_start 69).
+            // (hard = 7000, same as normal ??not Green's clear_start 69).
             int d = seldiff;
             if (d < 0) d = 0;
             if (d > (int)Difficulty::ONI) d = (int)Difficulty::ONI;
@@ -254,7 +289,7 @@ Gauge Gauge::make_result(GaugeMode mode, PlayerNum player_num, float gauge_lengt
             else                                              g.string_diff = "_easy";
         }
 
-        // ROUND 57 (r57-dani-leftovers) — the r50/r53/r54-flagged id collision,
+        // ROUND 57 (r57-dani-leftovers) ??the r50/r53/r54-flagged id collision,
         // fixed per ROUND 54's recorded recipe. Ids 17/20 were inherited from
         // upstream PyTaikoGreen, whose game/animation.json defines 17 as the
         // renda-breathing MOVE and 20 as the kusudama FADE; C-casting them to
@@ -316,7 +351,7 @@ void Gauge::add_ok() {
 
     if (mode == GaugeMode::NORMAL) {
         if (chn_model) {
-            // CHN05 UpdateTamashii GOOD (可) branch + UpdateScore clamp.
+            // CHN05 UpdateTamashii GOOD (?? branch + UpdateScore clamp.
             soul += chn_delta(tp_good);
             if (soul > 10000.0) soul = 10000.0;
             if (soul < 0.0) soul = 0.0;
@@ -338,7 +373,7 @@ void Gauge::add_bad() {
 
     if (mode == GaugeMode::NORMAL) {
         if (chn_model) {
-            // CHN05 UpdateTamashii 不可/miss branch (tp_loss is negative)
+            // CHN05 UpdateTamashii 銝/miss branch (tp_loss is negative)
             // + UpdateScore clamp at both ends.
             soul += chn_delta(tp_loss);
             if (soul > 10000.0) soul = 10000.0;
@@ -366,10 +401,10 @@ void Gauge::update(double current_ms) {
     if (is_result) {
         if (mode == GaugeMode::DAN && !anims_loaded) {
             tamashii_fire_change = (TextureChangeAnimation*)tex.get_animation(25);
-            // ROUND 57 — this lazy path runs on whatever screen owns the
+            // ROUND 57 ??this lazy path runs on whatever screen owns the
             // gauge at the time, and the parent dan_result/animation.json
             // carries only ids 0/1/25: an unguarded get_animation(63) THROWS
-            // there (latent — DAN_RESULT's gauge draw is currently a
+            // there (latent ??DAN_RESULT's gauge draw is currently a
             // screen-local widget, see dan_result.cpp). Same-typed fallback
             // chain: 63 (rainbow fade) -> 10 (gauge fade) -> nullptr.
             if (tex.has_animation(63))      gauge_fade_in = (FadeAnimation*)tex.get_animation(63);
@@ -380,7 +415,7 @@ void Gauge::update(double current_ms) {
 
         if (state == ResultState::RAINBOW) {
             if (rainbow_start_ms < 0) rainbow_start_ms = current_ms;
-            rainbow_frac = (float)fmod((current_ms - rainbow_start_ms) / 75.0, 8.0);
+            rainbow_frac = (float)fmod((current_ms - rainbow_start_ms) / kRainbowCelMs, 8.0);
         }
         if (tamashii_fire_change) tamashii_fire_change->update(current_ms);
         if (gauge_fade_in) gauge_fade_in->update(current_ms);
@@ -394,7 +429,7 @@ void Gauge::update(double current_ms) {
     }
 
     if (mode == GaugeMode::NORMAL && chn_model) {
-        // r48: CHN05 IsTamashiiMax / IsNormaClear — both against the raw soul.
+        // r48: CHN05 IsTamashiiMax / IsNormaClear ??both against the raw soul.
         is_rainbow = (soul >= 10000.0);
         is_clear   = (soul >= (double)norma);
     } else {
@@ -415,7 +450,7 @@ void Gauge::update(double current_ms) {
 
     if (rainbow_fade_in.has_value()) {
         rainbow_fade_in.value()->update(current_ms);
-        rainbow_frac = (float)fmod((current_ms - rainbow_start_ms) / 75.0, 8.0);
+        rainbow_frac = (float)fmod((current_ms - rainbow_start_ms) / kRainbowCelMs, 8.0);
     }
 }
 
@@ -439,29 +474,97 @@ void Gauge::draw(float y) {
         tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_unfilled" + string_diff)),
                          {.mirror = mirror, .y = y, .index = mirrored});
 
-        int gauge_length_int = (int)gauge_length;
-        // r48: under the CHN05 model the clear line sits at the norma art
-        // tier (hard shares normal's 7000 norma / segment-35 gold zone).
-        int clear_point      = chn_model ? clear_start[art_index] : clear_start[difficulty];
+        // ====================================================================
+        // ROUND 96 (r96-soulgauge-cellgrid) ??the ordinary gauge is drawn on
+        // the CABINET's 50-cell / 21 px grid, not on this engine's historical
+        // 87-cell / 12 px one.
+        //
+        // Measured from the shipped 39.06 art (scratchpad/r96/measure_overlay.py):
+        // `overlay_{easy,normal,hard}.png` each carry 51 separator bars, 7 px
+        // wide, at pitch EXACTLY 21.000 px (texture x 12+21k..18+21k, json base
+        // x 720 -> screen 732+21k..738+21k, k = 0..50), and
+        // `1p_unfilled_*.png`'s groove runs screen 738..1781 with the olive
+        // 繧ｯ繝ｪ繧｢ zone starting at screen 1557 = 738 + 21*39. So X0 = 738,
+        // pitch = 21, 50 cells, and the clear boundary is a whole cell.
+        // ROUND 80 independently measured the same three plates as
+        // 29+1+20 / 34+1+15 / 39+1+10 cells = clear cell 30 / 35 / 40.
+        //
+        // The cabinet itself stretches ONE fill shape (tamashii_gage.nulm frame
+        // labels gage_0..gage_50; at gage_25 the fill's sx is 21.875 of a 24 px
+        // column = 525 px = 21 x 25), i.e. it is a stretched bar whose length is
+        // ALWAYS an integral multiple of 21 px. It never shows a partial cell,
+        // and the visible cell separators are the overlay, not the fill art.
+        // ROUND 48 already ported the quantisation rule itself:
+        // EnsoGraphicTamashiiGage::Process, cell = (int)(soul / 10000 * 50)
+        // (floor, 50 cells).
+        //
+        // WHY THIS CHANGED (user report: 縲檈oul gauge驥假ｼ梧怏骭ｯ 莉悶?譁ｰ蠅樊?謨ｸ
+        // 謇?ｩ･縺ｯ荳?譬ｼ荳?譬ｼ 莉也怐襍ｷ譚･譛蓋ap縲?:
+        // this branch used to draw the fill at `gauge_length_int * bar_width`
+        // (87 cells x 12 px) and its gauge-up flash `<pn>p_bar_fade` ??a 24 px
+        // SOLID slab whose texture.json base is 732 ??at `732 + 12*gauge_length_int`.
+        // The visible gauge is the child skin's `arcade_gauge.lua` redraw on the
+        // 21 px grid, and that file's `erase()` only repaints 24 px past the
+        // arcade fill edge, so the engine's own flash survived up to
+        //     18 + 12*floor(87p) - 21*floor(50p)  ==  +33 px
+        // past the true cell boundary ??a detached, WRONG-HEIGHT (24x40 at json
+        // y -31, vs the bar's 12x33 at y -27) orange fragment sitting one cell
+        // ahead of the fill with unfilled groove in between. Measured live this
+        // round on three frames (soul 945 / 2788 / 5996 -> +30 / +33 / +33 px,
+        // predicted +30 / +33 / +33; scratchpad/r96/scan.py, crop
+        // scratchpad/r96/crops/live_a_58_edge.png). ROUND 19's claim in
+        // arcade_gauge.lua that "the engine's own copy is otherwise harmless
+        // (this file's opaque redraw + erase() covers it)" is CORRECTED BY
+        // ROUND 96: it was never covered.
+        //
+        // With the engine on the arcade grid the skin has nothing left to
+        // correct, so `arcade_gauge.lua` no longer redraws the fill at all and
+        // every seam it existed to hide is gone by construction.
+        // ====================================================================
+        constexpr int   kSegs   = 50;
+        constexpr float kPitch  = 21.0f;
+        constexpr float kX0     = 738.0f;   // groove start == 1p_bar/2p_bar json base
+        // Clear cell per clear-zone art tier (0 easy / 1 normal+hard / 2 oni),
+        // i.e. the index of the rounded TRANSITION cell + 1. ROUND 80 measured
+        // the three plates as 29+1+20, 34+1+15, 39+1+10 cells.
+        static const int kClearCell[3] = {30, 35, 40};
+
+        const int art  = chn_model ? art_index : std::min(2, difficulty);
+        const int cs   = kClearCell[std::max(0, std::min(2, art))];
+        // The cabinet's own floor-to-50-cells. gauge_length is soul/10000*87,
+        // so gauge_length/gauge_max is exactly the raw soul fraction.
+        int cell = (int)((gauge_length / gauge_max) * (float)kSegs);
+        if (cell < 0)     cell = 0;
+        if (cell > kSegs) cell = kSegs;
+
         float bar_width      = tex.textures[tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")]->width;
+        const int red_cells  = std::min(cell, cs - 1);
 
-        tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar")),
-                         {.y = y, .x2 = std::min(gauge_length_int * bar_width, (clear_point - 1) * bar_width) - bar_width, .index = mirrored});
+        if (red_cells > 0)
+            tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar")),
+                             {.y = y, .x2 = kPitch * red_cells - bar_width, .index = mirrored});
 
-        if (gauge_length_int >= clear_point - 1)
+        if (cell >= cs) {
+            // bar_clear_transition is 24 px wide but its glyph is only the
+            // first 21 columns (22..23 are fully transparent, measured), i.e.
+            // exactly one arcade cell. Its json base is 741, six px right of
+            // the fill's 738, so the offset carries the base delta.
             tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION,
-                             {.mirror = mirror, .x = (clear_point - 1) * bar_width, .y = y, .index = mirrored});
-
-        if (gauge_length_int > clear_point) {
-            tex.draw_texture(GAUGE::BAR_CLEAR_TOP,
-                             {.mirror = mirror, .x = clear_point * bar_width, .y = y,
-                              .x2 = (gauge_length_int - clear_point) * bar_width, .index = mirrored});
-            tex.draw_texture(GAUGE::BAR_CLEAR_BOTTOM,
-                             {.x = clear_point * bar_width, .y = y,
-                              .x2 = (gauge_length_int - clear_point) * bar_width, .index = mirrored});
+                             {.mirror = mirror, .x = kX0 + kPitch * (cs - 1) - 741.0f,
+                              .y = y, .index = mirrored});
+            const int gold_cells = cell - cs;
+            if (gold_cells > 0) {
+                const float gw = kPitch * gold_cells - bar_width;
+                tex.draw_texture(GAUGE::BAR_CLEAR_TOP,
+                                 {.mirror = mirror, .x = kPitch * cs, .y = y,
+                                  .x2 = gw, .index = mirrored});
+                tex.draw_texture(GAUGE::BAR_CLEAR_BOTTOM,
+                                 {.x = kPitch * cs, .y = y,
+                                  .x2 = gw, .index = mirrored});
+            }
         }
 
-        if (gauge_length_int == gauge_max && rainbow_fade_in.has_value()) {
+        if (cell == kSegs && rainbow_fade_in.has_value()) {
             float fade    = rainbow_fade_in.value()->attribute;
             int   frame_a = (int)rainbow_frac % 8;
             int   frame_b = (frame_a + 1) % 8;
@@ -472,29 +575,46 @@ void Gauge::draw(float y) {
                              {.frame = frame_b, .mirror = mirror, .y = y, .fade = fade * t, .index = mirrored});
         }
 
-        if (gauge_length_int <= gauge_max && gauge_length_int > previous_length) {
-            if (gauge_length_int == clear_point) {
+        // ROUND 96: the gauge-up flash, on the same 21 px grid and FLUSH against
+        // the true cell edge instead of straddling an 87-grid one. All three
+        // *_fade textures are 24 px wide and share texture.json base x 732, six
+        // px LEFT of the fill's 738 -- so the offset that puts their right edge
+        // on the cell boundary is (X0 + pitch*cell - 24) - 732.
+        //
+        // The trigger is the CELL index rising, not the 87-unit display value:
+        // "one cell at a time" is the whole point of the report this round
+        // fixed. previous_length is the 87-unit value from before the last
+        // judgement, so it is converted to cells the same way.
+        const int prev_cell = (int)((previous_length / gauge_max) * (float)kSegs);
+        if (cell <= kSegs && cell > prev_cell) {
+            const float fx = kX0 + kPitch * cell - 24.0f - 732.0f;
+            if (cell == cs) {
                 tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION_FADE,
-                                 {.mirror = mirror, .x = gauge_length_int * bar_width, .y = y,
+                                 {.mirror = mirror, .x = fx, .y = y,
                                   .fade = gauge_update_anim->attribute, .index = mirrored});
-            } else if (gauge_length_int > clear_point) {
+            } else if (cell > cs) {
                 tex.draw_texture(GAUGE::BAR_CLEAR_FADE,
-                                 {.x = gauge_length_int * bar_width, .y = y,
+                                 {.x = fx, .y = y,
                                   .fade = gauge_update_anim->attribute, .index = mirrored});
             } else {
                 tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar_fade")),
-                                 {.x = gauge_length_int * bar_width, .y = y,
+                                 {.x = fx, .y = y,
                                   .fade = gauge_update_anim->attribute, .index = mirrored});
             }
         }
 
+        // ROUND 96: the cabinet draws the separator overlay (tamashii_gage
+        // shape 33) with colour-transform Amul = 77/256 = 0.30078 -- measured
+        // by ROUND 80, which then composited to it in two passes (this 0.15
+        // plus the skin's 0.17647). One pass at the real value is the same
+        // result with no seam where the skin's pass did not reach.
         tex.draw_texture(tex.get_enum("gauge/overlay" + string_diff),
-                         {.mirror = mirror, .y = y, .fade = 0.15f, .index = mirrored});
+                         {.mirror = mirror, .y = y, .fade = kOverlayAlpha, .index = mirrored});
 
         int label_index = chn_model ? art_index : std::min(2, difficulty);
-        // r48: CHN05 lights the クリア caption exactly at norma-clear
+        // r48: CHN05 lights the ?胯??caption exactly at norma-clear
         // (is_clear = soul >= norma), not at the fill's pixel position.
-        bool live_label_lit = chn_model ? is_clear : (gauge_length_int >= clear_point - 1);
+        bool live_label_lit = chn_model ? is_clear : (cell >= cs);
         if (live_label_lit) {
             tex.draw_texture(tex.get_enum("gauge/clear_" + global_data.config->general.language),
                              {.y = y, .index = label_index + (mirrored * 3)});
@@ -553,9 +673,22 @@ void Gauge::draw(float y) {
             tex.draw_texture(GAUGE_DAN::RAINBOW, {.frame = frame_b, .fade = fade * t});
         }
 
-        if ((int)gauge_length <= (int)gauge_max && (int)gauge_length > (int)previous_length)
+        // ROUND 96: the DAN fill was already on the 50 x 21 px grid (ROUND 19),
+        // so it does NOT share the ordinary gauge's off-grid overhang. Its
+        // FLASH did: GAUGE_DAN::_1P_BAR_FADE is 32 px wide with texture.json
+        // base x 716, and `kDanShift + length_px - bar_width` = 21*dan_n put
+        // its right edge at 716 + 21*dan_n + 32 = the cell edge (738 + 21*dan_n)
+        // PLUS 10 px. Placed flush instead, the same way NORMAL now is.
+        // (Measured from Graphics/game/gauge_dan/texture.json + the shipped PNG
+        // sizes, not observed live -- the dan overhang is 10 px, not the 33 px
+        // the ordinary gauge showed, and no live dan capture was taken this
+        // round. Flagged as such.)
+        if ((int)gauge_length <= (int)gauge_max && (int)gauge_length > (int)previous_length) {
+            const float dan_fade_w = (float)tex.textures[GAUGE_DAN::_1P_BAR_FADE]->width;
             tex.draw_texture(GAUGE_DAN::_1P_BAR_FADE,
-                             {.x = kDanShift + length_px - bar_width, .fade = gauge_update_anim->attribute});
+                             {.x = (kDanX0 + length_px - dan_fade_w) - 716.0f,
+                              .fade = gauge_update_anim->attribute});
+        }
 
         tex.draw_texture(GAUGE_DAN::OVERLAY, {.fade = 0.15f});
 
@@ -624,7 +757,7 @@ void Gauge::draw_result(double external_fade) {
                          {.scale = scale, .fade = std::min(0.15, base_fade), .index = is_2p});
         tex.draw_texture(GAUGE::FOOTER, {.scale = scale, .fade = base_fade, .index = is_2p});
 
-        // r48: under the CHN05 model the bright クリア caption follows the
+        // r48: under the CHN05 model the bright ?胯??caption follows the
         // actual clear STATE (soul >= norma), not the fill's pixel position.
         bool label_lit = chn_model ? (state == ResultState::CLEAR || state == ResultState::RAINBOW)
                                    : (gauge_length_int >= clear_point - 1);

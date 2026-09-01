@@ -21,9 +21,21 @@
 // behind an atomic bool that is false unless a profiling run was asked for
 // over the automation socket.
 
+#include <chrono>
 #include <string>
 
 namespace perf {
+
+// ROUND 103: tiny scope timer for the event recorder's call sites. Taking a
+// clock reading costs ~20 ns, but the sites below only construct one when the
+// recorder is enabled, so a normal run pays nothing.
+struct PerfTimer {
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    double ms() const {
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - t0).count();
+    }
+};
 
 // --- frame timing -----------------------------------------------------------
 void record_frame(const std::string& screen,
@@ -39,6 +51,27 @@ std::string stats_json();
 // Percentiles hide hitches; this is how a spike gets located and
 // attributed to a phase.
 bool        dump_csv(const std::string& path);
+
+// --- ROUND 103: one-off-event recorder --------------------------------------
+//
+// A frame-time series says WHEN a hitch happened; it cannot say WHAT did it.
+// The sampling profiler below cannot answer it either: at `prof start 500` it
+// suspends the render thread so hard the game managed 5 frames in 300 s, and
+// its folded output is unsymbolised addresses (measured, ROUND 103).
+//
+// So: the handful of places that can do expensive one-time work report it
+// here, stamped with the frame index the per-frame recorder is currently at,
+// so an event lines up with a row of `perfdump`'s CSV. Dumped by the
+// automation command `perfevents <path.csv>`.
+//
+// OFF unless the environment variable **YATAIDON_R103_TRACE** is set. When
+// off the cost is one relaxed atomic bool load at each call site, and no
+// timing is taken at all - see the `events_enabled()` guard each site uses.
+bool        events_enabled();
+void        note_event(const char* kind, const std::string& detail, double ms);
+// CSV: frame,kind,detail_ms -> frame,kind,ms,detail
+bool        dump_events(const std::string& path);
+void        events_reset();
 
 // --- per-Lua-hook timing ----------------------------------------------------
 // LuaScript::call()/call_r() feed this when it is switched on over the

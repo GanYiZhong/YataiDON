@@ -7,6 +7,8 @@
 #include "../diff_sort.h"
 #include "../../../libs/script.h"
 
+#include <algorithm>
+
 void register_song_select_lua_bindings(sol::state& lua) {
     lua.new_usertype<BaseBox>("BaseBox",
         "box_x",           &BaseBox::box_x,
@@ -18,6 +20,16 @@ void register_song_select_lua_bindings(sol::state& lua) {
         "draw_state",      &BaseBox::draw_state,
         "lua_kind",        &BaseBox::lua_kind,
         "text_name",       &BaseBox::text_name,
+        // ROUND 63 (r63-duplicate-song-box): the box's own file path, as a
+        // string.  A skin that keeps per-box wall-clock state (the wheel's
+        // open/close animation clocks) needs a key that is UNIQUE PER BOX;
+        // `text_name` is not one -- TJAParser strips "-New Audio-" /
+        // "-Old Audio-" (tja.cpp, ex_data.new_audio/old_audio) so the two
+        // charts of one song carry the SAME display title, and any
+        // title-keyed table then makes the unfocused twin share the focused
+        // box's clock (it was drawn permanently open).  This is the only
+        // per-box identity the engine can hand out that survives a frame.
+        "path", [](BaseBox& self) { return self.path.string(); },
         "is_new",          &BaseBox::is_new,
         "genre_frame", [](BaseBox& self) { return genre_to_ref_frame(self.genre_index); },
         "fore_color", [](BaseBox& self) -> sol::object {
@@ -78,6 +90,29 @@ void register_song_select_lua_bindings(sol::state& lua) {
             return "genre";
         },
         "has_box_texture", [](FolderBox& self) { return self.box_texture.has_value(); },
+        // ROUND 82 (r82-songselect-overflow-and-searchbox): `box.png` is a
+        // per-folder banner the SONG LIBRARY supplies (FolderBox::load_text,
+        // box_folder.cpp:188) - arbitrary dimensions, authored by whoever made
+        // the folder, with no cabinet counterpart of a known size. Drawn 1:1 it
+        // escapes the board completely: Songs/17 New's 344x424 banner came out
+        // 516x636 (x screen_scale 1.5) on a board whose own texture is 960x352,
+        // spilling ~359 px below the board's measured frame and over the 曲検索
+        // bar beneath it (scratchpad/r82/shots/before_10_new_folder.png).
+        //
+        // The cabinet does NOT solve this by scissoring. Every one of the 22
+        // `common_songselect` movies was walked this round for ClipDepth masks
+        // (scratchpad/r82/walk_*, the r75 walker): 0 clip masks across ~8,900
+        // PlaceObject records - the genre board has no clip region at all. What
+        // it has instead is art AUTHORED to fit: all 16 frames of
+        // `common_song_select_main_genre_board_character_l/r`, including the one
+        // labelled `custom`, are exactly 480x480 with bounds (-240,-240)..(240,240).
+        //
+        // So containment here is by FIT, not by clip - the same rule the engine's
+        // own C++ banner path already uses (box_folder.cpp:353-369, fit inside
+        // `box_folder_max_size`, shrink only, never upscale). This binding never
+        // had it. `max_w`/`max_h` (destination px, i.e. the same space as x/y)
+        // switch it on and `cx`/`cy` centre the fitted result; all four absent =
+        // exactly the old behaviour, so no other skin changes.
         "draw_box_texture", [](FolderBox& self, sol::table params) {
             if (!self.box_texture.has_value()) return;
             float s      = tex.screen_scale;
@@ -87,8 +122,24 @@ void register_song_select_lua_bindings(sol::state& lua) {
             float fade   = params.get_or("fade", 1.0f);
             float w      = (float)self.box_texture->width;
             float h      = (float)self.box_texture->height;
+            float dw     = w * s * scale;
+            float dh     = h * s * scale;
+
+            float max_w = params.get_or("max_w", 0.0f);
+            float max_h = params.get_or("max_h", 0.0f);
+            if (dw > 0.0f && dh > 0.0f && (max_w > 0.0f || max_h > 0.0f)) {
+                float fw = (max_w > 0.0f) ? max_w / dw : 1.0f;
+                float fh = (max_h > 0.0f) ? max_h / dh : 1.0f;
+                float f  = std::min(fw, fh);
+                if (f < 1.0f) { dw *= f; dh *= f; }   // shrink only, aspect kept
+            }
+            sol::optional<float> cx = params["cx"];
+            sol::optional<float> cy = params["cy"];
+            if (cx) x = *cx - dw / 2.0f;
+            if (cy) y = *cy - dh / 2.0f;
+
             ray::Rectangle src{0, 0, w, h};
-            ray::Rectangle dest{x, y, w * s * scale, h * s * scale};
+            ray::Rectangle dest{x, y, dw, dh};
             ray::DrawTexturePro(self.box_texture.value(), src, dest, ray::Vector2{0, 0}, 0, ray::Fade(ray::WHITE, fade));
         }
     );
@@ -208,6 +259,11 @@ void register_song_select_lua_bindings(sol::state& lua) {
         // is the only way a skin can tell "which folder am I inside" — needed
         // for the arcade rule that song boards inside an event folder take the
         // folder's colour, not the song's.
-        "current_folder", &Navigator::lua_current_folder
+        "current_folder", &Navigator::lua_current_folder,
+        // ROUND 85: the real state-machine transitions (see Navigator::WheelEvent).
+        // Poll `wheel_event_seq` once a frame; when it changes, `wheel_event`
+        // carries the id.  Read-only from Lua — only the navigator emits.
+        "wheel_event",     sol::readonly(&Navigator::wheel_event),
+        "wheel_event_seq", sol::readonly(&Navigator::wheel_event_seq)
     );
 }

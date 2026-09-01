@@ -9,6 +9,7 @@
 #include "../objects/global/coin_overlay.h"
 #include "../objects/global/nameplate.h"
 #include "../objects/global/chara_3d.h"
+#include "../objects/game/exam_caption.h"
 
 class DanResultScreen : public Screen {
 public:
@@ -30,6 +31,11 @@ private:
     std::unique_ptr<OutlinedText>    hori_name;
     std::vector<std::unique_ptr<OutlinedText>> song_names;
 
+    // ROUND 70 -- see game_dan.h. One cache for the whole-run `tx_border`
+    // (size 36), the per-song one (size 20) and the tamashii norma marker
+    // (size 25); the key includes the size so all three share it safely.
+    ExamCaptionCache exam_captions;
+
     // ROUND 16 (r16-dan): the player Don and the nameplate. `dani_result.nulm`
     // MC 437 carries `don_1p` (char 305, depth 17) and `plate_1p_instance`
     // (char 306, depth 18) at alpha 1 from frame 0 to frame 434 -- i.e. on BOTH
@@ -43,6 +49,17 @@ private:
     // DaniResultSongMain.lua kWaitTime_ 0.5s / kWaitEndTime_ 30s, and the same
     // pair in DaniResultTotalMain.lua.
     double page_start_ms = 0.0;
+    // ── ROUND 72 (r72-danresult-icon-and-doubleplay) ──────────────────────────
+    // Page 1's OWN clock. `page_start_ms` is the *current page's* clock and is
+    // deliberately rewound to `now` when page 2 opens (handle_input) because the
+    // cabinet re-arms kWaitTime_/kWaitEndTime_ per page. draw_page1() was reading
+    // that same clock, so the rewind re-armed every song board's `land` gate and
+    // the whole 3-row slide-in from the right replayed underneath page 2's
+    // 500 ms cross-fade. On the cabinet MC 437 is ONE playhead that never
+    // rewinds (song_01 45 / song_02 70 / song_03 95, then `total` at 120), so
+    // page 1 animates exactly once. This clock is set once, in on_screen_start.
+    double page1_start_ms = 0.0;
+    std::vector<bool> page1_armed;   // r72 trace latch, see draw_page1()
 
     // ── ROUND 50 (r50-dani-visual-completion) ────────────────────────────────
     // Page-2 count-up timeline (DaniResultTotalMain's state machine flattened
@@ -104,7 +121,11 @@ private:
     void apply_reward();
     void draw_page1(double now);
     void draw_page2(double fade, double now);
-    void draw_exam_info(double fade, double now, float scale = 0.8f);
+    // ROUND 65: the exam column draws at NATIVE size — the cabinet's card is
+    // 1400 px wide and the row pitch 154 (dani_result.nulm MC 437's own
+    // total_detail_0N_mc placements). The 0.8 this defaulted to was never in
+    // the 39.06 data.
+    void draw_exam_info(double fade, double now, float scale = 1.0f);
     void draw_gauge_row(const Exam& exam, float y, double fade, double now, float scale);
     void draw_celebration(double now);
     // Count-up-aware digit column: rolls ones-first, 0.5 s per digit
