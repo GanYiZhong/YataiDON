@@ -1177,12 +1177,10 @@ void Player::drumroll_counter_manager(double current_ms) {
 }
 
 void Player::balloon_counter_manager(double current_ms) {
-    if (!is_balloon && balloon_counter.has_value()) {
-        bool popped = balloon_counter->is_finished();
+    if (!is_balloon && balloon_counter.has_value() && !balloon_counter->has_popped()) {
         balloon_counter.reset();
         chara->set_anim(AnimIndex::DON_NORMAL);
-        chara->set_anim(popped ? AnimIndex::DON_BALLOON_SUCCESS
-                               : AnimIndex::DON_BALLOON_FAILURE);
+        chara->set_anim(AnimIndex::DON_BALLOON_FAILURE);
     }
     if (balloon_counter.has_value()) {
         balloon_counter->update(current_ms, curr_balloon_count);
@@ -1199,7 +1197,7 @@ void Player::balloon_counter_manager(double current_ms) {
 }
 
 void Player::kusudama_counter_manager(double current_ms) {
-    if (!is_balloon && kusudama_counter.has_value()) {
+    if (!is_balloon && kusudama_counter.has_value() && !kusudama_counter->has_popped()) {
         kusudama_counter.reset();
     }
     if (kusudama_counter.has_value()) {

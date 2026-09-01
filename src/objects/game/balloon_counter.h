@@ -20,4 +20,6 @@ public:
     void draw(float y);
 
     bool is_finished() const;
+
+    bool has_popped() const;
 };

@@ -28,4 +28,6 @@ public:
     void draw();
 
     bool is_finished() const;
+
+    bool has_popped() const;
 };

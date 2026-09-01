@@ -49,3 +49,7 @@ void BalloonCounter::draw(float y) {
 bool BalloonCounter::is_finished() const {
     return fade->is_finished;
 }
+
+bool BalloonCounter::has_popped() const {
+    return is_popped;
+}

@@ -76,3 +76,7 @@ void KusudamaCounter::draw() {
 bool KusudamaCounter::is_finished() const {
     return fade_out->is_finished;
 }
+
+bool KusudamaCounter::has_popped() const {
+    return is_popped;
+}
