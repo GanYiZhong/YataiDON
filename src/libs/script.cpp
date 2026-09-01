@@ -449,9 +449,35 @@ void ScriptManager::register_lua_bindings() {
         info["width"] = tex_obj->width;
         info["height"] = tex_obj->height;
 
+        // ROUND 62 (r62-nameplate-fix): a texture is multi-frame in TWO ways and
+        // this only ever reported one of them.
+        //   * `FramedTexture` - one image FILE per frame (`0.png`, `1.png`, ...),
+        //   * `crop_data`     - one image file cut into frames by texture.json's
+        //                       `crop` rectangle list (`read_tex_obj_data`).
+        // `draw_texture{frame = N}` indexes EITHER (`texture.cpp` draw path reads
+        // `crop_data->at(params.frame)` when it is present), but `frame_count`
+        // only ever asked the `FramedTexture` branch, so every crop sheet reported
+        // **1** - and a skin that sized a loop or a bounds check off this value
+        // silently drew nothing.
+        // That is not hypothetical: `Scripts/global/nameplate.lua` clamped the
+        // 段位 chip with `dan < frame_count` against `nameplate/dan_emblem`, a
+        // 25-rect crop sheet, so `has_dan` was false for every rank except 初級
+        // and the dan chip never appeared on ANY screen (measured live this round
+        // on a dan=24 player: `frames=1 has_dan=false`).
+        // `Scripts/entry/entry.lua:129-134` documents the same trap for
+        // `indicator/background` (a 325-rect sheet) as a "do NOT gate on this" note.
+        // Reporting the true count fixes the class rather than the instance.
+        // Blast radius, enumerated: the only `frame_count` consumers in either
+        // shipped skin are `background/bg_objects/renda.lua`, `.../dancer.lua`,
+        // `.../chibi/base.lua` (all real `FramedTexture`s - unaffected),
+        // `global/nameplate.lua` (the bug above) and `global/indicator.lua`, which
+        // stores the value in `self.frame_count` and never reads it.
         int frame_count = 1;
         if (auto framed = dynamic_cast<FramedTexture*>(tex_obj.get())) {
-            frame_count = framed->textures.size();
+            frame_count = static_cast<int>(framed->textures.size());
+        }
+        if (tex_obj->crop_data.has_value()) {
+            frame_count = std::max(frame_count, static_cast<int>(tex_obj->crop_data->size()));
         }
         info["frame_count"] = frame_count;
 

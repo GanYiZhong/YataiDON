@@ -136,6 +136,18 @@ public:
     void toggle_favorite(SongBox* song);
     void refresh_scores();
     BoxDef parse_box_def(const fs::path& path);
+    // ROUND 95 -- `parse_box_def` without the `box_def_cache` write, for callers
+    // that are not on the main thread. See navigator.cpp.
+    static BoxDef parse_box_def_uncached(const fs::path& path);
+    // ROUND 95 -- `song_files` (private, above) has exactly ONE writer, the
+    // `song_files_thread` lambda in preload(), and no reader synchronisation at
+    // all. `find_song_by_title` is a reader, and DanNavigator's ROUND 95 course
+    // scan now calls it from a worker thread. This flag is the happens-before:
+    // cleared just before that thread is spawned, set (release) as its last act,
+    // so a reader that has seen `true` (acquire) is guaranteed the finished map.
+    // Initialised TRUE so an engine that never calls preload() -- or the
+    // __EMSCRIPTEN__ build, which has no such thread -- never waits.
+    std::atomic<bool> song_files_ready{true};
     bool needs_diff_sort() const { return awaiting_diff_sort; }
     bool diff_sort_ready() { return awaiting_diff_sort; }
     void apply_diff_sort(int course, int level, int order = 1);
@@ -172,6 +184,50 @@ public:
     }
     int bg_genre_frame() const { return genre_to_ref_frame(bg_genre_index); }
     int last_bg_genre_frame() const { return genre_to_ref_frame(last_bg_genre_index); }
+
+    // ---------------------------------------------------------------- ROUND 85
+    // The song-select state-machine transitions, as REAL events instead of the
+    // change-detection + TTL heuristics ROUNDs 51/56/61 had to use (R51 said so
+    // itself: "behavioural approximations of state-machine transitions the
+    // engine does not expose to Lua ... if the engine ever exposes real
+    // OpenFolder/CloseFolder events, route the modes off those instead").
+    //
+    // Each id names the 39.06 script transition it stands for; the two SWAP ids
+    // are the cabinet's own content-swap frames, which is what makes the board
+    // animation's start deterministic instead of loader-latency dependent:
+    //
+    //   OPEN_BEGIN  SelectGenreFolder -> GotoAndPlay("genre_deceide")   clip f45
+    //   OPEN_SWAP   OpenFolderState's SetSongDataAll()                  clip f114
+    //   CLOSE_BEGIN CloseFolderState  -> GotoAndPlay("return")          clip f150
+    //   CLOSE_SWAP  CloseFolderState's restore                          clip f219
+    //
+    // Lua polls `wheel_event_seq`; when it changes, `wheel_event` is the new id.
+    // A counter rather than a queue keeps this allocation-free and race-free on
+    // the render thread, and a skin that misses a frame still sees the latest
+    // transition (the legs are hundreds of ms long).
+    enum WheelEvent {
+        WHEEL_EVENT_NONE        = 0,
+        WHEEL_EVENT_SCENE_ENTRY = 1,  // SecondLoading: select_on immediately
+        WHEEL_EVENT_CURSOR_MOVE = 2,  // MoveCursor -> Scroll (508 ms hold, then grow)
+        WHEEL_EVENT_OPEN_BEGIN  = 3,
+        WHEEL_EVENT_OPEN_SWAP   = 4,
+        WHEEL_EVENT_CLOSE_BEGIN = 5,
+        WHEEL_EVENT_CLOSE_SWAP  = 6,
+        WHEEL_EVENT_COURSE_BACK = 7,  // ReLoading + CourseBackFlag
+    };
+    int wheel_event     = WHEEL_EVENT_NONE;
+    int wheel_event_seq = 0;
+    double wheel_leg_ms = 0.0;   // ms the current leg's *_BEGIN was emitted
+    void emit_wheel_event(int id);
+
+    // The cabinet's pre-swap window on both legs: genre_deceide f45 -> the swap
+    // at f114, and `return` f150 -> the swap at f219.  69 clip frames at 60 fps.
+    // Both boards and the wheel share these frames, so this is the interval the
+    // whole transition is choreographed over.
+    static constexpr double kSwapDelayMs = (114.0 - 45.0) / 60.0 * 1000.0;  // 1150
+    // True while the leg is still inside that window, i.e. the swap must wait.
+    // `begin_id` is WHEEL_EVENT_OPEN_BEGIN or WHEEL_EVENT_CLOSE_BEGIN.
+    bool swap_is_early(int begin_id) const;
 };
 
 extern Navigator navigator;

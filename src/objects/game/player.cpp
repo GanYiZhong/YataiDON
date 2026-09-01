@@ -295,6 +295,8 @@ void Player::evaluate_branch(double current_ms) {
 }
 
 void Player::update(double ms_from_start, double current_ms, std::optional<Background>& background) {
+    bg_hook = background.has_value() ? &background.value() : nullptr;
+
     if (!is_2p) {
         global_data.live_combo    = combo;
         global_data.live_score    = score;
@@ -437,6 +439,7 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
         } else {
             gauge->draw(y);
         }
+        if (bg_hook) bg_hook->draw_gauge(player_num);
     }
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
@@ -482,6 +485,7 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
         } else {
             gauge->draw(y);
         }
+        if (bg_hook) bg_hook->draw_gauge(player_num);
     }
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
@@ -623,6 +627,7 @@ void Player::reset_chart() {
     is_balloon = false;
     curr_balloon_count = 0;
     kusudama_shared_hits = 0;
+    last_subdivision = -1;
     is_branch = false;
     branch_condition = "";
     branch_p_count = 0;
@@ -1590,7 +1595,12 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
         }
     }
     if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y, 1.0f);
+        float rig_2p_y = 0.0f;
+        if (is_2p && balloon_counter.has_value()) {
+            if (const SkinInfo* p2 = tex.skin_entry("balloon_counter_2p_offset"))
+                rig_2p_y = p2->y;
+        }
+        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y + rig_2p_y, 1.0f);
     } else {
         if (is_2p) {
             chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y, 1.0f);

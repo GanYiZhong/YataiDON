@@ -2,6 +2,8 @@
 
 #include <array>
 #include "game.h"
+#include "../objects/game/dan_between.h"
+#include "../objects/game/exam_caption.h"
 
 struct DanExamInfo {
     float   progress     = 0;
@@ -9,6 +11,8 @@ struct DanExamInfo {
     int     counter_value = 0;
     int     red_value    = 0;
     std::string bar_texture;
+    std::string bar_state = "empty";
+    std::string song_state[3] = {"empty", "empty", "empty"};
     std::string exam_type;
     std::string exam_range;
     bool    gothrough    = true;
@@ -44,9 +48,11 @@ private:
     std::vector<std::array<bool, 3>> exam_song_failed;
     std::optional<DanInfoCache> dan_info_cache;
 
-    //DanTransition dan_transition;
+    DanBetween between;
 
     std::unique_ptr<OutlinedText> hori_name;
+
+    ExamCaptionCache exam_captions;
 
     // Cumulative stat tracking across songs
     int prev_good = 0, prev_ok = 0, prev_bad = 0, prev_drumroll = 0;

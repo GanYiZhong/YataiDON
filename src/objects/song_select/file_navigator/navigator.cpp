@@ -94,6 +94,18 @@ Navigator::~Navigator() {
         song_files_thread.join();
 }
 
+void Navigator::emit_wheel_event(int id) {
+    wheel_event = id;
+    ++wheel_event_seq;
+    if (id == WHEEL_EVENT_OPEN_BEGIN || id == WHEEL_EVENT_CLOSE_BEGIN)
+        wheel_leg_ms = get_current_ms();
+}
+
+bool Navigator::swap_is_early(int begin_id) const {
+    if (wheel_event != begin_id) return false;
+    return (get_current_ms() - wheel_leg_ms) < kSwapDelayMs;
+}
+
 void Navigator::wait_for_song_files() {
     if (song_files_thread.joinable())
         song_files_thread.join();
@@ -140,6 +152,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
     open_index = 0;
 
 #ifndef __EMSCRIPTEN__
+    song_files_ready = false;
     song_files_thread = std::thread([this, songs_paths]() {
         std::vector<fs::path> files = get_song_files(songs_paths);
         std::mutex map_mutex;
@@ -170,6 +183,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
             });
         }
         for (std::thread& worker : pool) worker.join();
+        song_files_ready = true;
     });
 #endif // !__EMSCRIPTEN__
 
@@ -190,6 +204,9 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    // ROUND 85: the cabinet's SecondLoading (ai_song_select_song_main.lua:218)
+    // plays select_on immediately -- no 508 ms hold.
+    emit_wheel_event(WHEEL_EVENT_SCENE_ENTRY);
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();
         is_inline = false;
@@ -409,6 +426,10 @@ void Navigator::flush_pending_boxes() {
         genre_bg_end = inline_state->first_song_index + inline_state->songs_count - 1;
     }
 
+    if (loading_complete.load() && inline_state.has_value() &&
+        swap_is_early(WHEEL_EVENT_OPEN_BEGIN))
+        return;
+
     if (loading_complete.load()) {
         if (open_index >= items.size()) open_index = 0;
         if (inline_state.has_value()) {
@@ -452,6 +473,8 @@ void Navigator::flush_pending_boxes() {
         set_positions(false, 800);
         if (!items.empty()) items[open_index]->expand_box();
         is_processing = false;
+        if (inline_streaming && inline_state.has_value())
+            emit_wheel_event(WHEEL_EVENT_OPEN_SWAP);
         inline_streaming = false;
         loading_complete = false;
     }
@@ -1063,7 +1086,12 @@ BoxDef Navigator::parse_box_def(const fs::path& path) {
     std::string key = path.string();
     auto it = box_def_cache.find(key);
     if (it != box_def_cache.end()) return it->second;
+    BoxDef result = parse_box_def_uncached(path);
+    box_def_cache[key] = result;
+    return result;
+}
 
+BoxDef Navigator::parse_box_def_uncached(const fs::path& path) {
     std::ifstream boxDef(path / "box.def");
     std::string line;
     BoxDef result;
@@ -1112,7 +1140,6 @@ BoxDef Navigator::parse_box_def(const fs::path& path) {
             result.fore_color = parse_hex_color(get_value("#FORECOLOR:"));
         }
     }
-    box_def_cache[key] = result;
     return result;
 }
 
@@ -1142,6 +1169,7 @@ bool Navigator::has_def_file(const std::filesystem::path& path) {
 
 void Navigator::exit_inline() {
     if (!inline_state) return;
+    emit_wheel_event(WHEEL_EVENT_CLOSE_BEGIN);
     InlineState& state = *inline_state;
 
     // Kick off fade_out on all inserted items
@@ -1160,6 +1188,7 @@ void Navigator::exit_inline() {
 }
 
 void Navigator::begin_inline_load() {
+    emit_wheel_event(WHEEL_EVENT_OPEN_BEGIN);
     bg_genre_pending = false;
     int approx_items = (pending_inline_box_def.collection == "RECOMMENDED" ||
                         pending_inline_box_def.collection == "DIFFICULTY")
@@ -1796,6 +1825,7 @@ void Navigator::set_positions(bool init, float duration) {
 
 void Navigator::navigate(int delta, bool snap) {
     if (items.empty() || inline_streaming) return;
+    emit_wheel_event(WHEEL_EVENT_CURSOR_MOVE);
     items[open_index]->close_box();
     last_bg_genre_index = bg_genre_index;
     bg_genre_pending = false;
@@ -1846,6 +1876,7 @@ void Navigator::enter_diff_select() {
 }
 
 void Navigator::exit_diff_select() {
+    emit_wheel_event(WHEEL_EVENT_COURSE_BACK);
     items[open_index]->exit_box();
     set_positions(false, 500);
     for (auto& box : items) {
@@ -1910,6 +1941,8 @@ void Navigator::update(double current_ms) {
             if (!items[i]->fade->is_finished || !genre_bg->is_complete()) { all_done = false; break; }
         }
 
+        if (all_done && swap_is_early(WHEEL_EVENT_CLOSE_BEGIN)) all_done = false;
+
         if (all_done) {
             pending_inline_folder = nullptr;
             items.erase(items.begin() + state.first_song_index,
@@ -1923,6 +1956,7 @@ void Navigator::update(double current_ms) {
             items[open_index]->exit_box();
             genre_bg.reset();
             is_processing = false;
+            emit_wheel_event(WHEEL_EVENT_CLOSE_SWAP);
         }
     }
 

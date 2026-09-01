@@ -1,4 +1,5 @@
 #include "text.h"
+#include "perf.h"   // ROUND 103: frame-stamped one-off-event recorder
 #include <spdlog/spdlog.h>
 #include <math.h>
 
@@ -56,12 +57,23 @@ FontManager::SizedFont& FontManager::acquire(const std::string& text, int font_s
     }
 
     if (reload) {
+        // ROUND 103: this rebuild re-rasterises and re-uploads the WHOLE
+        // accumulated codepoint set for this size, synchronously, under
+        // font_mutex, the moment ONE never-before-seen character appears. Its
+        // cost therefore GROWS with how much text this size has already seen,
+        // which is the classic first-use hitch shape. Recorded with the
+        // codepoint count so the cost can be related to the set size.
+        perf::PerfTimer atlas_timer;
         if (entry.loaded) ray::UnloadFont(entry.font);
         std::vector<int> codepoints(entry.codepoints.begin(), entry.codepoints.end());
         entry.font = ray::LoadFontEx(font_path.string().c_str(), font_size,
                                      codepoints.data(), (int)codepoints.size());
         ray::SetTextureFilter(entry.font.texture, ray::TEXTURE_FILTER_BILINEAR);
         entry.loaded = true;
+        perf::note_event("font_atlas",
+                         std::to_string(font_size) + "px n=" +
+                         std::to_string(codepoints.size()),
+                         atlas_timer.ms());
         spdlog::debug("font: {}px atlas -> {} codepoints, {}x{} texture ({} sizes resident)",
                       font_size, codepoints.size(),
                       entry.font.texture.width, entry.font.texture.height, fonts.size());

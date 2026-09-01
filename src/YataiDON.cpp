@@ -28,6 +28,7 @@
 #include "scenes/game_practice.h"
 #include "scenes/input_cali.h"
 #include "scenes/input_test.h"
+#include "scenes/copyright.h"
 #include "scenes/loading.h"
 #include "scenes/result.h"
 #include "scenes/result_2p.h"
@@ -215,7 +216,9 @@ static bool screen_fade_applies(Screens from, Screens to) {
         default: break;
     }
     if (from == Screens::LOADING) return false;
+    if (from == Screens::COPYRIGHT || to == Screens::COPYRIGHT) return false;
     if (from == Screens::SONG_SELECT && to == Screens::DAN_SELECT) return false;
+    if (from == Screens::ENTRY && to == Screens::DAN_SELECT) return false;
     return true;
 }
 
@@ -282,6 +285,7 @@ static void run_frame() {
             L.screen_fade_start = g_frame_ms;
         else
             L.screen_fade_start = 0.0;
+        global_data.previous_screen = global_data.current_screen;
         L.current_screen = next_screen.value();
         global_data.current_screen = screens_to_string(L.current_screen);
         global_data.input_locked = 0;
@@ -482,6 +486,7 @@ int main(int argc, char* argv[]) {
     L.screens[Screens::SONG_SELECT]     = std::make_unique<SongSelectScreen>();
     L.screens[Screens::SONG_SELECT_2P]  = std::make_unique<SongSelect2PScreen>();
     L.screens[Screens::LOADING]         = std::make_unique<LoadingScreen>();
+    L.screens[Screens::COPYRIGHT]       = std::make_unique<CopyrightScreen>();
     L.screens[Screens::GAME]            = std::make_unique<GameScreen>();
     L.screens[Screens::GAME_2P]         = std::make_unique<Game2PScreen>();
     L.screens[Screens::GAME_PRACTICE]   = std::make_unique<PracticeGameScreen>();

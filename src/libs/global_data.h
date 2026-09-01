@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "config.h"
 #include "ray.h"
 #include "parsers/tja.h"
@@ -51,6 +53,35 @@ struct Exam {
     bool gothrough = true;
 };
 
+inline std::string dan_bar_state(const Exam& exam, int value,
+                                 bool live = false,
+                                 bool near_end = false,
+                                 bool just_before_end = false) {
+    const bool down = (exam.range == "less");
+    // CheckMax
+    if (exam.gold > 0 && ((down && value < exam.gold) || (!down && value >= exam.gold))) {
+        if (!live || !down) return "max";
+        if (just_before_end) return "max_soon2";
+        if (near_end)        return "max_soon";
+        // fall through to the flat palette -- no `max` during play
+    }
+    int gauge = (exam.red > 0)
+        ? (int)std::floor(100.0 * (double)value / (double)exam.red) : 100;
+    if (gauge > 100) gauge = 100;
+    if (down) { gauge = 100 - gauge; if (gauge < 0) gauge = 0; }
+    if (gauge <= 0) return "empty";
+    if (!down) {
+        if (gauge <= 49) return "up_50";
+        if (gauge <= 99) return "up_80";
+        return "up_100";
+    }
+    const int good = (exam.red > 0 && exam.gold > 0)
+        ? 100 - (int)std::floor(100.0 * (double)exam.gold / (double)exam.red) : 100;
+    if (gauge < 30)    return "down_80";
+    if (gauge <= good) return "up_80";
+    return "down_100";
+}
+
 struct DanSongEntry {
     fs::path song_path;
     int genre_index = 0;
@@ -81,6 +112,8 @@ struct DanResultExam {
     float song_progress[3] = {0.0f, 0.0f, 0.0f};
     int   song_count       = 0;
     int tier = 0;
+    std::string bar_state = "empty";
+    std::string song_state[3] = {"empty", "empty", "empty"};
 };
 
 struct DanResultData {
@@ -142,6 +175,7 @@ struct CameraConfig {
 struct GlobalData {
     int songs_played = 0;
     std::string current_screen = "LOADING";
+    std::string previous_screen;
     bool in_transition = false;
     std::string title_state = "";
     double      title_state_start_ms = 0.0;
@@ -166,6 +200,7 @@ struct GlobalData {
     int input_locked = 0;
     std::vector<SessionData> session_data = std::vector<SessionData>(3);
     std::vector<int> last_difficulty = std::vector<int>(3, -1);
+    std::vector<fs::path> dan_folder = std::vector<fs::path>(3);
 
     GlobalData() {
         // Initialize vectors with default-constructed elements

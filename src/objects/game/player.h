@@ -56,6 +56,13 @@ public:
     std::optional<JudgeCounter> judge_counter;
     std::optional<Gauge> gauge;
     Gauge* dan_gauge = nullptr;  // non-owning; set by DanGameScreen
+    // ROUND 80 (r80-gauge-layering-recheck): non-owning, latched by update()
+    // from the same `std::optional<Background>&` every screen already hands
+    // it, so draw() can run the skin's per-lane gauge-overlay hook in the
+    // right slot of the frame without changing draw()'s signature (and with
+    // it every GAME/GAME_2P/GAME_DAN/GAME_PRACTICE caller). Null whenever the
+    // screen has no Background.
+    Background* bg_hook = nullptr;
 
     Player* kusudama_partner = nullptr;
     int kusudama_shared_hits = 0;

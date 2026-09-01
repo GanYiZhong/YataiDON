@@ -314,7 +314,10 @@ struct ComboAnnounceFixture : public SandboxScreen::Fixture {
     PlayerNum player_num = PlayerNum::P1;
     std::optional<ComboAnnounce> active;
 
-    static constexpr int combos[] = { 100, 200, 500, 1000 };
+    // ROUND 91: 1800 / 2200 added so the 4-digit layout rule (pitch 54 + a
+    // 0.85 horizontal condense, measured off the cabinet's don_fukidashi.nulm)
+    // can be captured directly instead of needing a 1800-combo playthrough.
+    static constexpr int combos[] = { 100, 200, 500, 700, 1000, 1800, 2200 };
 
     ComboAnnounceFixture() { name = "ComboAnnounce"; }
 
@@ -332,7 +335,9 @@ struct ComboAnnounceFixture : public SandboxScreen::Fixture {
     }
     void draw() override { if (active) active->draw(0); }
 
-    std::vector<std::string> type_names() override { return {"100", "200", "500", "1000"}; }
+    std::vector<std::string> type_names() override {
+        return {"100", "200", "500", "700", "1000", "1800", "2200"};
+    }
     int  get_type()           override { return type_idx; }
     void set_type(int idx, double) override { type_idx = idx; }
 

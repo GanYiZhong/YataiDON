@@ -38,6 +38,10 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
         fn_handle_skip     = lua_object["handle_skip"];
         fn_draw_back     = lua_object["draw_back"];
         fn_draw_fore     = lua_object["draw_fore"];
+        // ROUND 80 (r80-gauge-layering-recheck): optional per-lane gauge
+        // overlay hook (see background.h). A skin without it stays invalid
+        // here and is never called.
+        fn_draw_gauge    = lua_object["draw_gauge"];
     }
 }
 
@@ -150,5 +154,14 @@ void Background::draw_fore() {
     if (!result.valid()) {
         sol::error err = result;
         spdlog::error("Error calling draw_fore: {}", err.what());
+    }
+}
+
+void Background::draw_gauge(PlayerNum player_num) {
+    if (!fn_draw_gauge.valid()) return;
+    auto result = fn_draw_gauge(lua_object, static_cast<int>(player_num));
+    if (!result.valid()) {
+        sol::error err = result;
+        spdlog::error("Error calling draw_gauge: {}", err.what());
     }
 }

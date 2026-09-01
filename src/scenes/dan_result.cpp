@@ -1,4 +1,6 @@
 #include "dan_result.h"
+#include <cmath>
+#include <cstdlib>   // ROUND 72: std::getenv for the YATAIDON_R72_DANRES trace
 #include "../libs/input.h"
 #include "../libs/scores.h"
 
@@ -93,6 +95,11 @@ void DanResultScreen::on_screen_start() {
     page2_fade = (FadeAnimation*)tex.get_animation(1);
     is_page2   = false;
     page_start_ms = get_current_ms();
+    // ROUND 72 — page 1 gets its own, never-rewound clock (see dan_result.h).
+    page1_start_ms = page_start_ms;
+    page1_armed.assign(
+        global_data.session_data[(int)global_data.player_num].dan_result_data.songs.size(),
+        false);
 
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
     background.emplace(PlayerNum::DAN, tex.screen_width);
@@ -325,6 +332,7 @@ void DanResultScreen::build_page2_timeline() {
 
 Screens DanResultScreen::on_screen_end(Screens next_screen) {
     reset_session();
+    exam_captions.clear();   // ROUND 70 -- OutlinedText out before the font does
     return Screen::on_screen_end(next_screen);
 }
 
@@ -577,7 +585,22 @@ void DanResultScreen::draw_page1(double now) {
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
     float height = tex.skin_config[SC::DAN_RESULT_INFO_HEIGHT].y;
     float margin = tex.skin_config[SC::SCORE_INFO_COUNTER_MARGIN].x;
-    const double on_page = now - page_start_ms;
+    // ROUND 72 — page 1's OWN clock. This used to read `page_start_ms`, which
+    // handle_input REWINDS to `now` when page 2 opens (the cabinet re-arms
+    // kWaitTime_/kWaitEndTime_ per page, so that rewind is correct FOR INPUT).
+    // Reading it here re-armed every board's `land` gate and replayed the whole
+    // 3-row slide-in from the right on the page-2 clock, under (and past the
+    // right edge of) page 2's 500 ms cross-fade. `dani_result.nulm` MC 437 is a
+    // single playhead — song_01 45 / song_02 70 / song_03 95, then `total` at
+    // 120 — that never rewinds, so page 1 animates exactly once.
+    const double on_page = now - page1_start_ms;
+
+    // ROUND 72 — env-gated slide trace (`YATAIDON_R72_DANRES=1`), the r40
+    // `[r40animclock]` pattern. One line the first time each board crosses its
+    // own `land`, so a REPLAY shows up in the log instead of having to be
+    // inferred from pixels. `page1_armed` is only ever reset by
+    // on_screen_start, so a second set of lines means the clock rewound.
+    static const bool r72_trace = std::getenv("YATAIDON_R72_DANRES") != nullptr;
 
     for (int i = 0; i < (int)sd.dan_result_data.songs.size(); i++) {
         const DanResultSong& song = sd.dan_result_data.songs[i];
@@ -590,6 +613,13 @@ void DanResultScreen::draw_page1(double now) {
                               : SONG_LAND_MS[2] + (i - 2) * 25 * FRAME_MS;
         if (on_page < land) continue;
         float sx = slide_offset(on_page - land);
+        if (r72_trace && i < (int)page1_armed.size() && !page1_armed[i]) {
+            page1_armed[i] = true;
+            spdlog::info("[r72danres] page1 board {} SLIDE-IN arm at on_page={:.0f} "
+                         "(land={:.0f}) is_page2={} page1_clock={:.0f} page_clock={:.0f}",
+                         i, on_page, land, is_page2 ? 1 : 0,
+                         now - page1_start_ms, now - page_start_ms);
+        }
 
         // ROUND 47 -- an unreached song (the course failed out before it): the
         // cabinet's g_unreach_ board (DaniResultSongBase StartUnreach) shows
@@ -631,8 +661,32 @@ void DanResultScreen::draw_page1(double now) {
         // ROUND 33 (r33-diffnum-level10): the real chip's own multi-digit glyph
         // (song_board_diff_num_mc__shape104, the "10" chip) is LEFT-anchored and
         // grows RIGHTWARD -- see MAPPING.md ROUND 33 for the full derivation.
+        //
+        // ROUND 74 defect 5 -- the pitch was 7, which is arithmetically too
+        // small for THESE glyphs to clear each other: "1" carries ink at cell
+        // columns 12..21 and "0" at 9..24, so a pitch p puts "1" ink at
+        // [12,21] and "0" ink at [p+9, p+24]; they only stop overlapping at
+        // p >= 22-9+1 = 13.  At 7 the ★10 chip overlapped by SIX columns.
+        //
+        // The cabinet's own numbers (`lumen_shape_dump dani_result.nulm ... -m
+        // -r 108 -f {0,40,45}`, char 108 = song_board_diff_num_mc, one
+        // pre-composed star+number artwork per level, all at identity):
+        //   ★1  star ink 373..398, "1" ink 409..418
+        //   ★9  star ink 373..398, "9" ink 406..422
+        //   ★10 star ink 373..398, "1" ink 400..409, "0" ink 413..428
+        // A single digit therefore sits on cell-left 397 (409-12 and 406-9 both
+        // give 397) and the PAIR sits on cell-left 388, i.e. the block shifts
+        // LEFT by 9 per extra digit, and the pair's own pitch is
+        // (413-9) - (397-9) = 16.  Hence `dan_result_diff_num_margin.x` = 16 and
+        // `dan_result_diff_num_lead.x` = 9; levels 1..9 are byte-identical
+        // (lead*0 = 0) and ★10 reproduces the cabinet's 3 px inter-digit gap to
+        // the pixel.  `lead` is read by name and defaults to 0 so a skin that
+        // never declared it keeps ROUND 33's plain left anchor.
+        const SkinInfo* dl = tex.skin_entry("dan_result_diff_num_lead");
+        const float lead = (dl ? dl->x : 0.0f) * (float)(lv.size() - 1);
         for (int j = 0; j < (int)lv.size(); j++)
-            tex.draw_texture(RESULT_INFO::DIFF_NUM, {.frame=lv[j]-'0', .x=sx+(float)(j*dm), .y=y});
+            tex.draw_texture(RESULT_INFO::DIFF_NUM,
+                             {.frame=lv[j]-'0', .x=sx - lead + (float)(j*dm), .y=y});
 
         auto draw_stat = [&](TexID icon, int val, int idx) {
             tex.draw_texture(icon, {.x=sx, .y=y, .fade=rf});
@@ -662,9 +716,18 @@ void DanResultScreen::draw_page1(double now) {
 // 21 px pitch, a dark under-norma zone, the norma marker chevron, the 魂 ball,
 // and the percentage in the gauge's own 56x64 digit set whose palette follows
 // the verdict (noclear/clear/max). All geometry is measured (see
-// scratchpad/r50/bake_tamashii.py header) and mapped into the exam column's
-// 0.8-scale frame; the count-up runs at the cabinet's own 25 ms/unit with the
-// digits revealed only after the fill (InitGauge's empty -> num_in order).
+// scratchpad/r50/bake_tamashii.py header); the count-up runs at the cabinet's
+// own 25 ms/unit with the digits revealed only after the fill (InitGauge's
+// empty -> num_in order).
+//
+// ROUND 65 — the widget now lives in TRUE arcade coordinates. ROUND 50
+// authored every position as `exam_bg + 0.8*(arcade - exam_bg)` because the
+// column drew at 0.8; that scale was a mistake (dani_result.nulm MC 437 places
+// the cards at native size, 154 apart), so `tamashii/texture.json` was
+// re-based by the inverse map and `scale` is 1.0. Cross-check: the re-based
+// track x0 is 563 (ROUND 50 measured 564) and the 魂 ball lands at 1616, i.e.
+// its 88 px art centred on the widget origin + 514 = 1660. Both fall out of
+// the transform, neither was tuned.
 void DanResultScreen::draw_gauge_row(const Exam& exam, float y, double fade, double now, float scale) {
     const double on_page = now - page_start_ms;
     const int final_cells  = gauge_value  / 2;
@@ -745,15 +808,187 @@ void DanResultScreen::draw_gauge_row(const Exam& exam, float y, double fade, dou
     tex.draw_texture(T("marker"), {.scale=scale, .x=scale*21.0f*border_cells, .y=y, .fade=fade});
 }
 
+// ROUND 65 (r65-danresult-examrows) — the page-2 condition rows rebuilt on the
+// cabinet's own card, measured from 39.06 rather than inferred.
+//
+// SOURCES. `script_lua/dani_result/DaniResultTotalMain.lua` builds this column
+// out of `total_mc` (the soul-gauge row — DaniResultTotalBase) plus up to THREE
+// `total_detail_0N_mc`, each of which loads
+// `lumen/000_default/enso_dani/result/dani_result_detail.nulm` into its
+// `dummy_detail`. So the page-2 block is at most FOUR cards, and every card is
+// the same 1400x149 white plate (that movie's shape 1).
+//
+// GEOMETRY (all 1920x1080 skin units; `lumen_anim_dump dani_result.nulm
+// --sprite 437 --range 305,305` for the card origins, `lumen_shape_dump
+// dani_result_detail.nulm ... -m -r 234 -f {0,5,10,15} -v` for everything
+// inside one card — the -v placement list IS the authored table):
+//
+//   card centres      (1100, 425) then +154 per row  -> ROW PITCH 154, and the
+//                     card spans x 400..1800, y centre +-74.5
+//   caption pill      `txt_theme_name`/`tx_detail_label`, text box local
+//                     (-683,-74.5) 340x54, centred — drawn on EVERY card,
+//                     whole-run and per-song alike
+//   whole-run ("all", detail_mc frame 0)
+//     badge           the gold tomoe cluster, ring centred local (-648.5, 18.5)
+//     bar             local x -302..676 (978 wide), y -41..51; the fill grows
+//                     from the LEFT (`score_com_gauge_bar_up_mc` is a dark
+//                     cover, right-anchored, that shrinks to nothing at 100)
+//     value           `score_l_*_mc` digit group, LEFT-anchored at local
+//                     (-257,-10), pitch 52 — the big number sits hard against
+//                     the bar's left end and grows rightwards
+//     threshold       `tx_border` text, LEFT-aligned at local (-602,-24.5),
+//                     size 36, next to the badge
+//   per-song ("1st"/"2nd"/"3rd", frames 5/10/15)
+//     three FIXED slots at local x -415 / 50 / 515 (pitch 465); only the first
+//     `g_maxReachNum_` are placed, each with its own ordinal badge at
+//     local -559/-94/371 (i.e. slot - 144), its own 330x54 box, its own
+//     LEFT-anchored digit group at slot+(-140,12) pitch 27, and its own
+//     `tx_border` at slot+(-76,20.5) size 20 — BELOW the box.
+//
+// THE 未満 VALUE IS NOT THE ACHIEVED COUNT. DaniResultDetailBase.InitDetailAll /
+// InitDetail feed the digit counters `odaiBorder_ - odaiNum_` (clamped at 0) on
+// a `less` row and `odaiNum_` on a `more` row: a 「8 未満」 card with zero 可
+// shows a big 8 — the REMAINING ALLOWANCE — and its bar starts full and unwinds.
+//
+// THERE IS NO 達成失敗 ON THIS SCREEN. `isUnreach_` is declared in
+// DaniResultDetailBase and never read; `dani_result_detail.nulm` has no fail
+// label (labels: all/1st/2nd/3rd, init/num_in/wait, and the gauge palettes).
+// The cabinet's 達成失敗 plate belongs to page 1's SONG boards
+// (`DaniResultSongBase.mainMc_.unreached`, StartUnreach/end_unreach), which is
+// where this engine already draws it. A lost condition on page 2 is carried by
+// the bar colour and the value alone — so the overlay this screen used to stamp
+// over the threshold caption and the 魂 emblem is gone.
+//
+// SCALE. The column draws at NATIVE size. ROUND 50 authored its gauge widget
+// into a 0.8-scaled frame; that 0.8 was never in the cabinet (the card really is
+// 1400 px wide on a 1470 px board), it just made the row block cover ~72 % of
+// the panel and squeezed the 154 px pitch down to 112, which is what made the
+// captions collide. `tamashii/texture.json` is re-based to true arcade
+// coordinates in the same round, so `scale` is 1.0 everywhere here.
 void DanResultScreen::draw_exam_info(double fade, double now, float scale) {
     const SessionData& sd  = global_data.session_data[(int)global_data.player_num];
     const double on_page = now - page_start_ms;
     // Per-screen override of the shared dan_exam_info; see game_dan.cpp.
+    // DAN_RESULT's own entry carries the CARD pitch (154) and the big-digit
+    // pitch (52); GAME_DAN's shared 140/40 belong to the in-play panel.
     const SkinInfo& dei = tex.skin_entry("dan_exam_info_result")
                         ? *tex.skin_entry("dan_exam_info_result")
                         : tex.skin_config[SC::DAN_EXAM_INFO];
     float offset_y = dei.y * scale;
     float margin   = dei.x * scale;
+
+    // Per-song slot pitch (arcade 465) and the sub-row's own digit pitch (27).
+    const SkinInfo* sr = tex.skin_entry("dan_result_exam_sub_row");
+    const float sub_pitch = (sr ? sr->y : 465.0f) * scale;
+    const SkinInfo* sb = tex.skin_entry("dan_result_exam_sub_bar");
+    const float sub_full   = sb ? sb->width : 324.0f;
+    const float sub_margin = (sb ? sb->x : 27.0f) * scale;
+
+    // The cabinet's threshold caption is a size-36 text field, not the big
+    // score digit set; the skin ships its own baked 26x48 sheet for it. Fall
+    // soft to the value digits for a skin that never baked one.
+    const bool has_border_digits = tex.has_texture("exam_info/exam_border_counter");
+    const TexID border_id = has_border_digits ? EXAM_INFO::EXAM_BORDER_COUNTER
+                                              : EXAM_INFO::VALUE_COUNTER;
+    const float border_pitch = (has_border_digits ? 26.0f : margin) * scale;
+    // The per-song `tx_border` is size 20 against the whole-run row's 36.
+    const float sub_border_scale = 20.0f / 36.0f;
+
+    // A texture.json entry may be a single object or an array; `index` indexes
+    // that array, and TextureObject defaults to ONE entry. The per-song row
+    // wants the second pen, so ask first -- a skin (PyTaikoGreen, or any child
+    // that never declared the pair) must not be indexed out of range.
+    auto pens = [&](TexID id) {
+        auto it = tex.textures.find((uint32_t)id);
+        return (it == tex.textures.end()) ? 1 : (int)it->second->x.size();
+    };
+    const int sub_pen    = pens(EXAM_INFO::EXAM_LESS) > 1 ? 1 : 0;
+    const int sub_bd_pen = pens(border_id)            > 1 ? 1 : 0;
+
+    // Left-anchored digit column (the cabinet's own anchoring for BOTH the
+    // value and the threshold: digit1 = ones sits at (n-1)*pitch and the
+    // leftmost glyph never moves, so a 3-digit value starts where a 1-digit
+    // value starts). draw_digit_counter() is the RIGHT-anchored page-1 helper
+    // and stays for its own callers.
+    auto digits_left = [&](const std::string& s, float x0, float y0, float pitch,
+                           TexID id, int index, float sc) {
+        for (int k = 0; k < (int)s.size(); k++)
+            tex.draw_texture(id, {.frame=s[k]-'0', .scale=sc, .x=x0 + k*pitch,
+                                  .y=y0, .fade=fade, .index=index});
+    };
+
+    // ROUND 67 -- one fill draw for both the whole-run bar and a per-song slot.
+    //
+    // `state` is a frame label of dani_result_detail.nulm sprite 49 / 156 (see
+    // dan_bar_state() in global_data.h). Five of the seven are a FLAT TINT of a
+    // white rectangle (shape #47, cmul=[0,0,0,256] + cadd=<RGB>), which this
+    // skin ships as 8 px colour strips; `empty` places no fill at all; and
+    // `max` replaces the fill entirely with `score_l/m_rainbow_mc` -- one
+    // gradient PERIOD as wide as the bar, scrolled a whole period per 80-frame
+    // (1.333 s) loop, i.e. 972/80*60 = 729 px/s on the 972-wide bar. The tile
+    // ships at two periods so the source rect can slide without wrapping.
+    auto have = [&](TexID id) {
+        return tex.textures.find((uint32_t)id) != tex.textures.end();
+    };
+    auto draw_exam_fill = [&](const std::string& state, float w, float rx, float ry,
+                              float sc, double fd, double t, bool sub) {
+        if (w <= 0 || state == "empty") return;
+        const TexID rb   = sub ? EXAM_INFO::EXAM_SUB_RAINBOW : EXAM_INFO::EXAM_RAINBOW;
+        const TexID d80  = sub ? EXAM_INFO::EXAM_SUB_DOWN80  : EXAM_INFO::EXAM_DOWN80;
+        const TexID up50 = sub ? EXAM_INFO::EXAM_SUB_RED     : EXAM_INFO::EXAM_RED;
+        const TexID up80 = sub ? EXAM_INFO::EXAM_SUB_GOLD    : EXAM_INFO::EXAM_GOLD;
+        const TexID p100 = sub ? EXAM_INFO::EXAM_SUB_MAX     : EXAM_INFO::EXAM_MAX;
+        if (state == "max" && have(rb)) {
+            auto it = tex.textures.find((uint32_t)rb);
+            const float th   = (float)it->second->height;
+            const float perd = (float)it->second->width * 0.5f;   // two periods
+            // The clip loops in 80 stage frames at the movie's own 60 fps
+            // (`lumen_anim_dump --list` reports "fps": 60 for both
+            // dani_result_detail and dani_enso_detail), i.e. one full period
+            // every 1.3333 s. NEVER Common.FPS=120 here -- the Lua tick rate and
+            // the clip's frame rate are different clocks.
+            //
+            // ROUND 74 defect 1 -- the caller's `t` is get_current_ms(), a fresh
+            // wall-clock read taken inside draw(); using it samples the scroll at
+            // draw time and so carries the frame's CPU-time variance into the
+            // phase. The scroll takes the frame-latched clock instead
+            // (animation.h:18 -- "so render-time variance doesn't cause jitter").
+            // `t` is deliberately left alone: every other animation on this
+            // screen is keyed to it and to the counters it drives.
+            (void)t;
+            const float ph   = perd - (float)std::fmod(get_frame_ms() / 1000.0
+                                                       * (perd * 60.0 / 80.0),
+                                                       (double)perd);
+            // ROUND 74 defect 1 -- WRAP SAFETY, same as game_dan.cpp. Every
+            // texture is loaded with TEXTURE_WRAP_CLAMP (texture.h:100/119), so
+            // a source window that runs past the tile repeats its last texel
+            // column instead of wrapping -- a frozen stripe of whatever colour
+            // ends the tile (pink, here). DAN_RESULT's own tiles happen to fit
+            // exactly (972 window on a 1944 tile, 324 on 648), so this branch
+            // never fires today; it is here so a future period/bar mismatch
+            // degrades into a seamless tile rather than a stuck edge.
+            const float sw = w / sc;                   // source width, tile units
+            const float avail = 2.0f * perd - ph;
+            if (sw <= avail) {
+                tex.draw_texture(rb, {.scale=sc, .x=rx, .y=ry, .x2=w, .fade=fd,
+                                      .src=ray::Rectangle{ph, 0.0f, sw, th}});
+            } else {
+                tex.draw_texture(rb, {.scale=sc, .x=rx, .y=ry, .x2=avail * sc,
+                                      .fade=fd,
+                                      .src=ray::Rectangle{ph, 0.0f, avail, th}});
+                tex.draw_texture(rb, {.scale=sc, .x=rx + avail * sc, .y=ry,
+                                      .x2=(sw - avail) * sc, .fade=fd,
+                                      .src=ray::Rectangle{0.0f, 0.0f, sw - avail, th}});
+            }
+            return;
+        }
+        TexID id = p100;
+        if (state == "up_50")        id = up50;
+        else if (state == "up_80")   id = up80;
+        else if (state == "down_80") id = have(d80) ? d80 : up80;
+        // `max` on a skin with no rainbow art falls back to the 100 % tint.
+        tex.draw_texture(id, {.scale=sc, .x=rx, .y=ry, .x2=w, .fade=fd});
+    };
 
     for (int i = 0; i < (int)sd.dan_result_data.exams.size(); i++) {
         const Exam& exam       = sd.dan_result_data.exams[i];
@@ -791,65 +1026,113 @@ void DanResultScreen::draw_exam_info(double fade, double now, float scale) {
             if (exam.range == "less") p = 1.0f - (1.0f - p) * (float)frac;
             else                      p = p * (float)frac;
             float bar_w = dei.width * p * scale;
-            std::string bt = p >= 1.0f ? "exam_max" : p >= 0.5f ? "exam_gold" : "exam_red";
-            // The landed bar keeps its stored bucket colour (which encodes the
-            // arcade's own GaugeColorChange thresholds).
-            if (frac >= 1.0) bt = rd.bar_texture;
-            static const std::unordered_map<std::string, TexID> bar_ids = {
-                {"exam_red",  EXAM_INFO::EXAM_RED},
-                {"exam_gold", EXAM_INFO::EXAM_GOLD},
-                {"exam_max",  EXAM_INFO::EXAM_MAX},
-            };
-            auto bar_it = bar_ids.find(bt);
-            if (bar_it != bar_ids.end() && bar_w > 0)
-                tex.draw_texture(bar_it->second, {.scale=scale, .y=y, .x2=bar_w, .fade=fade});
+            // ROUND 67 -- the cabinet's own six-state palette. While the bar is
+            // still climbing the row is in an intermediate counting-up state
+            // (GaugeColorChange is re-run every counter tick with isMax=false,
+            // DaniResultDetailBase.lua:519/542); only the LANDED bar takes the
+            // settled state, which is the one that can be `max` (= rainbow).
+            std::string bs = rd.bar_state;
+            if (frac < 1.0) {
+                const int g = (int)std::floor(p * 100.0f);
+                bs = g <= 0 ? "empty" : g <= 49 ? "up_50" : g <= 99 ? "up_80" : "up_100";
+            }
+            draw_exam_fill(bs, bar_w, 0.0f, y, scale, fade, now, false);
         } else {
-            // Per-song: three small boxes (39.06 score_01/02/03_mc, 344x64,
-            // pitch measured 453 -- see scratchpad/r19dn/bake_result.py), one
-            // per song this course carries, each with its own fill + digits.
-            const SkinInfo* sr = tex.skin_entry("dan_result_exam_sub_row");
-            float sub_pitch = sr ? sr->y : 465.0f;  // measured render_detail_row2.py
-            float sub_x0    = sr ? sr->x : 0.0f;
-            const SkinInfo* sb = tex.skin_entry("dan_result_exam_sub_bar");
-            float sub_full  = sb ? sb->width : 324.0f;
-            float sub_margin = sb ? sb->x : 28.0f;
-            static const std::unordered_map<std::string, TexID> sub_ids = {
-                {"exam_red",  EXAM_INFO::EXAM_SUB_RED},
-                {"exam_gold", EXAM_INFO::EXAM_SUB_GOLD},
-                {"exam_max",  EXAM_INFO::EXAM_SUB_MAX},
-            };
-            for (int j = 0; j < 3 && j < rd.song_count + 1; j++) {
-                float sx = sub_x0 + j * sub_pitch;
-                // 39.06's "1st"/"2nd"/"3rd" frames: a per-box ordinal badge sits
-                // directly left of each box (measured offset -92,0 from the
-                // box's own position -- render_detail_row2.py sh228/230/232 vs
-                // sh121 at the same pitch 465), not one badge for the whole row.
-                const SkinInfo* bo = tex.skin_entry("dan_result_exam_sub_badge_offset");
-                float badge_dx = bo ? bo->x : -92.0f;
-                tex.draw_texture(EXAM_INFO::EXAM_BADGE, {.frame=j + 1, .scale=scale, .x=sx + badge_dx, .y=y, .fade=fade});
+            // Per-song: the cabinet's `1st`/`2nd`/`3rd` frames of detail_mc —
+            // THREE FIXED SLOTS at local x -415/50/515 (pitch 465), of which
+            // only the first `g_maxReachNum_` are placed. g_maxReachNum_ is the
+            // number of songs the run actually REACHED (DaniResult.lua
+            // SetUnReach), so a fail-out that never got to song 3 legitimately
+            // shows two boxes -- but a completed course must show all three,
+            // which the old `rd.song_count + 1` (song_count = songs finished
+            // BEFORE the current one, snapshotted mid-run) could not.
+            int reach = 0;
+            for (const auto& s : sd.dan_result_data.songs)
+                if (!s.unreached) reach++;
+            if (reach <= 0) reach = std::max(1, rd.song_count + 1);
+            reach = std::min(reach, 3);
+            for (int j = 0; j < reach; j++) {
+                float sx = j * sub_pitch;
+                // The ordinal badge is the SAME cluster slot as the whole-run
+                // tomoe (shapes 228/230/232 vs 3, all at detail-local
+                // -559+465k), so it rides the identical `exam_badge` anchor;
+                // frame 0 = tomoe, 1..3 = 1st/2nd/3rd.
+                tex.draw_texture(EXAM_INFO::EXAM_BADGE, {.frame=j + 1, .scale=scale, .x=sx, .y=y, .fade=fade});
                 tex.draw_texture(EXAM_INFO::EXAM_SUB_BG, {.scale=scale, .x=sx, .y=y, .fade=fade});
                 float sp = rd.song_progress[j];
                 if (exam.range == "less") sp = 1.0f - (1.0f - sp) * (float)frac;
                 else                      sp = sp * (float)frac;
-                std::string bt = sp >= 1.0f ? "exam_max"
-                                 : sp >= 0.5f ? "exam_gold" : "exam_red";
-                auto sit = sub_ids.find(bt);
-                if (sit != sub_ids.end() && sp > 0)
-                    tex.draw_texture(sit->second,
-                                     {.scale=scale, .x=sx, .y=y, .x2=sub_full * sp, .fade=fade});
+                // ROUND 67 -- same cabinet palette as the whole-run bar
+                // (sprite 156 carries the identical label set and tints).
+                std::string sbs = rd.song_state[j];
+                if (frac < 1.0) {
+                    const int g = (int)std::floor(sp * 100.0f);
+                    sbs = g <= 0 ? "empty" : g <= 49 ? "up_50"
+                        : g <= 99 ? "up_80" : "up_100";
+                }
+                draw_exam_fill(sbs, sub_full * sp, sx, y, scale, fade, now, true);
                 tex.draw_texture(EXAM_INFO::EXAM_SUB_FRONT, {.scale=scale, .x=sx, .y=y, .fade=fade});
-                if (row_numin)
-                    draw_digit_counter(std::to_string(rd.song_value[j]), sub_margin,
-                                       EXAM_INFO::EXAM_SUB_COUNTER, 0, y, fade, scale, sx);
+                // Per-box threshold (`tx_border`, size 20) UNDER the box. The
+                // cabinet carries a per-song odaiBorder_[idx]; this engine's
+                // dan.json schema has one border per exam, so every box repeats
+                // the course's own value (documented divergence, MAPPING R65).
+                // ROUND 70 -- char 226, size 20, align=1=RIGHT, border 3.50,
+                // three slots whose translates are +439/-26/-491 (right edges
+                // card-local +677/+212/-253 = screen 1777/1312/847 at pitch
+                // 465). Same one-text-run rule as the whole-run field above.
+                const SkinInfo* sbt = tex.skin_entry("dan_result_exam_border_song");
+                OutlinedText* scap = nullptr;
+                float sbt_ol = 3.5f / tex.screen_scale;
+                if (sbt) {
+                    if (sbt->outline >= 0) sbt_ol = sbt->outline;
+                    scap = exam_captions.get(
+                        exam_threshold_text(tex, exam.type, exam.range, exam.red,
+                                            global_data.config->general.language),
+                        sbt->font_size > 0 ? sbt->font_size : 20, sbt_ol);
+                }
+                if (scap) {
+                    const float pad = ExamCaptionCache::pad_for(sbt_ol, tex.screen_scale);
+                    scap->draw({.x = sbt->x + sx - scap->width + pad,
+                                .y = sbt->y - pad + y, .fade = fade});
+                } else {
+                    const std::string bs = std::to_string(exam.red);
+                    const float bx = sx;
+                    digits_left(bs, bx, y, border_pitch * sub_border_scale,
+                                border_id, sub_bd_pen, scale * sub_border_scale);
+                    const float after = bx + bs.size() * border_pitch * sub_border_scale
+                                      + 8.0f * scale * sub_border_scale;
+                    if (exam.range == "less")
+                        tex.draw_texture(EXAM_INFO::EXAM_LESS, {.scale=scale*sub_border_scale, .x=after, .y=y, .fade=fade, .index=sub_pen});
+                    else if (exam.range == "more")
+                        tex.draw_texture(EXAM_INFO::EXAM_MORE, {.scale=scale*sub_border_scale, .x=after, .y=y, .fade=fade, .index=sub_pen});
+                }
+                // The live per-song value, LEFT-anchored at the box's own left
+                // end (score_m_*_mc at slot+(-140,12), pitch 27) — the cabinet
+                // reveals it only at num_in.
+                // (`song_value[j]` is ALREADY the cabinet's number: game_dan.cpp
+                // stores `max(0, red - val)` on a `less` exam, so no transform
+                // here — applying one again zeroed the row.)
+                if (row_numin) {
+                    // ROUND 78 -- same per-state digit rule as the whole-run row
+                    // (score_m_gauge_num_mc char 225 carries the identical label
+                    // set); only `max` has its own sheet.
+                    const bool smax = frac >= 1.0 && rd.song_state[j] == "max"
+                                    && have(EXAM_INFO::EXAM_SUB_COUNTER_MAX);
+                    digits_left(std::to_string(rd.song_value[j]), sx, y, sub_margin,
+                                smax ? EXAM_INFO::EXAM_SUB_COUNTER_MAX
+                                     : EXAM_INFO::EXAM_SUB_COUNTER, 0, scale);
+                }
             }
         }
 
-        // Exam type icon + threshold + live count. This whole block assumes ONE
-        // row-wide bar at a fixed local origin, which only the whole-run ("all")
-        // layout has -- the per-song boxes already drew their own single-digit
-        // counts inside the loop above. The tamashii row keeps the pill-side
-        // threshold display (its own value lives inside the widget).
-        if (exam.gothrough || tamashii_row) {
+        // ── the caption pill ────────────────────────────────────────────────
+        // `txt_theme_name` (DaniResultDetailBase.Init's clear_theme_* keys) is
+        // a child of detail_mc itself and is drawn on EVERY frame label, so the
+        // per-song rows get their caption too. This whole block used to sit
+        // inside `if (exam.gothrough || tamashii_row)`, which is exactly why a
+        // per-song row (a 連打数 course condition) came up with an EMPTY pill.
+        // It is also drawn at a FIXED anchor — the old digit-count shift
+        // (`-len * 20 * screen_scale`) has no counterpart on the cabinet.
         static const std::unordered_map<std::string, TexID> icon_ids = {
             {"gauge",        EXAM_INFO::EXAM_GAUGE},
             {"combo",        EXAM_INFO::EXAM_COMBO},
@@ -860,51 +1143,141 @@ void DanResultScreen::draw_exam_info(double fade, double now, float scale) {
             {"score",        EXAM_INFO::EXAM_SCORE},
             {"renda",        EXAM_INFO::EXAM_ROLL},    // ROUND 47: 連打数 exam type
         };
-        std::string red_str = std::to_string(exam.red);
-        float type_x = -(float)red_str.size() * 20.0f * tex.screen_scale;
         auto icon_it = icon_ids.find(exam.type);
         if (icon_it != icon_ids.end())
-            tex.draw_texture(icon_it->second, {.scale=scale, .x=type_x, .y=y, .fade=fade});
+            tex.draw_texture(icon_it->second, {.scale=scale, .y=y, .fade=fade});
 
-        // ROUND 50 — on the tamashii row the cabinet's threshold caption
-        // (tx_border, "<N>％以上") RIDES THE NORMA MARKER (gauge_border's
-        // per-border_N placement, pen at marker −113), not the pill slot the
-        // generic rows use. The 288 px pull is the shipped caption cluster's
-        // right edge relative to a border-0 marker; sliding it by the marker's
-        // own offset reproduces the ride. Clamped at 0 so a tiny border never
-        // pushes the caption into the pill.
-        float cap_dx = 0.0f;
-        if (tamashii_row)
-            cap_dx = std::max(0.0f, scale * 21.0f * (gauge_border / 2) - 288.0f);
+        if (exam.gothrough || tamashii_row) {
+        const std::string red_str = std::to_string(exam.red);
 
-        draw_digit_counter(red_str, margin, EXAM_INFO::VALUE_COUNTER, 0, y, fade, scale, cap_dx);
+        // ROUND 50 / 65 — on the tamashii row the threshold caption is NOT in
+        // the card's own tx_border pen: it belongs to the gauge movie and RIDES
+        // THE NORMA MARKER. `tamashii_gauge.nulm` sprite 145 (`gauge_border`)
+        // carries the chevron (shape 139) at its own origin and the text at
+        // (-113, 10), size 25, align=2 — i.e. CENTRED on the marker in a 228x52
+        // box, so its centre lands on the marker's own x and 26 px below the
+        // text-box top. gauge_mc frame border_N places that whole sprite at
+        // track_x0 − 14 + 21·N (verified: border_15 sits at widget-local −281 =
+        // screen 865, and 563 − 14 + 21·15 = 864).
+        //
+        // Screen for row 0 therefore: centre x = 550 + 21·cells, centre y = 477
+        // — 52 px below where the detail rows' own 36 px caption sits, and
+        // under the lamp track rather than over it (ROUND 50's "pull 288 px
+        // and left-align" rode the marker but landed the text ON the gauge).
+        // The caption is also the gauge's own 25 px size, not 36.
+        const float csc  = tamashii_row ? (25.0f / 36.0f) : 1.0f;
+        const float gap1 = 4.0f * scale * csc, gap2 = 10.0f * scale * csc;
+        float cap_w = red_str.size() * border_pitch * csc;
+        if (exam.type == "gauge") cap_w += gap1 + 31.0f * scale * csc;
+        if (exam.range == "less" || exam.range == "more")
+            cap_w += gap2 + 70.0f * scale * csc;
+        float cap_dx = 0.0f, cap_dy = 0.0f;
+        if (tamashii_row) {
+            cap_dx = scale * (21.0f * (gauge_border / 2) + 52.0f) - cap_w * 0.5f;
+            cap_dy = 52.0f * scale;
+        }
 
+        // ROUND 70 — the cabinet draws this as ONE proportional text run, and
+        // right-aligns it (`dani_result_detail.nulm` char 119, size 36,
+        // align=1=RIGHT, border 4.00, box right edge card-local −332 = screen
+        // 768). See objects/game/exam_caption.h.
+        //
+        // Measured BEFORE (scratchpad/r70/m_res.py, the 可の数 row of
+        // scratchpad/r67/shots/after_pass/15_p2_settled.png against the
+        // cabinet's own card rendered at the SAME screen origin):
+        //     ours    "8 未満"  digit 498-523, 未満 539-596   (left-anchored)
+        //     cabinet "8 未満"  digit 660-689, 未満 698-773   (right-anchored)
+        // -- 162 px too far left, and our 未満 is 58 px wide against the
+        // cabinet's 76 (baked below its own size-36 record).
+        //
+        // The tamashii row is a DIFFERENT field: it belongs to the gauge movie
+        // and rides the norma marker, size 25 align=2 CENTRE, and its wordlist
+        // key is `requirement_soul_gauge` = "%s ％" with NO 以上
+        // (DaniResultTotalBase.lua:77 -- the same key dani_select uses at
+        // dani_select_theme_disp_data.lua:141). exam_threshold_text() returns
+        // that for a gauge exam, which is why the "％" and "以上" sprites and
+        // their invented 4/10 px gaps all disappear together.
+        const SkinInfo* bt = tex.skin_entry(tamashii_row ? "dan_result_gauge_border_text"
+                                                         : "dan_result_exam_border_text");
+        OutlinedText* capt = nullptr;
+        float bt_ol = 4.0f / tex.screen_scale;
+        if (bt) {
+            if (bt->outline >= 0) bt_ol = bt->outline;
+            capt = exam_captions.get(
+                exam_threshold_text(tex, exam.type, exam.range, exam.red,
+                                    global_data.config->general.language),
+                bt->font_size > 0 ? bt->font_size : (tamashii_row ? 25 : 36), bt_ol);
+        }
+        if (capt) {
+            const float pad = ExamCaptionCache::pad_for(bt_ol, tex.screen_scale);
+            // The whole-run field is RIGHT-anchored on `bt->x` (a right EDGE, so
+            // the image's own symmetric padding has to come back off); the
+            // tamashii one is CENTRED on the norma marker, and the padding is
+            // symmetric there so centring the image centres the glyphs.
+            const float cx = tamashii_row
+                ? bt->x + scale * (21.0f * (gauge_border / 2) + 52.0f) - capt->width * 0.5f
+                : bt->x - capt->width + pad;
+            capt->draw({.x = cx, .y = bt->y - pad + y, .fade = fade});
+        } else {
+        // Threshold caption, in the cabinet's own reading order — digits, then
+        // ％ on a gauge row, then 以上/未満.
+        digits_left(red_str, cap_dx, y + cap_dy, border_pitch * csc, border_id, 0, scale * csc);
+        float after = cap_dx + red_str.size() * border_pitch * csc;
+        if (exam.type == "gauge") {
+            tex.draw_texture(EXAM_INFO::EXAM_PERCENT, {.scale=scale*csc, .x=after + gap1, .y=y + cap_dy, .fade=fade, .index=0});
+            after += gap1 + 31.0f * scale * csc;
+        }
+        after += gap2;
         if (exam.range == "less")
-            tex.draw_texture(EXAM_INFO::EXAM_LESS, {.scale=scale, .x=cap_dx, .y=y, .fade=fade});
+            tex.draw_texture(EXAM_INFO::EXAM_LESS, {.scale=scale*csc, .x=after, .y=y + cap_dy, .fade=fade});
         else if (exam.range == "more")
-            tex.draw_texture(EXAM_INFO::EXAM_MORE, {.scale=scale, .x=cap_dx, .y=y, .fade=fade});
+            tex.draw_texture(EXAM_INFO::EXAM_MORE, {.scale=scale*csc, .x=after, .y=y + cap_dy, .fade=fade});
+        }
 
         if (!tamashii_row) {
             tex.draw_texture(EXAM_INFO::EXAM_OVERLAY_2, {.scale=scale, .y=y, .fade=fade});
             // ROUND 50 — the live count stays hidden until the row's num_in
             // (DaniResultDetailBase: the digits appear AFTER the bar fill).
+            // ROUND 65 — and it is LEFT-anchored against the bar's own left
+            // end, big (pitch 52), NOT right-anchored off the card's right
+            // margin (which is how it ended up floating outside the plate).
+            // A 未満 row shows the REMAINING ALLOWANCE (odaiBorder_ − odaiNum_,
+            // clamped at 0), which is what InitDetailAll feeds its counters —
+            // and which game_dan.cpp:302 ALREADY stores in counter_value, so
+            // this draws it straight.
             if (row_numin) {
-                std::string cur_str = std::to_string(rd.counter_value);
-                draw_digit_counter(cur_str, margin, EXAM_INFO::VALUE_COUNTER, 1, y, fade, scale);
+                // ROUND 78 -- the value digits carry the bar's own state, and
+                // exactly ONE of the seven differs: `score_l_gauge_num_mc`
+                // (char 118) draws its three layers white in every flat state
+                // and, on `max`, colour-MULTIPLIES back+front by the movie's own
+                // style[25] #FF5096 and the `add` layer (a white glyph with a
+                // top-heavy alpha ramp) by style[26] #FFFF00 -- the cabinet's
+                // yellow-to-pink vertical gradient. The skin bakes that as a
+                // second sheet; a skin without it keeps the white one.
+                const int vpen = pens(EXAM_INFO::VALUE_COUNTER) > 1 ? 1 : 0;
+                const int ppen = pens(EXAM_INFO::EXAM_PERCENT)  > 1 ? 1 : 0;
+                const std::string cur_str = std::to_string(rd.counter_value);
+                // Only the LANDED bar takes `max` (same rule as the fill: the
+                // counting-up ticks re-run GaugeColorChange with isMax=false).
+                const bool vmax = frac >= 1.0 && rd.bar_state == "max"
+                                && have(EXAM_INFO::VALUE_COUNTER_MAX);
+                digits_left(cur_str, 0.0f, y, margin,
+                            vmax ? EXAM_INFO::VALUE_COUNTER_MAX
+                                 : EXAM_INFO::VALUE_COUNTER, vpen, scale);
+                if (exam.type == "gauge")
+                    tex.draw_texture(EXAM_INFO::EXAM_PERCENT,
+                                     {.scale=scale, .x=cur_str.size()*margin + 6.0f*scale,
+                                      .y=y, .fade=fade, .index=ppen});
             }
         }
-
-        if (exam.type == "gauge") {
-            tex.draw_texture(EXAM_INFO::EXAM_PERCENT, {.scale=scale, .x=cap_dx, .y=y, .fade=fade, .index=0});
-            if (!tamashii_row && row_numin)
-                tex.draw_texture(EXAM_INFO::EXAM_PERCENT, {.scale=scale, .y=y, .fade=fade, .index=1});
-        }
         }
 
-        if (rd.failed && row_numin) {
-            tex.draw_texture(EXAM_INFO::EXAM_BG,     {.scale=scale, .y=y, .fade=std::min(fade, 0.5)});
-            tex.draw_texture(EXAM_INFO::EXAM_FAILED, {.scale=scale, .y=y, .fade=fade});
-        }
+        // ROUND 65 — NO 達成失敗 overlay here. See this function's header: the
+        // cabinet's page-2 detail card has no fail state at all (its
+        // `isUnreach_` is dead, the movie has no fail label); 達成失敗 is a
+        // page-1 SONG-board plate (DaniResultSongBase `unreached`). The old
+        // overlay + 50 % dim was stamped across the threshold caption and the
+        // 魂 emblem, which is the collision the user reported.
     }
 }
 

@@ -9,6 +9,7 @@
 #include "../objects/global/coin_overlay.h"
 #include "../objects/global/nameplate.h"
 #include "../objects/global/chara_3d.h"
+#include "../objects/game/exam_caption.h"
 
 class DanResultScreen : public Screen {
 public:
@@ -30,11 +31,15 @@ private:
     std::unique_ptr<OutlinedText>    hori_name;
     std::vector<std::unique_ptr<OutlinedText>> song_names;
 
+    ExamCaptionCache exam_captions;
+
     Nameplate nameplate;
     std::unique_ptr<Chara3D> chara;
 
     bool is_page2 = false;
     double page_start_ms = 0.0;
+    double page1_start_ms = 0.0;
+    std::vector<bool> page1_armed;
 
     double totals_start = 0;
     double totals_end   = 0;
@@ -80,7 +85,7 @@ private:
     void apply_reward();
     void draw_page1(double now);
     void draw_page2(double fade, double now);
-    void draw_exam_info(double fade, double now, float scale = 0.8f);
+    void draw_exam_info(double fade, double now, float scale = 1.0f);
     void draw_gauge_row(const Exam& exam, float y, double fade, double now, float scale);
     void draw_celebration(double now);
     void draw_digit_counter(const std::string& digits, float margin_x, TexID id,

@@ -12,6 +12,11 @@
 #include <cmath>
 #include <algorithm>
 #include <climits>
+#include <chrono>
+#include <cstdlib>
+
+static constexpr double DAN_INTRO_MS      =  80.0 * 1000.0 / 60.0;
+static constexpr double DAN_INTRO_FULL_MS = 257.0 * 1000.0 / 60.0;
 
 int DanNavigator::total_notes_for(const std::vector<DanSongEntry>& songs) {
     int total = 0;
@@ -42,7 +47,8 @@ Exam DanNavigator::parse_exam(const rapidjson::Value& e) {
     return exam;
 }
 
-std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value& chart) {
+std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value& chart,
+                                                          std::pair<std::string, std::string>* titles_out) {
     try {
         std::string chart_title    = chart["title"].GetString();
         std::string chart_subtitle = chart.HasMember("subtitle") ? chart["subtitle"].GetString() : "";
@@ -58,10 +64,19 @@ std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value
         int level = sp.metadata.course_data.count(diff)
             ? sp.metadata.course_data.at(diff).level : 10;
 
+        if (titles_out && global_data.config) {
+            const std::string& lang = global_data.config->general.language;
+            titles_out->first  = sp.metadata.title.count(lang)
+                ? sp.metadata.title.at(lang)
+                : (sp.metadata.title.count("en") ? sp.metadata.title.at("en") : std::string());
+            titles_out->second = sp.metadata.subtitle.count(lang)
+                ? sp.metadata.subtitle.at(lang) : std::string();
+        }
+
         int genre = (int)GenreIndex::NAMCO;
         fs::path box_def_dir = path_opt->parent_path().parent_path();
         if (fs::exists(box_def_dir / "box.def"))
-            genre = (int)navigator.parse_box_def(box_def_dir).genre_index;
+            genre = (int)Navigator::parse_box_def_uncached(box_def_dir).genre_index;
 
         bool hidden = chart.HasMember("hidden") && chart["hidden"].IsBool() &&
                       chart["hidden"].GetBool();
@@ -73,7 +88,7 @@ std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value
     }
 }
 
-std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
+std::optional<DanBoxData> DanNavigator::load_dan_box_data(const fs::path& json_path) {
     auto doc = read_json_file(json_path);
     std::string title = doc["title"].GetString();
     int color = doc["color"].GetInt();
@@ -92,13 +107,17 @@ std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
     if (dan_index < 0 || dan_index > 24) dan_index = -1;
 
     std::vector<DanSongEntry> songs;
+    std::vector<std::pair<std::string, std::string>> song_titles;   // ROUND 95
     if (doc.HasMember("charts")) {
         for (auto& chart : doc["charts"].GetArray()) {
-            if (auto entry = load_song_entry(chart))
+            std::pair<std::string, std::string> t;
+            if (auto entry = load_song_entry(chart, &t)) {
                 songs.push_back(*entry);
+                song_titles.push_back(std::move(t));
+            }
         }
     }
-    if (songs.empty()) return nullptr;
+    if (songs.empty()) return std::nullopt;
 
     std::vector<Exam> exams;
     if (doc.HasMember("exams")) {
@@ -106,48 +125,115 @@ std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
             exams.push_back(parse_exam(e));
     }
 
-    auto box = std::make_unique<DanBox>(json_path, title, color, songs, exams, total_notes_for(songs));
-    box->dan_rank = rank;
-    box->dan_index = dan_index;
-    box->gaiden = doc.HasMember("gaiden") && doc["gaiden"].IsBool() &&
-                  doc["gaiden"].GetBool();
+    DanBoxData d;
+    d.json_path   = json_path;
+    d.title       = title;
+    d.color       = color;
+    d.rank        = rank;
+    d.dan_index   = dan_index;
+    d.songs       = songs;
+    d.song_titles = song_titles;
+    d.exams       = exams;
+    d.total_notes = total_notes_for(songs);
+    d.gaiden = doc.HasMember("gaiden") && doc["gaiden"].IsBool() &&
+               doc["gaiden"].GetBool();
+    return d;
+}
+
+std::unique_ptr<DanBox> DanNavigator::make_box(const DanBoxData& d) {
+    auto box = std::make_unique<DanBox>(d.json_path, d.title, d.color,
+                                        d.songs, d.exams, d.total_notes);
+    box->dan_rank  = d.rank;
+    box->dan_index = d.dan_index;
+    box->gaiden    = d.gaiden;
+    box->song_titles = d.song_titles;
     return box;
 }
 
-void DanNavigator::init(const std::vector<fs::path>& song_paths) {
-    boxes.clear();
-    selected_index = 0;
+std::unique_ptr<DanBox> DanNavigator::load_dan_box(const fs::path& json_path) {
+    auto d = load_dan_box_data(json_path);
+    if (!d) return nullptr;
+    return make_box(*d);
+}
+
+int DanNavigator::scan_root_data(const fs::path& root_path, std::vector<DanBoxData>& out) {
+    if (root_path.empty()) {
+        spdlog::warn("DanNavigator: skipping an empty dan root path");
+        return 0;
+    }
+    std::error_code ec;
+    if (!fs::is_directory(root_path, ec)) {
+        spdlog::warn("DanNavigator: skipping dan root '{}': not a directory ({})",
+                     root_path.string(), ec ? ec.message() : "no such directory");
+        return 0;
+    }
+    if (!gen4::find_data_root(root_path).empty() ||
+        !gen3::find_data_root(root_path).empty()) return 0;
+
+    int added = 0;
+    try {
+        auto it = fs::recursive_directory_iterator(
+            root_path, fs::directory_options::skip_permission_denied);
+        for (; it != fs::end(it); ++it) {
+            if (scan_abort.load()) break;
+            const auto& entry = *it;
+            if (entry.is_directory() &&
+                (gen4::find_data_root(entry.path()) == entry.path() ||
+                 gen3::find_data_root(entry.path()) == entry.path())) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (entry.path().filename() == "dan.json") {
+                if (auto d = load_dan_box_data(entry.path())) {
+                    out.push_back(std::move(*d));
+                    added++;
+                }
+            }
+        }
+    } catch (const std::exception& ex) {
+        spdlog::warn("DanNavigator: error loading {}: {}", root_path.string(), ex.what());
+    }
+    return added;
+}
+
+int DanNavigator::scan_root(const fs::path& root_path) {
+    std::vector<DanBoxData> data;
+    int added = scan_root_data(root_path, data);
+    for (const DanBoxData& d : data) boxes.push_back(make_box(d));
+    return added;
+}
+
+std::vector<DanBoxData> DanNavigator::scan_all_data(const std::vector<fs::path>& song_paths) {
+    std::vector<DanBoxData> data;
+
+    while (!navigator.song_files_ready.load() && !scan_abort.load())
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
 
     for (const fs::path& root_path : song_paths) {
-        // A path at or inside a game's data holds no dan.json, only tens of
-        // thousands of chart files this walk would crawl through.
-#ifdef SUPPORT_FUMEN
-        if (!gen4::find_data_root(root_path).empty() ||
-            !gen3::find_data_root(root_path).empty()) continue;
-#endif
-        try {
-            auto it = fs::recursive_directory_iterator(
-                root_path, fs::directory_options::skip_permission_denied);
-            for (; it != fs::end(it); ++it) {
-                const auto& entry = *it;
-#ifdef SUPPORT_FUMEN
-                if (entry.is_directory() &&
-                    (gen4::find_data_root(entry.path()) == entry.path() ||
-                     gen3::find_data_root(entry.path()) == entry.path())) {
-                    it.disable_recursion_pending();
-                    continue;
-                }
-#endif
-                if (entry.path().filename() == "dan.json") {
-                    if (auto box = load_dan_box(entry.path())) {
-                        boxes.push_back(std::move(box));
-                    }
-                }
-            }
-        } catch (const std::exception& ex) {
-            spdlog::warn("DanNavigator: error loading {}: {}", root_path.string(), ex.what());
-            }
-    };
+        if (scan_abort.load()) return data;
+        scan_root_data(root_path, data);
+    }
+
+    if (data.empty() && global_data.config) {
+        for (const fs::path& lib_root : global_data.config->paths.tja_path) {
+            if (scan_abort.load()) return data;
+            if (std::find(song_paths.begin(), song_paths.end(), lib_root) != song_paths.end())
+                continue;
+            scan_root_data(lib_root, data);
+        }
+        if (!data.empty())
+            spdlog::warn("DanNavigator: the requested dan root yielded nothing; "
+                         "recovered {} course(s) by re-scanning the song library",
+                         data.size());
+    }
+    return data;
+}
+
+void DanNavigator::publish(std::vector<DanBoxData>&& data) {
+    boxes.clear();
+    selected_index = 0;
+    boxes.reserve(data.size());
+    for (const DanBoxData& d : data) boxes.push_back(make_box(d));
 
     if (boxes.empty()) { spdlog::warn("DanNavigator: no dan courses found"); return; }
 
@@ -167,6 +253,62 @@ void DanNavigator::init(const std::vector<fs::path>& song_paths) {
     set_positions(true, 0);
     boxes[selected_index]->expand_box();
     for (auto& b : boxes) b->fade_in(100);
+}
+
+void DanNavigator::begin_init(const std::vector<fs::path>& song_paths) {
+    abort_init();
+    boxes.clear();
+    selected_index = 0;
+    scan_done.store(false);
+    scan_abort.store(false);
+    scan_published = false;
+    { std::lock_guard<std::mutex> lock(scan_mutex); scan_result.clear(); }
+
+    scan_thread = std::thread([this, song_paths]() {
+        std::vector<DanBoxData> data;
+        try {
+            data = scan_all_data(song_paths);
+        } catch (const std::exception& ex) {
+            spdlog::error("DanNavigator: course scan threw: {}", ex.what());
+        } catch (...) {
+            spdlog::error("DanNavigator: course scan threw (unknown)");
+        }
+        {
+            std::lock_guard<std::mutex> lock(scan_mutex);
+            scan_result = std::move(data);
+        }
+        scan_done.store(true);
+    });
+}
+
+bool DanNavigator::poll_init() {
+    if (scan_published) return true;
+    if (!scan_thread.joinable()) return false;
+    if (!scan_done.load()) return false;   // acquire
+    scan_thread.join();
+    std::vector<DanBoxData> data;
+    { std::lock_guard<std::mutex> lock(scan_mutex); data = std::move(scan_result); scan_result.clear(); }
+    publish(std::move(data));
+    scan_published = true;
+    return true;
+}
+
+void DanNavigator::abort_init() {
+    scan_abort.store(true);
+    if (scan_thread.joinable()) scan_thread.join();
+    scan_abort.store(false);
+    scan_done.store(false);
+    scan_published = false;
+    { std::lock_guard<std::mutex> lock(scan_mutex); scan_result.clear(); }
+}
+
+DanNavigator::~DanNavigator() { abort_init(); }
+
+void DanNavigator::init(const std::vector<fs::path>& song_paths) {
+    begin_init(song_paths);
+    while (scan_thread.joinable() && !scan_done.load())
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    poll_init();
 }
 
 DanNavigator::RibbonLayout DanNavigator::ribbon_layout() const {
@@ -253,10 +395,13 @@ DanBox* DanNavigator::get_current() {
 }
 
 void DanNavigator::update(double current_ms) {
+    bool built_one = false;
     for (auto& b : boxes) {
         bool on_screen = b->position > -156 * tex.screen_scale && b->position < tex.screen_width + 144 * tex.screen_scale;
-        if (on_screen && !b->text_loaded)
+        if (on_screen && !b->text_loaded && !built_one) {
             b->load_text();
+            built_one = true;
+        }
         b->update(current_ms);
     }
 }
@@ -353,6 +498,24 @@ void DanSelectScreen::on_screen_start() {
     last_moved    = 0;
     modifier_selector.reset();
 
+    {
+        auto pd = scores_manager.get_player_data(get_player_id(global_data.player_num));
+        chara = make_chara_from_player_data(pd ? &*pd : nullptr);
+        if (pd) {
+            chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
+            chara->apply_face(pd->chara_face_index);
+        } else {
+            chara->set_don_colors(chara_default_color_1(get_player_id(global_data.player_num)),
+                                  chara_default_color_2(get_player_id(global_data.player_num)),
+                                  {249, 240, 225, 255});
+        }
+        chara->set_anim(AnimIndex::DON_NORMAL);
+        nameplate = Nameplate(pd ? pd->username : "", pd ? pd->title : "",
+                              global_data.player_num,
+                              pd ? pd->dan : -1, pd ? pd->gold : false,
+                              pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
+    }
+
     wheel_locked     = false;
     wheel_tick_epoch = get_current_ms();
     wheel_tick_seen  = 0;
@@ -361,11 +524,102 @@ void DanSelectScreen::on_screen_start() {
     if (auto pd = scores_manager.get_player_data(get_player_id(global_data.player_num)))
         dan_player_data = *pd;
 
-    fs::path dan_folder = global_data.session_data[(int)global_data.player_num].selected_dan_folder;
-    dan_navigator.init({dan_folder});
+    SessionData& sd_boot = global_data.session_data[(int)global_data.player_num];
+    if (sd_boot.selected_dan_folder.empty() &&
+        (int)global_data.player_num < (int)global_data.dan_folder.size())
+        sd_boot.selected_dan_folder = global_data.dan_folder[(int)global_data.player_num];
+    fs::path dan_folder = sd_boot.selected_dan_folder;
+
+    select_timer.reset();
+    timer_started   = false;
+    timer_fired     = false;
+    screen_start_ms = get_current_ms();
+    scan_ready      = false;
+    scan_ready_ms   = 0;
+    scan_begin_ms   = screen_start_ms;
+
+    if (legacy_blocking) {
+        dan_navigator.init({dan_folder});
+        screen_start_ms = get_current_ms();          // ROUND 64's anchor, verbatim
+        scan_ready      = true;
+        scan_ready_ms   = screen_start_ms;
+    } else {
+        dan_navigator.begin_init({dan_folder});
+    }
+
+    const bool from_entry = (global_data.previous_screen == "ENTRY");
+    if (script_manager.lua)
+        (*script_manager.lua)["__hss_dan_intro"] = from_entry ? "full" : "open";
+    intro_ms = from_entry ? DAN_INTRO_FULL_MS : DAN_INTRO_MS;
+    publish_scan_state(screen_start_ms);
+}
+
+void DanSelectScreen::publish_scan_state(double current_ms) {
+    if (!scan_ready) {
+        if (dan_navigator.poll_init()) {
+            scan_ready    = true;
+            scan_ready_ms = current_ms;
+        } else if (current_ms - scan_begin_ms > SCAN_TIMEOUT_MS) {
+            scan_ready    = true;
+            scan_ready_ms = current_ms;
+            spdlog::error("DanNavigator: course scan still running after {:.0f} ms; "
+                          "opening the dojo anyway (the ribbon will fill in when it lands)",
+                          SCAN_TIMEOUT_MS);
+        }
+    } else {
+        dan_navigator.poll_init();
+    }
+    if (script_manager.lua)
+        (*script_manager.lua)["__hss_dan_ready"] = scan_ready;
+}
+
+std::optional<Screens> DanSelectScreen::tick_timer(double current_ms) {
+    if (!timer_started) {
+        const double cover_ms     = intro_ms - DAN_INTRO_MS;
+        const double reveal_start = std::max(screen_start_ms + cover_ms,
+                                             scan_ready ? scan_ready_ms : current_ms);
+        if (!scan_ready || current_ms < reveal_start + DAN_INTRO_MS) return std::nullopt;
+        timer_started = true;
+        select_timer  = std::make_unique<Timer>(100, current_ms, [this]() {
+            timer_fired = true;
+        });
+    }
+    if (!select_timer) return std::nullopt;
+    select_timer->update(current_ms);
+
+    if (!timer_fired) return std::nullopt;
+    timer_fired = false;
+    if (state == SongSelectState::BROWSING) {
+        audio.play_sound("don_big", VolumePreset::SOUND);
+        open_confirm(current_ms);
+        return std::nullopt;
+    }
+    if (modifier_selector.has_value()) modifier_selector.reset();
+    confirm_index = CONFIRM_YES;
+    select_timer.reset();
+    audio.play_sound("don", VolumePreset::SOUND);
+    return on_screen_end(Screens::GAME_DAN);
+}
+
+void DanSelectScreen::open_confirm(double current_ms) {
+    audio.play_sound("confirm_box", VolumePreset::SOUND);
+    audio.play_sound("dan_confirm", VolumePreset::VOICE);
+    confirm_fade->start();
+    state = SongSelectState::SONG_SELECTED;
+    confirm_index = CONFIRM_NO;
+    modifier_selector.reset();
+    confirm_opened_at = current_ms;
+    if (select_timer) {
+        const int left = select_timer->time();
+        if (left >= 0 && left < 30)
+            select_timer = std::make_unique<Timer>(30, current_ms, [this]() {
+                timer_fired = true;
+            });
+    }
 }
 
 Screens DanSelectScreen::on_screen_end(Screens next_screen) {
+    dan_navigator.abort_init();
     DanBox* current = dan_navigator.get_current();
     if (current && next_screen == Screens::GAME_DAN) {
         SessionData& sd = global_data.session_data[(int)global_data.player_num];
@@ -422,13 +676,7 @@ void DanSelectScreen::handle_input_browsing(double current_ms) {
         wheel_locked = true;
     } else if (!wheel_locked && confirm) {
         audio.play_sound("don", VolumePreset::SOUND);
-        audio.play_sound("confirm_box", VolumePreset::SOUND);
-        audio.play_sound("dan_confirm", VolumePreset::VOICE);
-        confirm_fade->start();
-        state = SongSelectState::SONG_SELECTED;
-        confirm_index = CONFIRM_NO;
-        modifier_selector.reset();
-        confirm_opened_at = current_ms;
+        open_confirm(current_ms);
     }
 }
 
@@ -469,10 +717,14 @@ std::optional<Screens> DanSelectScreen::handle_input_selected() {
 std::optional<Screens> DanSelectScreen::update() {
     Screen::update();
     double current_ms = get_current_ms();
+    publish_scan_state(current_ms);
     allnet_indicator.update(current_ms);
     dan_navigator.update(current_ms);
     indicator->update(current_ms);
     confirm_fade->update(current_ms);
+    nameplate.update(current_ms);
+    if (chara) chara->update(current_ms);
+    if (auto next = tick_timer(current_ms)) return next;
 
     if (state == SongSelectState::BROWSING) {
         handle_input_browsing(current_ms);
@@ -537,6 +789,9 @@ void DanSelectScreen::draw() {
 
     dan_navigator.draw();
 
+    if (chara) chara->draw(187.0f, 934.0f, 0.8f);
+    nameplate.draw(23.4f, 922.0f);
+
     if (state == SongSelectState::SONG_SELECTED) {
         draw_confirm_overlay();
         if (modifier_selector.has_value()) modifier_selector->draw();
@@ -545,6 +800,8 @@ void DanSelectScreen::draw() {
     indicator->draw(tex.skin_config[SC::DAN_SELECT_INDICATOR].x, tex.skin_config[SC::DAN_SELECT_INDICATOR].y);
     tex.draw_texture(GLOBAL::DAN_SELECT, {});
     allnet_indicator.draw();
+
+    if (select_timer) select_timer->draw();
 
     indicator->draw_top();
 }

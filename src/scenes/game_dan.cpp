@@ -64,6 +64,7 @@ void DanGameScreen::init_dan() {
     dan_color = sd.dan_color;
     failed_out    = false;
     failed_out_at = 0.0;
+    between.stop();
     exam_failed.assign(sd.selected_dan_exam.size(), false);
     exam_song_failed.assign(sd.selected_dan_exam.size(), {false, false, false});
     dan_info_cache.reset();
@@ -128,12 +129,11 @@ void DanGameScreen::change_song() {
     std::string subtitle = parser->metadata.subtitle.count(lang) ? parser->metadata.subtitle.at(lang) : "";
     song_info = SongInfo(current_song_title, subtitle, parser->metadata.subtitle_full_display, entry.genre_index - 1, song_index + 1);
 
-    {
-        const SessionData& sd_ro = global_data.session_data[(int)global_data.player_num];
-        transition->set_dan(sd_ro.dan_color, sd_ro.song_title);
-        transition->start();
-    }
-    start_ms = get_current_ms() - parser->metadata.offset * 1000 - (double)global_data.config->general.audio_offset;
+    between.start(get_current_ms(), current_song_title, subtitle,
+                  parser->metadata.subtitle_full_display);
+    start_ms = get_current_ms() + DanBetween::SONG_OPEN_MS
+             - parser->metadata.offset * 1000
+             - (double)global_data.config->general.audio_offset;
 }
 
 void DanGameScreen::fill_unplayed_songs() {
@@ -217,6 +217,8 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
     Player* p = players[0].get();
     int used = p->get_good() + p->get_ok() + p->get_bad();
     cache.remaining_notes = std::max(0, total_notes - used);
+    const bool near_end        = (float)total_notes * 0.10f > (float)cache.remaining_notes;
+    const bool just_before_end = (float)total_notes * 0.05f > (float)cache.remaining_notes;
 
     const auto& exams = global_data.session_data[(int)global_data.player_num].selected_dan_exam;
     for (int i = 0; i < (int)exams.size(); i++) {
@@ -244,6 +246,7 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
         if (progress >= 1.0f)        info.bar_texture = "exam_max";
         else if (progress >= 0.5f)   info.bar_texture = "exam_gold";
         else                          info.bar_texture = "exam_red";
+        info.bar_state = dan_bar_state(exam, val, true, near_end, just_before_end);
 
         info.gothrough  = exam.gothrough;
         info.song_count = std::min(song_index, 3);
@@ -254,6 +257,9 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
                 if (exam.range == "less") { sp = 1.0f - sp; sv = std::max(0, exam.red - sv); }
                 info.song_value[j]    = std::max(0, sv);
                 info.song_progress[j] = std::max(0.0f, std::min(1.0f, sp));
+                const bool live_j = (j == song_index);
+                info.song_state[j]    = dan_bar_state(exam, get_exam_progress_song(exam, j),
+                                                      live_j, near_end, just_before_end);
             }
             int cur = std::min(song_index, 2);
             info.counter_value = info.song_value[cur];
@@ -262,6 +268,7 @@ DanInfoCache DanGameScreen::calculate_dan_info() {
             if (info.progress >= 1.0f)      info.bar_texture = "exam_max";
             else if (info.progress >= 0.5f) info.bar_texture = "exam_gold";
             else                            info.bar_texture = "exam_red";
+            info.bar_state = info.song_state[cur];
         }
 
         cache.exam_data.push_back(info);
@@ -287,8 +294,10 @@ void DanGameScreen::check_exam_failures(bool course_finished, bool song_finished
             if (!exam.gothrough && i < (int)exam_song_failed.size() && song_index < 3)
                 exam_song_failed[i][song_index] = true;
             audio.play_sound("exam_failed", VolumePreset::SOUND);
-            spdlog::info("Dan exam {} ({}) failed: {} < {} ({})", i, exam.type, val, exam.red,
-                         exam.gothrough ? "gothrough" : "per-song");
+            spdlog::info("Dan exam {} ({}) failed: {} < {} ({}) at {} ms (song ends {} ms)",
+                         i, exam.type, val, exam.red,
+                         exam.gothrough ? "gothrough" : "per-song",
+                         ms_from_start, players.empty() || !players[0] ? -1.0 : players[0]->end_time);
         } else if (exam.range == "less") {
             int remaining = std::max(0, exam.red - val);
             if (remaining == 0) {
@@ -296,8 +305,10 @@ void DanGameScreen::check_exam_failures(bool course_finished, bool song_finished
                 if (!exam.gothrough && i < (int)exam_song_failed.size() && song_index < 3)
                     exam_song_failed[i][song_index] = true;
                 audio.play_sound("dan_failed", VolumePreset::SOUND);
-                spdlog::info("Dan exam {} ({}) failed: {} of {} used up ({})", i, exam.type, val, exam.red,
-                             exam.gothrough ? "gothrough" : "per-song");
+                spdlog::info("Dan exam {} ({}) failed: {} of {} used up ({}) at {} ms (song ends {} ms)",
+                             i, exam.type, val, exam.red,
+                             exam.gothrough ? "gothrough" : "per-song",
+                             ms_from_start, players.empty() || !players[0] ? -1.0 : players[0]->end_time);
             }
         }
     }
@@ -337,6 +348,9 @@ void DanGameScreen::save_result_data(bool all_failed) {
             re.progress      = dan_info_cache->exam_data[i].progress;
             re.counter_value = dan_info_cache->exam_data[i].counter_value;
             re.bar_texture   = dan_info_cache->exam_data[i].bar_texture;
+            re.bar_state     = dan_info_cache->exam_data[i].bar_state;
+            for (int j = 0; j < 3; j++)
+                re.song_state[j] = dan_info_cache->exam_data[i].song_state[j];
             re.failed        = i < (int)exam_failed.size() && exam_failed[i];
             re.song_count    = dan_info_cache->exam_data[i].song_count;
             for (int j = 0; j < 3; j++) {
@@ -355,6 +369,10 @@ void DanGameScreen::save_result_data(bool all_failed) {
                         re.tier = std::min(re.tier, exam_tier(exam, get_exam_progress_song(exam, j)));
                 }
                 if (re.tier == 0) re.failed = true;
+                re.bar_state = dan_bar_state(exam, get_exam_progress(exam));
+                if (!exam.gothrough)
+                    for (int j = 0; j < course_songs; j++)
+                        re.song_state[j] = dan_bar_state(exam, get_exam_progress_song(exam, j));
             }
             check = std::min(check, re.tier);
             sd.dan_result_data.exam_data.push_back(re);
@@ -382,6 +400,7 @@ void DanGameScreen::trigger_fail_out(double current_ms) {
     failed_out_at = current_ms;
     if (song_music.has_value()) { audio.stop_sound(*song_music); song_music.reset(); }
     if (movie.has_value()) movie->stop();
+    between.stop();
 
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
     if ((int)sd.dan_result_data.songs.size() <= song_index) {
@@ -396,15 +415,19 @@ void DanGameScreen::trigger_fail_out(double current_ms) {
         song_res.drumroll = players[0]->get_total_drumroll() - prev_drumroll;
         sd.dan_result_data.songs.push_back(song_res);
     }
-    save_result_data(true);
+    const bool reached_every_song = song_index >= (int)sd.selected_dan.size() - 1;
+    save_result_data(!reached_every_song);
     score_saved = true;
-    spdlog::info("Dan course fail-out: song {}/{} at {} ms", song_index + 1,
+    spdlog::info("Dan course ended early ({}): song {}/{} at {} ms",
+                 skipped ? "skip" : "fail-out", song_index + 1,
                  (int)sd.selected_dan.size(), ms_from_start);
 }
 
 Screens DanGameScreen::on_screen_end(Screens next_screen) {
     dan_info_cache.reset();
     hori_name.reset();
+    between.stop();
+    exam_captions.clear();
     return GameScreen::on_screen_end(next_screen);
 }
 
@@ -414,9 +437,10 @@ std::optional<Screens> DanGameScreen::update() {
     allnet_indicator.update(current_ms);
 
     transition->update(current_ms);
+    between.update(current_ms);
     ms_from_start = current_ms - start_ms;
 
-    if (transition->is_finished())
+    if (transition->is_finished() && between.song_may_start())
         start_song(ms_from_start);
 
     update_background(current_ms);
@@ -434,14 +458,6 @@ std::optional<Screens> DanGameScreen::update() {
     if (!failed_out) {
         dan_info_cache = calculate_dan_info();
         check_exam_failures();
-
-        const SessionData& sd_ro = global_data.session_data[(int)global_data.player_num];
-        bool any_failed_now = std::any_of(exam_failed.begin(), exam_failed.end(),
-                                          [](bool f) { return f; });
-        bool final_song_over = song_index >= (int)sd_ro.selected_dan.size() - 1 &&
-                               ms_from_start >= players[0]->end_time;
-        if (any_failed_now && !final_song_over)
-            trigger_fail_out(current_ms);
 
         push_dan_state();
     } else {
@@ -464,6 +480,9 @@ std::optional<Screens> DanGameScreen::update() {
                                                [](bool f) { return f; });
             bool is_final_song = song_index >= (int)sd.selected_dan.size() - 1;
             if (boundary_failed && !is_final_song) {
+                spdlog::info("Dan course fails out at the END of song {}/{} "
+                             "(state 6): song was played to its natural end at {} ms",
+                             song_index + 1, (int)sd.selected_dan.size(), ms_from_start);
                 trigger_fail_out(current_ms);
                 return std::nullopt;
             }
@@ -605,17 +624,50 @@ void DanGameScreen::draw_exam_row(const DanExamInfo& info, const Exam& exam, int
     const SkinInfo* wa = tex.skin_entry("dan_exam_bar_all");
     float bar_full = all && wa ? wa->width : dei.width;
 
-    static const std::unordered_map<std::string, TexID> bar_ids = {
-        {"exam_red",  DAN_INFO::EXAM_RED},
-        {"exam_gold", DAN_INFO::EXAM_GOLD},
-        {"exam_max",  DAN_INFO::EXAM_MAX},
+    auto have = [&](TexID id) {
+        return tex.textures.find((uint32_t)id) != tex.textures.end();
+    };
+    auto fill = [&](const std::string& state, float w, float fy, bool sub) {
+        if (w <= 0 || state == "empty") return;
+        TexID rb         = sub ? DAN_INFO::EXAM_SUB_RAINBOW : DAN_INFO::EXAM_RAINBOW;
+        if (!sub && all && have(DAN_INFO::EXAM_RAINBOW_ALL))
+            rb = DAN_INFO::EXAM_RAINBOW_ALL;
+        const TexID d80  = sub ? DAN_INFO::EXAM_SUB_DOWN80  : DAN_INFO::EXAM_DOWN80;
+        const TexID up50 = sub ? DAN_INFO::EXAM_SUB_RED     : DAN_INFO::EXAM_RED;
+        const TexID up80 = sub ? DAN_INFO::EXAM_SUB_GOLD    : DAN_INFO::EXAM_GOLD;
+        const TexID p100 = sub ? DAN_INFO::EXAM_SUB_MAX     : DAN_INFO::EXAM_MAX;
+        if (state == "max" && have(rb)) {
+            auto it = tex.textures.find((uint32_t)rb);
+            const float th   = (float)it->second->height;
+            const float tw   = (float)it->second->width;
+            const float perd = tw * 0.5f;
+            const double phase_ms = get_frame_ms();
+            const float ph   = perd - (float)std::fmod(phase_ms / 1000.0
+                                                       * (perd * 60.0 / 80.0), (double)perd);
+            const float avail = tw - ph;
+            if (w <= avail) {
+                tex.draw_texture(rb, {.y = fy, .x2 = w,
+                                      .src = ray::Rectangle{ph, 0.0f, w, th}});
+            } else {
+                tex.draw_texture(rb, {.y = fy, .x2 = avail,
+                                      .src = ray::Rectangle{ph, 0.0f, avail, th}});
+                tex.draw_texture(rb, {.x = avail, .y = fy, .x2 = w - avail,
+                                      .src = ray::Rectangle{0.0f, 0.0f, w - avail, th}});
+            }
+            return;
+        }
+        TexID id = p100;
+        if (state == "up_50")           id = up50;
+        else if (state == "up_80")      id = up80;
+        else if (state == "max_soon")   id = p100;
+        else if (state == "max_soon2")  id = p100;
+        else if (state == "down_80")    id = have(d80) ? d80 : up80;
+        tex.draw_texture(id, {.y = fy, .x2 = w});
     };
     if (exam_failed[index]) {
         tex.draw_texture(DAN_INFO::EXAM_FAIL, {.y = y, .x2 = bar_full});
     } else {
-        auto it = bar_ids.find(info.bar_texture);
-        if (it != bar_ids.end())
-            tex.draw_texture(it->second, {.y = y, .x2 = bar_full * info.progress});
+        fill(info.bar_state, bar_full * info.progress, y, false);
     }
 
     tex.draw_texture(all ? DAN_INFO::EXAM_FRAME_FRONT_ALL : DAN_INFO::EXAM_OVERLAY_2, {.y = y});
@@ -634,41 +686,73 @@ void DanGameScreen::draw_exam_row(const DanExamInfo& info, const Exam& exam, int
     if (icon_it != exam_ids.end())
         tex.draw_texture(icon_it->second, {.y = y});
 
-    if (info.exam_range == "less")      tex.draw_texture(DAN_INFO::EXAM_LESS, {.y = y});
-    else if (info.exam_range == "more") tex.draw_texture(DAN_INFO::EXAM_MORE, {.y = y});
-
-    float gauge_shift = 0.0f;
-    if (info.exam_type == "gauge") {
-        tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 0});
-        const SkinInfo* gs = tex.skin_entry("dan_exam_gauge_shift");
-        gauge_shift = -(gs ? gs->x : border_margin);
+    const SkinInfo* bt = tex.skin_entry("dan_game_exam_border_text");
+    OutlinedText* cap = nullptr;
+    float bt_ol = 4.0f / tex.screen_scale;
+    if (bt) {
+        if (bt->outline >= 0) bt_ol = bt->outline;
+        cap = exam_captions.get(
+            exam_threshold_text(tex, info.exam_type, info.exam_range,
+                                info.red_value, global_data.config->general.language),
+            bt->font_size > 0 ? bt->font_size : 36, bt_ol);
     }
-    draw_digit_counter(std::to_string(info.red_value), border_margin,
-                       DAN_INFO::EXAM_BORDER_COUNTER, 0, y, gauge_shift);
+    if (cap) {
+        const float pad = ExamCaptionCache::pad_for(bt_ol, tex.screen_scale);
+        cap->draw({.x = bt->x - cap->width + pad, .y = bt->y - pad + y});
+    } else {
+        if (info.exam_range == "less")      tex.draw_texture(DAN_INFO::EXAM_LESS, {.y = y});
+        else if (info.exam_range == "more") tex.draw_texture(DAN_INFO::EXAM_MORE, {.y = y});
+
+        float gauge_shift = 0.0f;
+        if (info.exam_type == "gauge") {
+            tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 0});
+            const SkinInfo* gs = tex.skin_entry("dan_exam_gauge_shift");
+            gauge_shift = -(gs ? gs->x : border_margin);
+        }
+        draw_digit_counter(std::to_string(info.red_value), border_margin,
+                           DAN_INFO::EXAM_BORDER_COUNTER, 0, y, gauge_shift);
+    }
 
     if (exam_failed[index]) {
         tex.draw_texture(DAN_INFO::EXAM_FAILED, {.y = y});
     } else {
-        draw_digit_counter(std::to_string(info.counter_value), value_margin,
-                           DAN_INFO::VALUE_COUNTER, 0, y);
-        if (info.exam_type == "gauge")
-            tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 1});
+        const SkinInfo* vl = tex.skin_entry("dan_exam_value_left");
+        const std::string live = std::to_string(info.counter_value);
+        if (vl) {
+            auto it = tex.textures.find((uint32_t)DAN_INFO::VALUE_COUNTER);
+            const float json_x = (it != tex.textures.end() && !it->second->x.empty())
+                               ? it->second->x[0] : 920.0f;
+            for (int j = 0; j < (int)live.size(); j++)
+                tex.draw_texture(DAN_INFO::VALUE_COUNTER,
+                                 {.frame = live[j] - '0',
+                                  .x = vl->x + j * value_margin - json_x, .y = y});
+            if (info.exam_type == "gauge") {
+                auto pit = tex.textures.find((uint32_t)DAN_INFO::EXAM_PERCENT);
+                const float pjson = (pit != tex.textures.end() && pit->second->x.size() > 1)
+                                  ? pit->second->x[1] : 944.0f;
+                tex.draw_texture(DAN_INFO::EXAM_PERCENT,
+                                 {.x = vl->x + live.size() * value_margin - pjson,
+                                  .y = y, .index = 1});
+            }
+        } else {
+            draw_digit_counter(live, value_margin, DAN_INFO::VALUE_COUNTER, 0, y);
+            if (info.exam_type == "gauge")
+                tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 1});
+        }
     }
 
     if (!all) {
         const SkinInfo* sp = tex.skin_entry("dan_exam_sub_row");
         float sub_pitch  = sp ? sp->y : 50.0f;
         float sub_margin = sp ? sp->x : 20.0f;
-        for (int j = 0; j < info.song_count && j < 2; j++) {
+        for (int j = 0; j < 2; j++) {
             float sy = y + j * sub_pitch;
             tex.draw_texture(DAN_INFO::EXAM_SUB_BG,    {.y = sy});
+            if (j >= info.song_count) continue;   // not reached yet: stub only
             tex.draw_texture(DAN_INFO::EXAM_SUB_TRACK, {.y = sy});
             const SkinInfo* sb = tex.skin_entry("dan_exam_sub_bar");
             float sub_full = sb ? sb->width : 234.0f;
-            tex.draw_texture(info.song_progress[j] >= 1.0f ? DAN_INFO::EXAM_SUB_MAX
-                             : info.song_progress[j] >= 0.5f ? DAN_INFO::EXAM_SUB_GOLD
-                                                             : DAN_INFO::EXAM_SUB_RED,
-                             {.y = sy, .x2 = sub_full * info.song_progress[j]});
+            fill(info.song_state[j], sub_full * info.song_progress[j], sy, true);
             tex.draw_texture(DAN_INFO::EXAM_SUB_FRONT, {.y = sy});
             tex.draw_texture(DAN_INFO::EXAM_SUB_CHIP,  {.frame = j, .y = sy});
             draw_digit_counter(std::to_string(info.song_value[j]), sub_margin,
@@ -686,9 +770,13 @@ void DanGameScreen::draw_dan_info() {
 
     float offset_y = dan_exam_info().y;
     const auto& exams = sd.selected_dan_exam;
+    int slot = 0;
     for (int i = 0; i < (int)cache.exam_data.size(); i++) {
         if (i >= (int)exams.size()) break;
-        draw_exam_row(cache.exam_data[i], exams[i], i, i * offset_y);
+        if (exams[i].type == "gauge") continue;
+        if (slot >= 3) break;
+        draw_exam_row(cache.exam_data[i], exams[i], i, slot * offset_y);
+        slot++;
     }
 
     if (sd.dan_rank >= 0 && tex.options[SCO::DAN_GAME_RANK_PLATE]) {
@@ -710,8 +798,10 @@ void DanGameScreen::draw() {
     if (background.has_value()) background->draw_back();
     draw_dan_info();
     dan_gauge.draw();
+    if (background.has_value()) background->draw_gauge(PlayerNum::P1);
     if (players.size() == 1)
         players[0]->draw(ms_from_start, 0, 184 * tex.screen_scale, mask_shader);
+    between.draw(184 * tex.screen_scale);
     if (background.has_value()) background->draw_fore();
     draw_overlay();
 }
@@ -775,11 +865,11 @@ void DanGameScreen::do_skip_dan() {
     } else {
         skip_text.reset();
     }
-    spdlog::info("Dan enso skipped (song {} of {}) at {} ms", song_index + 1,
+    spdlog::info("Dan enso skipped on song {} of {} at {} ms -- ending the whole course",
+                 song_index + 1,
                  global_data.session_data[(int)global_data.player_num].selected_dan.size(),
                  ms_from_start);
-    if (song_music.has_value()) audio.stop_sound(song_music.value());
-    if (movie.has_value()) movie->stop();
     if (players.size() == 1 && players[0])
         players[0]->cut_to_end(ms_from_start, prev_good, prev_ok, prev_bad);
+    trigger_fail_out(get_current_ms());
 }

@@ -205,7 +205,17 @@ Config get_config() {
     config.general.song_timer = config_file["general"]["song_timer"].value_or(false);
     config.general.judge_counter = config_file["general"]["judge_counter"].value_or(false);
     config.general.nijiiro_notes = config_file["general"]["nijiiro_notes"].value_or(false);
-    config.general.log_level = config_file["general"]["log_level"].value_or(2);
+    // ROUND 103 BUGFIX. This read a `std::string` field with an INT default,
+    // `value_or(2)`. The round-trip therefore wrote `log_level = ""`
+    // back out, and `setup_logging` (logging.cpp:143-148) only ever matches
+    // the literal strings "debug"/"info"/"warning"/"error"/"critical" - so no
+    // value a user could put in config.toml could ever change the log level,
+    // which was permanently pinned to info. Verified empirically: setting
+    // `log_level = 'debug'` produced not one [debug] line. That made every
+    // `spdlog::debug` in the engine unreachable, including the per-folder
+    // texture-load timings and the font-atlas rebuild log - exactly the two
+    // things ROUND 103 needed to attribute a stutter.
+    config.general.log_level = config_file["general"]["log_level"].value_or("info");
     config.general.practice_mode_bar_delay = config_file["general"]["practice_mode_bar_delay"].value_or(0);
     config.general.score_method = config_file["general"]["score_method"].value_or("standard");
     config.general.display_bpm = config_file["general"]["display_bpm"].value_or(false);
