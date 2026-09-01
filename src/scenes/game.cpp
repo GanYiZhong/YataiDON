@@ -2,6 +2,7 @@
 #include "../libs/scores.h"
 #include "../libs/input.h"
 #include "../libs/network.h"
+#include "../libs/filesystem.h"
 #include <cmath>
 
 
@@ -110,10 +111,10 @@ Modifiers GameScreen::get_player_modifiers(PlayerNum pn) {
 void GameScreen::load_hitsounds() {
     int neiro_p1 = scores_manager.get_player_data(get_player_id(PlayerNum::P1)).value_or(PlayerData{}).neiro_index;
     int neiro_p2 = scores_manager.get_player_data(get_player_id(PlayerNum::P2)).value_or(PlayerData{}).neiro_index;
-    audio.load_sound(tex.resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "don.ogg"), "hitsound_don_1p");
-    audio.load_sound(tex.resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "ka.ogg"),  "hitsound_kat_1p");
-    audio.load_sound(tex.resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "don.ogg"), "hitsound_don_2p");
-    audio.load_sound(tex.resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "ka.ogg"),  "hitsound_kat_2p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "don.ogg"), "hitsound_don_1p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "ka.ogg"),  "hitsound_kat_1p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "don.ogg"), "hitsound_don_2p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "ka.ogg"),  "hitsound_kat_2p");
     spdlog::info("Loaded ogg hit sounds for 1P and 2P");
 }
 

@@ -180,3 +180,44 @@ void write_song_list(const fs::path& path, const std::vector<SongListEntry>& ent
     for (const auto& e : entries)
         out << e.hash << "|" << e.title << "|" << e.subtitle << "\n";
 }
+
+namespace {
+fs::path g_skin_graphics_path;
+fs::path g_parent_skin_graphics_path;
+
+fs::path skin_root(const fs::path& graphics_path) {
+    return graphics_path.parent_path();
+}
+}
+
+fs::path resolve_parent_graphics_path(const fs::path& graphics_path) {
+    auto skin_config_file = read_json_file(graphics_path / "skin_config.json");
+    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
+        std::string parent = skin_config_file["screen"]["parent"].GetString();
+        return fs::path("Skins") / parent / "Graphics";
+    }
+    return graphics_path;
+}
+
+void set_skin_graphics_path(const fs::path& graphics_path) {
+    g_skin_graphics_path = graphics_path;
+    g_parent_skin_graphics_path = resolve_parent_graphics_path(graphics_path);
+}
+
+bool skin_has_parent() {
+    return g_skin_graphics_path != g_parent_skin_graphics_path;
+}
+
+fs::path parent_skin_root() {
+    return skin_root(g_parent_skin_graphics_path);
+}
+
+fs::path resolve_skin_path(const fs::path& relative_path) {
+    fs::path child = skin_root(g_skin_graphics_path) / relative_path;
+    if (fs::exists(child)) return child;
+    if (skin_has_parent()) {
+        fs::path parent = skin_root(g_parent_skin_graphics_path) / relative_path;
+        if (fs::exists(parent)) return parent;
+    }
+    return child;
+}

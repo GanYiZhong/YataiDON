@@ -3,6 +3,7 @@
 #include "../../libs/camera_utils.h"
 #include "../../libs/global_data.h"
 #include "../../libs/scores.h"
+#include "../../libs/filesystem.h"
 #include <fstream>
 #include <rapidjson/document.h>
 namespace ray {
@@ -244,13 +245,13 @@ Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
 
     // Models has no inheritance mechanism of its own (unlike Graphics) — each asset
     // resolves against the child skin first, falling back to the parent's.
-    fs::path model_path = tex.resolve_skin_path(fs::path("Models/cos") / (model_name + ".glb"));
-    fs::path anim_path  = tex.resolve_skin_path("Models/animations.glb");
+    fs::path model_path = resolve_skin_path(fs::path("Models/cos") / (model_name + ".glb"));
+    fs::path anim_path  = resolve_skin_path("Models/animations.glb");
     load_part(model_path, anim_path);
 
     model_valid = parts[0].meshCount > 0;
 
-    fs::path face_dir = tex.resolve_skin_path("Models/face");
+    fs::path face_dir = resolve_skin_path("Models/face");
     load_face_textures(face_dir);
 
     fs::path skin_anim_path = fs::path("Skins") / global_data.config->paths.skin
@@ -270,15 +271,15 @@ Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror, bo
     rot_y = cfg.rot_y;
     rot_z = cfg.rot_z;
 
-    fs::path head_path = tex.resolve_skin_path(fs::path("Models/head") / (head_name + ".glb"));
-    fs::path body_path = tex.resolve_skin_path(fs::path("Models/body") / (body_name + ".glb"));
-    fs::path anim_path = tex.resolve_skin_path("Models/animations.glb");
+    fs::path head_path = resolve_skin_path(fs::path("Models/head") / (head_name + ".glb"));
+    fs::path body_path = resolve_skin_path(fs::path("Models/body") / (body_name + ".glb"));
+    fs::path anim_path = resolve_skin_path("Models/animations.glb");
     load_part(body_path, anim_path);
     load_part(head_path, anim_path, true);
 
     model_valid = parts[0].meshCount > 0 && parts[1].meshCount > 0;
 
-    fs::path face_dir = tex.resolve_skin_path("Models/face");
+    fs::path face_dir = resolve_skin_path("Models/face");
     load_face_textures(face_dir);
 
     fs::path skin_anim_path = fs::path("Skins") / global_data.config->paths.skin

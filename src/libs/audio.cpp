@@ -1,5 +1,5 @@
 #include "audio.h"
-#include "texture.h"
+#include "filesystem.h"
 #include <algorithm>
 #ifdef __ANDROID__
 extern "C" {
@@ -832,8 +832,8 @@ void AudioEngine::load_screen_sounds(const std::string& screen_name) {
         }
     };
 
-    bool has_parent = tex.has_parent_skin();
-    fs::path parent_sounds = tex.parent_root() / "Sounds";
+    bool has_parent = skin_has_parent();
+    fs::path parent_sounds = parent_skin_root() / "Sounds";
 
     fs::path path = sounds_path / screen_name;
     // A screen without its own sound folder still gets don/kat and the

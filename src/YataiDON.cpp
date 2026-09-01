@@ -286,6 +286,7 @@ int main(int argc, char* argv[]) {
     setup_logging(global_data.config->general.log_level);
 
     fs::path root_skin_path = fs::path("Skins") / global_data.config->paths.skin;
+    set_skin_graphics_path(root_skin_path / "Graphics");
 
     tex.init(root_skin_path / "Graphics");
 
@@ -298,10 +299,7 @@ int main(int argc, char* argv[]) {
     global_tex.init(root_skin_path / "Graphics");
     global_tex.load_screen_textures("global");
     script_manager.init(root_skin_path / "Scripts");
-    fs::path font_path = root_skin_path / "Graphics/font.ttf";
-    if (!fs::exists(font_path) && tex.has_parent_skin()) {
-        font_path = tex.parent_root() / "Graphics/font.ttf";
-    }
+    fs::path font_path = resolve_skin_path("Graphics/font.ttf");
     font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
 

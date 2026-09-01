@@ -395,9 +395,7 @@ void Player::update(double ms_from_start, double current_ms, std::optional<Backg
 }
 
 void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shader) {
-    if (is_balloon) {
-        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
-    } else {
+    if (!is_balloon) {
         if (is_2p) {
             chara->draw(tex.skin_config[SC::GAME_CHARA_P2].x, y + tex.skin_config[SC::GAME_CHARA_P2].y);
         } else {
@@ -1512,6 +1510,9 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
 
     if (drumroll_counter.has_value()) {
         drumroll_counter->draw(y + (tex.skin_config[SC::COMBO_ANNOUNCE_P2_Y_OFFSET].y * is_2p));
+    }
+    if (is_balloon) {
+        chara->draw(tex.skin_config[SC::GAME_CHARA_BALLOON].x, y + tex.skin_config[SC::GAME_CHARA_BALLOON].y);
     }
     if (balloon_counter.has_value()) {
         balloon_counter->draw(y);

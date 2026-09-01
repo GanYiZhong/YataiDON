@@ -9,7 +9,6 @@ void TextureWrapper::init(const fs::path& skin_path) {
         throw std::runtime_error("The skin path provided is not a valid path");
     }
 
-    parent_graphics_path = graphics_path;
     auto skin_config_file = read_json_file(graphics_path / "skin_config.json");
 
     // Derive screen dimensions from child config first so screen_scale is known.
@@ -48,10 +47,8 @@ void TextureWrapper::init(const fs::path& skin_path) {
     };
 
     // Load parent skin_config first so child values override.
-    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
-        std::string parent = skin_config_file["screen"]["parent"].GetString();
-        parent_graphics_path = fs::path("Skins") / parent / "Graphics";
-
+    parent_graphics_path = resolve_parent_graphics_path(graphics_path);
+    if (parent_graphics_path != graphics_path) {
         auto parent_config = read_json_file(parent_graphics_path / "skin_config.json");
 
         for (auto& m : parent_config.GetObject()) {
