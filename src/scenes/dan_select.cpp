@@ -107,7 +107,7 @@ std::optional<DanBoxData> DanNavigator::load_dan_box_data(const fs::path& json_p
     if (dan_index < 0 || dan_index > 24) dan_index = -1;
 
     std::vector<DanSongEntry> songs;
-    std::vector<std::pair<std::string, std::string>> song_titles;   // ROUND 95
+    std::vector<std::pair<std::string, std::string>> song_titles;
     if (doc.HasMember("charts")) {
         for (auto& chart : doc["charts"].GetArray()) {
             std::pair<std::string, std::string> t;
@@ -540,7 +540,7 @@ void DanSelectScreen::on_screen_start() {
 
     if (legacy_blocking) {
         dan_navigator.init({dan_folder});
-        screen_start_ms = get_current_ms();          // ROUND 64's anchor, verbatim
+        screen_start_ms = get_current_ms();
         scan_ready      = true;
         scan_ready_ms   = screen_start_ms;
     } else {

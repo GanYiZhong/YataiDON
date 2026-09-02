@@ -136,17 +136,7 @@ public:
     void toggle_favorite(SongBox* song);
     void refresh_scores();
     BoxDef parse_box_def(const fs::path& path);
-    // ROUND 95 -- `parse_box_def` without the `box_def_cache` write, for callers
-    // that are not on the main thread. See navigator.cpp.
     static BoxDef parse_box_def_uncached(const fs::path& path);
-    // ROUND 95 -- `song_files` (private, above) has exactly ONE writer, the
-    // `song_files_thread` lambda in preload(), and no reader synchronisation at
-    // all. `find_song_by_title` is a reader, and DanNavigator's ROUND 95 course
-    // scan now calls it from a worker thread. This flag is the happens-before:
-    // cleared just before that thread is spawned, set (release) as its last act,
-    // so a reader that has seen `true` (acquire) is guaranteed the finished map.
-    // Initialised TRUE so an engine that never calls preload() -- or the
-    // __EMSCRIPTEN__ build, which has no such thread -- never waits.
     std::atomic<bool> song_files_ready{true};
     bool needs_diff_sort() const { return awaiting_diff_sort; }
     bool diff_sort_ready() { return awaiting_diff_sort; }

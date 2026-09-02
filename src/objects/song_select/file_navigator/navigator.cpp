@@ -204,8 +204,6 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
-    // ROUND 85: the cabinet's SecondLoading (ai_song_select_song_main.lua:218)
-    // plays select_on immediately -- no 508 ms hold.
     emit_wheel_event(WHEEL_EVENT_SCENE_ENTRY);
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();

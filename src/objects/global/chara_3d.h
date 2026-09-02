@@ -129,11 +129,8 @@ private:
     void load_face_anims(fs::path& anim_path);
     void draw_outline(float x, float y);
     void draw_3d(float x, float y);
-    // ROUND 103: creates/resizes `scene_target` and `fxaa_target`. Called from
-    // both constructors (the PREWARM - screen-init time, where a hitch is
-    // invisible) and still from draw() as the resize safety net.
     void ensure_render_targets(int rw, int rh);
-    void prewarm_render_targets();   // ROUND 103, called from both constructors
+    void prewarm_render_targets();
 public:
     Chara3D(std::string& model_name, bool mirror = false);
     Chara3D(std::string& head_name, std::string& body_name, bool mirror = false);

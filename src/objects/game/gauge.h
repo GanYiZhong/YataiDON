@@ -56,23 +56,13 @@ private:
     std::vector<int> clear_start;
     int level;
 
-    // ROUND 48 (r48-soulgauge-chn-port): CHN05 soul-gauge state. The
-    // authoritative gauge is the raw soul, a double in [0, 10000]
-    // (TamashiiMax, gauge_rank.md §1c/§2), accumulated in integer
-    // per-chart TamashiiPoint words exactly like UpdateTamashii
-    // (0x140134140) + UpdateScore (0x14055FA80). gauge_length stays as
-    // the derived 87-unit DISPLAY value so every draw path is unchanged.
-    // TJA charts carry no TamashiiPoint words, so tp_* are produced by
-    // the corpus-fitted CHN05 authoring generator (see gauge.cpp and
-    // ENGINE_BINDINGS.md ROUND 48). chn_model is the
-    // YATAIDON_R48_DISABLE one-binary A/B gate (default ON = CHN05).
     bool chn_model = false;
     double soul = 0.0;
-    int tp_great = 0;   // TamashiiPoint[0] (良 gain, raw-soul units)
-    int tp_good = 0;    // TamashiiPoint[1] (可 gain)
-    int tp_loss = 0;    // TamashiiPoint[2] (不可/miss, stored NEGATIVE)
-    int norma = 0;      // TamashiiNorm (clear line, raw-soul units)
-    int art_index = 0;  // clear-zone art tier: 0=easy 1=normal(+hard) 2=oni
+    int tp_great = 0;
+    int tp_good = 0;
+    int tp_loss = 0;
+    int norma = 0;
+    int art_index = 0;
     struct GaugeTable {
         float clear_rate;
         float ok_multiplier;

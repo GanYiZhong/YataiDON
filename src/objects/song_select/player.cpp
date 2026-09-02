@@ -133,9 +133,6 @@ SongSelectState SongSelectPlayer::select_song() {
     BaseBox* item = navigator.get_current_item();
     if (navigator.is_directory(item) && item->genre_index == GenreIndex::DAN) {
         global_data.session_data[(int)player_num].selected_dan_folder = item->path;
-        // ROUND 66 (r66-danselect-empty-after-course) -- the same path in the
-        // slot that reset_session() does NOT wipe, so DAN_SELECT can still find
-        // the library after a course has been played (see GlobalData::dan_folder).
         if ((int)player_num >= 0 && (int)player_num < (int)global_data.dan_folder.size())
             global_data.dan_folder[(int)player_num] = item->path;
         return SongSelectState::DAN_SELECTED;

@@ -173,51 +173,6 @@ public:
     std::unique_ptr<BaseAnimation> copy() const override;
 };
 
-// ROUND 54 (r54-anim-engine-referrals): generic `sample` animation type - its
-// attribute is one field of one track of a generated Scripts/anim/*.lua table
-// (see src/libs/sample_table.h), i.e. real per-frame data off the arcade's own
-// Lumen timeline instead of a hand-fitted fade/move/resize ramp.
-//
-// animation.json keys:
-//   "type": "sample", "table": "caution", "track": "#48@5",
-//   "field": "a" (default),
-//   "range": [f0, f1]  clip-frame window (default: the whole table range);
-//                      the animation runs delay -> delay + (f1-f0) frames and
-//                      is_finished exactly at the window's end, so consumer
-//                      sequencing that keys off is_finished is preserved,
-//   "delay", "loop", "lock_input"  as every other type,
-//   "scale" / "offset"  attribute = raw * scale + offset (default 1 / 0),
-//   "step": true  hold each row's value instead of lerping (frame counters),
-//   "duration"  optional override of the window's natural length in ms.
-//
-// FAIL-SOFT (ANIM_PIPELINE rule): when the table/track/field cannot be
-// resolved the parser falls back to the entry's nested "fallback" animation
-// object if present, else to a constant attribute from "default" (0.0).
-struct SampleTable;
-struct SampleTrack;
-
-class SampleAnimation : public BaseAnimation {
-private:
-    const SampleTable* table;      // never null (parser falls back instead)
-    const SampleTrack* track_ptr;  // never null
-    int field_col;
-    double f0, f1;                 // clip-frame window
-    double scale_v, offset_v;
-    bool step;
-    std::string track_name, field_name;   // kept for copy()
-
-public:
-    SampleAnimation(const SampleTable* table, const SampleTrack* trk,
-                    const std::string& track_name, const std::string& field_name,
-                    int field_col, double f0, double f1, double scale_v,
-                    double offset_v, bool step, double duration, double delay,
-                    bool loop, bool lock_input);
-
-    void update(double current_time_ms) override;
-
-    std::unique_ptr<BaseAnimation> copy() const override;
-};
-
 using namespace rapidjson;
 
 class AnimationParser {

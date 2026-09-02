@@ -563,6 +563,13 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_string_opt("ease_in"),
             get_string_opt("ease_out")
         );
+    } else if (type == "sample") {
+        // No sample-table data source exists anymore, so this always falls
+        // back (the FAIL-SOFT path the type was designed with from the start).
+        if (anim_obj.HasMember("fallback")) {
+            return createAnimation(anim_obj["fallback"]);
+        }
+        throw std::runtime_error("Animation of type 'sample' has no 'fallback' to use");
     } else {
         throw std::runtime_error("Unknown animation type: " + type);
     }

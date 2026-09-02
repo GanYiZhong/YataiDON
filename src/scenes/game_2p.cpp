@@ -70,25 +70,6 @@ std::optional<Screens> Game2PScreen::update() {
     }
     else if (ms_from_start >= players[0]->end_time) {
         if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
-            // ROUND 105 (r105-2p-identity-audit): these four lines mixed two
-            // different index spaces.  `session_data` is indexed by PlayerNum
-            // (ALL=0, P1=1, P2=2 -- tja.h; the vector is size 3 and every other
-            // reader uses `(int)player_num`, incl. `GameScreen::save_score`
-            // itself at game.cpp:277 and `ResultPlayer` at result/player.cpp:27),
-            // but this wrote it at `config.general.player_1_id` /
-            // `player_2_id`, which are PROFILE ids -- a completely different
-            // space that only happens to read 1 and 2 with the shipped config.
-            // With the config defaults (`config.cpp:214-215`: BOTH default to 1)
-            // both boards wrote session_data[1]; with any profile id >= 3 it
-            // wrote past the end of a 3-element vector.
-            //
-            // `save_score`'s first argument IS a profile id, but it was handed
-            // the raw `player_1_id` for the P1 SEAT.  `get_player_id()`
-            // (global_data.cpp:10) maps a seat to a profile through
-            // `first_login_player`, so when the 2P seat joins FIRST the P1 seat
-            // owns `player_2_id`, and the old code saved each seat's run to the
-            // other seat's profile.  Everything else in the codebase already
-            // goes through `get_player_id`; this was the one site that did not.
             global_data.session_data[(int)PlayerNum::P1].result_data = players[0]->get_result_score();
             global_data.session_data[(int)PlayerNum::P2].result_data = players[1]->get_result_score();
             save_score(get_player_id(PlayerNum::P1), PlayerNum::P1);

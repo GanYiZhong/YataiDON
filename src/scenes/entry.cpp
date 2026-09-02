@@ -6,11 +6,6 @@ void EntryScreen::on_screen_start() {
     Screen::on_screen_start();
     side = 1;
     is_2p = false;
-    // ROUND 86 — `CreateBoardList` is handed BOTH seats' playdata, so a screen that boots
-    // already 2P must never build the 段位道場 board in the first place. The only route
-    // into ENTRY with a seat already entered is the mid-song-select 2P join below
-    // (`entry_join_pending` -> start_second_player_join), which the cabinet reaches through
-    // `StartBGIn`'s `StartModeSelect` branch with both seats at kCoin.
     box_manager = std::make_unique<BoxManager>(global_data.entry_join_pending);
     state = EntryState::SELECT_SIDE;
 
@@ -26,12 +21,6 @@ void EntryScreen::on_screen_start() {
         if (box_manager->is_costume_box()) {
             box_manager->open_costume_menu(global_data.player_num);
         } else {
-            // ROUND 83 — `ModeSelect:TimeUp()` (mode_select.lua:155-163) always
-            // decides something. `select_box()` can now refuse (段位道場 is
-            // 1P-only, `IsOnePlayerOnly(kDani)`), and a refused time-up would
-            // leave the screen with no way out, so step the cursor off the
-            // board this session may not take before deciding — the cabinet
-            // would never have offered it in the first place.
             if (!box_manager->selection_allowed()) box_manager->move_left();
             box_manager->select_box();
         }

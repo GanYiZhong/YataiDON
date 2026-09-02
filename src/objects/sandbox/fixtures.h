@@ -314,9 +314,6 @@ struct ComboAnnounceFixture : public SandboxScreen::Fixture {
     PlayerNum player_num = PlayerNum::P1;
     std::optional<ComboAnnounce> active;
 
-    // ROUND 91: 1800 / 2200 added so the 4-digit layout rule (pitch 54 + a
-    // 0.85 horizontal condense, measured off the cabinet's don_fukidashi.nulm)
-    // can be captured directly instead of needing a 1800-combo playthrough.
     static constexpr int combos[] = { 100, 200, 500, 700, 1000, 1800, 2200 };
 
     ComboAnnounceFixture() { name = "ComboAnnounce"; }

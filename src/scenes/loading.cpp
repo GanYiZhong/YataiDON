@@ -132,13 +132,6 @@ std::optional<Screens> LoadingScreen::update() {
 #ifdef __EMSCRIPTEN__
         return on_screen_end(Screens::ENTRY);
 #else
-        // ROUND 79 (r79-boot-copyright-screen): on the cabinet the boot chain is
-        // SceneBoot -> SceneDeviceCheck -> **SceneCopyRight** -> SceneBNLogo ->
-        // SceneAttractMovie -> SceneCaution -> SceneTitle (main.obj.c:66..91 +
-        // SceneCopyRight.obj.c:483 in the CHN05 decompile of the same engine).
-        // This screen is the boot/notice half, so the copyright plate belongs
-        // immediately after it.  Gated on the skin declaring `copyright_page_ms`
-        // so PyTaikoGreen - which has no such art - keeps LOADING -> TITLE.
         if (CopyrightScreen::skin_page_ms() > 0)
             return on_screen_end(Screens::COPYRIGHT);
         return on_screen_end(Screens::TITLE);

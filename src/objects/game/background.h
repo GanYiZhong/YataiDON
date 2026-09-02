@@ -38,27 +38,6 @@ public:
     void draw_back();
     void draw_fore();
 
-    // ROUND 80 (r80-gauge-layering-recheck): per-lane soul-gauge overlay,
-    // called from Player::draw() IMMEDIATELY AFTER that lane's Gauge::draw().
-    //
-    // The cabinet's soul gauge is ONE graphic sitting at a fixed place in the
-    // enso graphic stack -- `EnsoGraphicTamashiiGage`, created from
-    // `datatable/enso_post.bin` target 0's twelfth row of thirty-three (the
-    // factory's `case 9`, EnsoGraphicFactory::CreateEnsoGraphics 0x1400EAF60,
-    // which walks the table and appends each graphic to one vector in row
-    // order) -- so it is drawn UNDER don_enso, lane_left, taiko, onp_jump,
-    // hit_effect, course, option, score, combo_number, action_result,
-    // branch_effect, don_fukidashi, renda_number, name_plate, action_fusen,
-    // action_kusudama, song_info, skip and papamama. A skin that repaints the
-    // gauge from draw_fore() -- the last Lua paint of the whole GAME HUD --
-    // puts its half of the gauge ON TOP of all of those instead, which is
-    // exactly the user report this round investigated ("the gauge is not the
-    // topmost layer").
-    //
-    // `player_num` is passed so a two-player skin repaints only the lane whose
-    // engine gauge just drew; both lanes then land in their own draw slots.
-    // Optional on the Lua side: a Background without `draw_gauge` is never
-    // called and keeps whatever it does in draw_fore().
     void draw_gauge(PlayerNum player_num);
     bool wants_gauge_draw() const { return fn_draw_gauge.valid(); }
 };

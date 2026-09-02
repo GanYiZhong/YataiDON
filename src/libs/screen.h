@@ -40,9 +40,6 @@ enum class Screens {
     SANDBOX,
     GAME_OVER,
     INPUT_TEST,
-    // ROUND 79: the cabinet's boot-time COPYRIGHT scene (attract/copyright.nulm).
-    // Appended at the END on purpose - the automation harness addresses screens
-    // by their integer value, so inserting in the middle would renumber them.
     COPYRIGHT
 };
 

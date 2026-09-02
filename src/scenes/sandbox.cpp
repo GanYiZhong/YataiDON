@@ -5,7 +5,6 @@
 #include "../objects/sandbox/fixtures_song_select.h"
 #include "../objects/sandbox/fixtures_global.h"
 #include "../objects/sandbox/fixtures_entry.h"
-#include "../libs/input.h"   // ROUND 91: check_key_pressed, so --automation works here
 
 static constexpr int SB_PANEL_W       = 220;
 static constexpr int SB_ITEM_H        = 32;
@@ -204,28 +203,6 @@ std::optional<Screens> SandboxScreen::handle_input() {
     if (ray::IsKeyPressed(ray::KEY_R)) {
         current_ms = fixture_start_ms = get_current_ms();
         fixtures[fixture_idx]->reset(current_ms);
-    }
-
-    // ROUND 91: keyboard fixture/type cycling. Selecting a fixture or a type
-    // used to be mouse-only, and the automation harness can inject keys but not
-    // mouse events, so no scripted run could reach a specific fixture. UP/DOWN
-    // walk the fixture list, LEFT/RIGHT walk the current fixture's type list.
-    if (k_up || k_down) {
-        const int n = static_cast<int>(fixtures.size());
-        const int step = k_down ? 1 : n - 1;
-        fixture_idx = (fixture_idx + step) % n;
-        ensure_screen_loaded(fixtures[fixture_idx]->screen);
-        type_scroll = 0;
-        current_ms = fixture_start_ms = get_current_ms();
-        fixtures[fixture_idx]->reset(current_ms);
-    }
-    if (k_left || k_right) {
-        const int nt = static_cast<int>(fixtures[fixture_idx]->type_names().size());
-        if (nt > 0) {
-            const int step = k_right ? 1 : nt - 1;
-            fixtures[fixture_idx]->set_type(
-                (fixtures[fixture_idx]->get_type() + step) % nt, current_ms);
-        }
     }
 
     auto layout              = build_panel_layout(fixtures);

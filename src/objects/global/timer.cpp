@@ -10,10 +10,6 @@ Timer::Timer(int time, double current_time_ms, std::function<void()> confirm_fun
 
 void Timer::update(double current_ms) { call(fn_update, "Timer:update", current_ms); }
 void Timer::draw(float x, float y)    { call(fn_draw,   "Timer:draw", x, y); }
-
-// ROUND 64 -- Timer.lua keeps the remaining seconds in `self.time` (both the
-// parent's and this skin's r52 child override do; it is the field `Timer:draw`
-// itself stringifies). Reading it directly is the engine-side `GetCount()`.
 int Timer::time() const {
     if (!lua_object.valid()) return -1;
     sol::optional<int> t = lua_object["time"];
