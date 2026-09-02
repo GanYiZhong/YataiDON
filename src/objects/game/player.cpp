@@ -54,7 +54,7 @@ Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param
         pd ? pd->username : "", pd ? pd->title : "",
         global_data.player_num,
         pd ? pd->dan : -1, pd ? pd->gold : false, pd ? pd->rainbow : false, pd ? pd->title_bg : 0);
-    chara = make_chara_from_player_data(pd ? &*pd : nullptr);
+    chara = make_chara_from_player_data(pd ? &*pd : nullptr, false, true);
     if (pd) {
         chara->set_don_colors(pd->chara_color_1, pd->chara_color_2, pd->chara_color_3);
         chara->apply_face(pd->chara_face_index);
@@ -1236,12 +1236,10 @@ void Player::drumroll_counter_manager(double current_ms) {
 }
 
 void Player::balloon_counter_manager(double current_ms) {
-    if (!is_balloon && balloon_counter.has_value()) {
-        bool popped = balloon_counter->is_finished();
+    if (!is_balloon && balloon_counter.has_value() && !balloon_counter->has_popped()) {
         balloon_counter.reset();
         chara->set_anim(AnimIndex::DON_NORMAL);
-        chara->set_anim(popped ? AnimIndex::DON_BALLOON_SUCCESS
-                               : AnimIndex::DON_BALLOON_FAILURE);
+        chara->set_anim(AnimIndex::DON_BALLOON_FAILURE);
     }
     if (balloon_counter.has_value()) {
         balloon_counter->update(current_ms, curr_balloon_count);
@@ -1258,7 +1256,7 @@ void Player::balloon_counter_manager(double current_ms) {
 }
 
 void Player::kusudama_counter_manager(double current_ms) {
-    if (!is_balloon && kusudama_counter.has_value()) {
+    if (!is_balloon && kusudama_counter.has_value() && !kusudama_counter->has_popped()) {
         kusudama_counter.reset();
     }
     if (kusudama_counter.has_value()) {
@@ -1473,9 +1471,6 @@ void Player::draw_notes(double current_ms, float y) {
         return std::make_pair(x_position + judge_x, y_position + judge_y + y);
     };
 
-    // Two passes: all note bodies, then all moji. Alternating between note
-    // and moji textures per note flushes the sprite batch on every switch;
-    // grouped by texture the whole lane draws in a few batches
     for (auto it = draw_note_buffer.rbegin(); it != draw_note_buffer.rend(); ++it) {
         auto& note = *it;
         if (skip_note(note)) continue;
@@ -1569,18 +1564,16 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     for (GaugeHitEffect& anim : gauge_hit_effect) {
         anim.draw(y);
     }
-    draw_modifiers(y);
 
     combo_display.draw(y);
     if (combo_announce.has_value()) {
         combo_announce->draw(y + (tex.skin_config[SC::COMBO_ANNOUNCE_P2_Y_OFFSET].y * is_2p));
     }
     tex.draw_texture(lane_icon_tex_id, {.y=y, .index=is_2p});
-    if (is_dan) {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=6, .y=y});
-    } else {
-        tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=difficulty, .y=y, .index=is_2p});
-    }
+    int frame = is_dan ? 6 : difficulty;
+    int index = is_dan ? 0 : is_2p;
+    tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
+    draw_modifiers(y);
     if (judge_counter.has_value()) {
         judge_counter->draw();
     }

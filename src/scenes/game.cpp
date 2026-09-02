@@ -3,6 +3,7 @@
 #include "../libs/input.h"
 #include "../libs/network.h"
 #include "../libs/script.h"
+#include "../libs/filesystem.h"
 #include <cmath>
 
 
@@ -116,13 +117,12 @@ Modifiers GameScreen::get_player_modifiers(PlayerNum pn) {
 }
 
 void GameScreen::load_hitsounds() {
-    fs::path sounds_dir = audio.sounds_path;
     int neiro_p1 = scores_manager.get_player_data(get_player_id(PlayerNum::P1)).value_or(PlayerData{}).neiro_index;
     int neiro_p2 = scores_manager.get_player_data(get_player_id(PlayerNum::P2)).value_or(PlayerData{}).neiro_index;
-    audio.load_sound(sounds_dir / "hit_sounds" / std::to_string(neiro_p1) / "don.ogg", "hitsound_don_1p");
-    audio.load_sound(sounds_dir / "hit_sounds" / std::to_string(neiro_p1) / "ka.ogg",  "hitsound_kat_1p");
-    audio.load_sound(sounds_dir / "hit_sounds" / std::to_string(neiro_p2) / "don.ogg", "hitsound_don_2p");
-    audio.load_sound(sounds_dir / "hit_sounds" / std::to_string(neiro_p2) / "ka.ogg",  "hitsound_kat_2p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "don.ogg"), "hitsound_don_1p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p1) / "ka.ogg"),  "hitsound_kat_1p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "don.ogg"), "hitsound_don_2p");
+    audio.load_sound(resolve_skin_path(fs::path("Sounds/hit_sounds") / std::to_string(neiro_p2) / "ka.ogg"),  "hitsound_kat_2p");
     spdlog::info("Loaded ogg hit sounds for 1P and 2P");
 }
 
@@ -293,7 +293,9 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     std::string modifiers_json = modifiers_to_json(players[0]->get_modifiers());
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score, played_at, modifiers_json);
     PlayerData pd = scores_manager.get_player_data(player_id).value_or(PlayerData{});
-    network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
+    if (global_data.config->general.score_method != ScoreMethod::GEN3) {
+        network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
+    }
 }
 
 void GameScreen::resync_song(double current_ms) {

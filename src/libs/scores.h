@@ -93,7 +93,7 @@ public:
 
 extern ScoresManager* _scores_manager_ptr;
 #define scores_manager (*_scores_manager_ptr)
-void init_scores_manager();
+void init_scores_manager(bool gen3);
 
 inline ray::Color chara_default_color_1(int player_id) {
     return (player_id % 2 == 0) ? ray::Color{249, 71, 40, 255} : ray::Color{104, 191, 192, 255};

@@ -4,16 +4,13 @@
 
 BaseBox::BaseBox(const fs::path& path, const BoxDef& box_def)
     : path(path), texture_index(box_def.texture_index),
-      back_color(box_def.back_color), genre_index(box_def.genre_index),
+      genre_index(box_def.genre_index),
       collection(box_def.collection)
 {
-    if (box_def.fore_color.has_value()) {
-        this->fore_color = box_def.fore_color.value();
-    } else if (back_color.has_value()) {
-        this->fore_color = darken_color(box_def.back_color.value());
-    } else {
-        this->fore_color = ray::Color(101, 0, 82, 255);
-    }
+    BoxColors colors = resolve_box_colors(box_def.box_color, box_def.back_color, box_def.fore_color);
+    this->back_color = colors.box;
+    this->fore_color = colors.outline;
+    this->text_color = colors.text;
 
     position = std::numeric_limits<float>::infinity();
     target_position = std::numeric_limits<float>::infinity();
@@ -32,14 +29,10 @@ BaseBox::~BaseBox() {
 }
 
 void BaseBox::load_text() {
-    float base_font_size = (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
-    float font_size = base_font_size;
-    float name_outline = 5.0f;
-    if (utf8_char_count(text_name) >= 30) {
-        font_size = base_font_size - 10.0f * tex.screen_scale;
-        name_outline = 5.0f * (font_size / base_font_size);
-    }
-    name = make_unique<OutlinedText>(text_name, (int)font_size, ray::WHITE, fore_color.value(), true, name_outline);
+    float font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
+    if (utf8_char_count(text_name) >= 30)
+        font_size -= (int)(10 * tex.screen_scale);
+    name = make_unique<OutlinedText>(text_name, font_size, text_color, fore_color.value(), true);
 
     if (back_color.has_value()) {
         shader = load_shader("shader/dummy.vs", "shader/colortransform.fs");

@@ -7,6 +7,7 @@
 #include "../global/nameplate.h"
 #include "../global/timer.h"
 #include "../../libs/global_data.h"
+#include "../../libs/filesystem.h"
 #include "texture_ids_generated.h"
 
 constexpr int CENTER_X = 220;
@@ -21,7 +22,7 @@ struct Chara3DFixture : public SandboxScreen::Fixture {
     Chara3DFixture() {
         name = "Chara3D";
         screen = "global";
-        fs::path models_dir = tex.resolve_skin_path("Models/cos");
+        fs::path models_dir = resolve_skin_path("Models/cos");
         if (fs::exists(models_dir)) {
             for (auto& entry : fs::directory_iterator(models_dir)) {
                 if (entry.path().extension() == ".glb")

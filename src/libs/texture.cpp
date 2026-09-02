@@ -29,7 +29,6 @@ void TextureWrapper::init(const fs::path& skin_path) {
         throw std::runtime_error("The skin path provided is not a valid path");
     }
 
-    parent_graphics_path = graphics_path;
     auto skin_config_file = read_json_file(graphics_path / "skin_config.json");
 
     // Derive screen dimensions from child config first so screen_scale is known.
@@ -43,10 +42,6 @@ void TextureWrapper::init(const fs::path& skin_path) {
         screen_scale  = w / 1280.0f;
     }
 
-    // Parses one skin_config.json entry into a SkinInfo, storing it under its
-    // string key so Lua/runtime consumers can see keys the generated SC enum
-    // doesn't know about yet, and additionally under the SC enum when the key
-    // is recognized (used by hardcoded C++ reads via skin_config[SC::...]).
     auto load_entry = [this](const std::string& name, const Value& v, float scale) {
         float x = (v.HasMember("x") ? v["x"].GetFloat() : 0) * scale;
         float y = (v.HasMember("y") ? v["y"].GetFloat() : 0) * scale;
@@ -74,10 +69,8 @@ void TextureWrapper::init(const fs::path& skin_path) {
     };
 
     // Load parent skin_config first so child values override.
-    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
-        std::string parent = skin_config_file["screen"]["parent"].GetString();
-        parent_graphics_path = fs::path("Skins") / parent / "Graphics";
-
+    parent_graphics_path = resolve_parent_graphics_path(graphics_path);
+    if (parent_graphics_path != graphics_path) {
         auto parent_config = read_json_file(parent_graphics_path / "skin_config.json");
 
         for (auto& m : parent_config.GetObject()) {
@@ -88,6 +81,16 @@ void TextureWrapper::init(const fs::path& skin_path) {
     // Load child skin_config ??overrides parent defaults.
     for (auto& m : skin_config_file.GetObject()) {
         load_entry(m.name.GetString(), m.value, 1.0f);
+    }
+
+    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("chara_3d")) {
+        const Value& c3d = skin_config_file["screen"]["chara_3d"];
+        if (c3d.IsObject()) {
+            if (c3d.HasMember("scale"))  chara_3d_config.scale  = c3d["scale"].GetFloat();
+            if (c3d.HasMember("rot_x"))  chara_3d_config.rot_x  = c3d["rot_x"].GetFloat();
+            if (c3d.HasMember("rot_y"))  chara_3d_config.rot_y  = c3d["rot_y"].GetFloat();
+            if (c3d.HasMember("rot_z"))  chara_3d_config.rot_z  = c3d["rot_z"].GetFloat();
+        }
     }
 
     if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("options")) {
@@ -415,6 +418,7 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
     auto load_from_path = [&](const fs::path& folder, float tex_scale,
                               const std::unordered_set<std::string>* skip) {
         fs::path tex_json = folder / "texture.json";
+        if (!fs::exists(tex_json)) return;
 
         try {
             auto tex_config = read_json_file(tex_json);
@@ -461,8 +465,13 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
                                        files.size(), size_t{1}, false});
                     files.push_back(tex_file);
                 } else {
-                    spdlog::error("Texture {} was not found in {}",
-                           tex_name, folder.string());
+                    auto existing = textures.find(tex_id);
+                    if (existing != textures.end()) {
+                        read_tex_obj_data(tex_mapping, existing->second.get(), tex_scale);
+                    } else {
+                        spdlog::error("Texture {} was not found in {}",
+                               tex_name, folder.string());
+                    }
                 }
             }
 

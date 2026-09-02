@@ -12,6 +12,7 @@ struct BoxDef {
     std::string collection;
     std::optional<ray::Color> back_color;
     std::optional<ray::Color> fore_color;
+    std::optional<ray::Color> box_color;
 };
 
 inline size_t utf8_char_count(const std::string& s) {
@@ -32,6 +33,7 @@ public:
     TextureIndex texture_index;
     std::optional<ray::Color> back_color;
     std::optional<ray::Color> fore_color;
+    ray::Color text_color = ray::WHITE;
 
     FadeAnimation* fade;
     MoveAnimation* open_anim;
@@ -100,7 +102,7 @@ public:
             float font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
             if (utf8_char_count(text_name) >= 30)
                 font_size -= (int)(10 * tex.screen_scale);
-            horizontal_name_cache = std::make_unique<OutlinedText>(text_name, font_size, ray::WHITE, fore_color.value(), false);
+            horizontal_name_cache = std::make_unique<OutlinedText>(text_name, font_size, text_color, fore_color.value(), false);
         }
         return horizontal_name_cache.get();
     }
@@ -110,7 +112,7 @@ public:
             float font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
             if (utf8_char_count(text_name) >= 30)
                 font_size -= (int)(10 * tex.screen_scale);
-            horizontal_name_large_cache = std::make_unique<OutlinedText>(text_name, (int)(font_size * 1.5f), ray::WHITE, fore_color.value(), false, 6);
+            horizontal_name_large_cache = std::make_unique<OutlinedText>(text_name, (int)(font_size * 1.5f), text_color, fore_color.value(), false, 6);
         }
         return horizontal_name_large_cache.get();
     }

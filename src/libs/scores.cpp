@@ -764,6 +764,6 @@ void ScoresManager::commit() {
 
 ScoresManager* _scores_manager_ptr = nullptr;
 
-void init_scores_manager() {
-    _scores_manager_ptr = new ScoresManager("scores.db");
+void init_scores_manager(bool gen3) {
+    _scores_manager_ptr = new ScoresManager(gen3 ? "scores_gen3.db" : "scores.db");
 }

@@ -347,8 +347,8 @@ static void run_frame() {
 int main(int argc, char* argv[]) {
     spdlog::info("Starting YataiDON");
     set_working_directory_to_executable();
-    init_scores_manager();
     global_data.config = new Config(get_config());
+    init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
     unsigned int flags = ray::FLAG_WINDOW_RESIZABLE;
     if (global_data.config->video.vsync) {
         flags |= ray::FLAG_VSYNC_HINT;
@@ -359,6 +359,7 @@ int main(int argc, char* argv[]) {
     setup_logging(global_data.config->general.log_level);
 
     fs::path root_skin_path = fs::path("Skins") / global_data.config->paths.skin;
+    set_skin_graphics_path(root_skin_path / "Graphics");
 
     tex.init(root_skin_path / "Graphics");
 
@@ -371,23 +372,8 @@ int main(int argc, char* argv[]) {
     global_tex.init(root_skin_path / "Graphics");
     global_tex.load_screen_textures("global");
     script_manager.init(root_skin_path / "Scripts");
-    {
-        fs::path font = root_skin_path / "Graphics/font.ttf";
-        auto looks_like_font = [](const fs::path& p) {
-            std::ifstream f(p, std::ios::binary);
-            unsigned char magic[4] = {0, 0, 0, 0};
-            if (!f.read(reinterpret_cast<char*>(magic), 4)) return false;
-            // 00 01 00 00 (TrueType), "OTTO" (CFF OpenType), "true", "ttcf"
-            return (magic[0] == 0 && magic[1] == 1 && magic[2] == 0 && magic[3] == 0) ||
-                   memcmp(magic, "OTTO", 4) == 0 || memcmp(magic, "true", 4) == 0 ||
-                   memcmp(magic, "ttcf", 4) == 0;
-        };
-        if (!looks_like_font(font) && global_tex.has_parent_skin()) {
-            spdlog::warn("Skin font {} is not a usable font file, using the parent skin's", font.string());
-            font = global_tex.parent_root() / "Graphics/font.ttf";
-        }
-        font_manager.init(font);
-    }
+    fs::path font_path = resolve_skin_path("Graphics/font.ttf");
+    font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
 
     scores_manager.player_1 = global_data.config->general.player_1_id;

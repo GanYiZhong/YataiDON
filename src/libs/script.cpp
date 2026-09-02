@@ -6,6 +6,7 @@
 #include "text.h"
 #include "audio.h"
 #include "input.h"
+#include "filesystem.h"
 #include "../objects/song_select/file_navigator/box_lua_bindings.h"
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
@@ -122,8 +123,8 @@ void ScriptManager::init(fs::path script_path) {
     // A partial skin scripts only some screens and leans on its parent for
     // the rest, exactly like its graphics.
     fs::path parent_scripts;
-    if (global_tex.has_parent_skin())
-        parent_scripts = global_tex.parent_root() / "Scripts";
+    if (skin_has_parent())
+        parent_scripts = parent_skin_root() / "Scripts";
 
     std::string skin_scripts_dir = script_path.string();
     std::string package_path = skin_scripts_dir + "/?.lua;" +

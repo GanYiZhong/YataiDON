@@ -12,7 +12,7 @@ echo ""
 rm -rf build
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
   $(command -v ccache &>/dev/null && echo "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-cmake --build build -j$(nproc)
+cmake --build build -j"${JOBS:-$(( $(nproc) / 2 ))}"
 
 # Copy executable to root directory
 if [ -f build/bin/YataiDON ]; then
