@@ -33,10 +33,11 @@ void scan_folder_now(const fs::path& path) {
     int player_2_id = global_data.config->general.player_2_id;
 
     auto update_crown = [&](const fs::path& file_path, int player_id, std::map<int, Crown>& out_crown, std::set<int>& disqualified) {
-        auto& hashes = scores_manager.get_hashes(file_path);
+        const auto& hashes = scores_manager.get_hashes(file_path);
         for (int diff = 0; diff < 5; diff++) {
             if (hashes[diff].empty()) continue;
-            auto score = scores_manager.get_score(hashes[diff], diff, player_id);
+            std::string hash = hashes[diff];
+            auto score = scores_manager.get_score(hash, diff, player_id);
 
             if (!score || score->crown == Crown::NONE) {
                 out_crown.erase(diff);

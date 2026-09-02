@@ -32,7 +32,7 @@ void DanBox::load_text() {
         name_outline = 5.0f * (shrunk / base_font);
         base_font = shrunk;
     }
-    const bool chip_black = tex.skin_flag("dan_chip_name_black");
+    const bool chip_black = tex.options[SCO::DAN_CHIP_NAME_BLACK];
     name = std::make_unique<OutlinedText>(text_name, (int)base_font,
                                           chip_black ? ray::BLACK : ray::WHITE,
                                           ray::BLACK, true,
@@ -313,7 +313,7 @@ void DanBox::draw_exam_grid() {
 }
 
 void DanBox::draw_exam_box() {
-    if (tex.skin_flag("dan_exam_grid")) { draw_exam_grid(); return; }
+    if (tex.options[SCO::DAN_EXAM_GRID]) { draw_exam_grid(); return; }
 
     float f = open_fade->attribute;
     tex.draw_texture(YELLOW_BOX::EXAM_BOX_BOTTOM_RIGHT, {.fade=f});

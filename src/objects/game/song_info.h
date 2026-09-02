@@ -27,7 +27,7 @@ private:
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num);
+    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0);
 
     void update(double current_ms);
     void draw();

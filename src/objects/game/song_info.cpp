@@ -3,16 +3,21 @@
 
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
-SongInfo::SongInfo(const std::string& song_name, int genre, int song_num, int song_total)
+SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total)
     : song_name(song_name), genre(genre) {
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
+    if (show_subtitle && !subtitle.empty()) {
+        song_subtitle = std::make_unique<OutlinedText>(subtitle, tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
+    }
     const SkinInfo* plate_cfg = tex.skin_entry("song_num_game");
     this->song_num = std::make_unique<SongNum>(
         song_num, plate_cfg ? plate_cfg->outline : -1.0f);
     if (song_total > 0 && tex.skin_entry("song_num_max"))
         song_max = std::make_unique<SongNum>(song_total, "song_num_max");
+    fade = (FadeAnimation*)tex.get_animation(3);
+}
 
 void SongInfo::update(double current_ms) {
     fade->update(current_ms);
