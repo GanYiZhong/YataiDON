@@ -1,5 +1,4 @@
 #include "loading.h"
-#include "copyright.h"
 #include "../libs/global_data.h"
 #include "../libs/scores.h"
 #include "../libs/filesystem.h"
@@ -132,8 +131,6 @@ std::optional<Screens> LoadingScreen::update() {
 #ifdef __EMSCRIPTEN__
         return on_screen_end(Screens::ENTRY);
 #else
-        if (CopyrightScreen::skin_page_ms() > 0)
-            return on_screen_end(Screens::COPYRIGHT);
         return on_screen_end(Screens::TITLE);
 #endif
     }
