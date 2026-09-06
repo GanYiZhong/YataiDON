@@ -20,9 +20,6 @@ void DanGameScreen::on_screen_start() {
     JudgePos::X = tex.skin_config[SC::JUDGE_POS].x;
     JudgePos::Y = tex.skin_config[SC::JUDGE_POS].y;
 
-    if (global_data.config->general.nijiiro_notes) {
-        tex.load_folder("game", "notes_nijiiro");
-    }
     auto rainbow_mask = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW_MASK]);
     auto rainbow      = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW]);
     if (rainbow_mask && rainbow) {

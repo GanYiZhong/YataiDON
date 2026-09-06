@@ -14,7 +14,6 @@ struct GeneralConfig {
     bool timer_frozen;
     bool song_timer;
     bool judge_counter;
-    bool nijiiro_notes;
     std::string log_level;
     int practice_mode_bar_delay;
     std::string score_method;
