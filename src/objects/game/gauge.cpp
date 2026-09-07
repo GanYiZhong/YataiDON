@@ -4,6 +4,13 @@
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {
     this->difficulty = std::min((int)Difficulty::ONI, difficulty);
+    // The arcade's clear threshold depends on the difficulty: the clear zone
+    // begins at cell 30/35/40 of the 50-cell gauge (Easy/Normal/Hard+), i.e.
+    // 6000/7000/8000 of 10000. The rewrite drew it at 8000 for every course,
+    // which shifts the clear divider visibly on Easy and Normal.
+    clear_points = this->difficulty <= (int)Difficulty::EASY   ? 6000
+                 : this->difficulty == (int)Difficulty::NORMAL ? 7000
+                                                              : 8000;
     GaugeTable table_row = table[this->difficulty][std::min(9, level - 1)];
     good_points = (int)std::ceil(1000000 / (total_notes * table_row.soul_percent));
     ok_points   = (int)std::round(good_points * table_row.ok_multiplier);
