@@ -58,15 +58,31 @@ void Combo::draw(float y) {
     if (combo < 3) return;
 
     std::string counter = std::to_string(combo);
+
+    // Combo colour tiers: white (default) -> silver at 50+ -> gold at 100+.
+    // The skin ships counter (white), counter_100 (silver) and counter_gold
+    // (gold); the gold sheet is optional, so fall back to the silver sheet when
+    // a skin does not provide it. Only the 100+ tier keeps the wider three-digit
+    // spacing and the gleam animation.
+    const bool gold   = combo >= 100;
+    const bool silver = combo >= 50 && combo < 100;
+
+    auto have = [&](TexID id) {
+        return tex.textures.find((uint32_t)id) != tex.textures.end();
+    };
+    TexID digit_tex = COMBO::COUNTER;
+    if (gold)        digit_tex = have(COMBO::COUNTER_GOLD) ? COMBO::COUNTER_GOLD : COMBO::COUNTER_100;
+    else if (silver) digit_tex = COMBO::COUNTER_100;
+
     float margin;
     float total_width;
-    if (combo < 100) {
+    if (!gold) {
         margin = tex.skin_config[SC::COMBO_MARGIN].x;
         total_width = counter.length() * margin;
         tex.draw_texture(tex.get_enum("combo/combo_" + global_data.config->general.language), {.y=y});
         for (int i = 0; i < counter.size(); i++) {
             char digit = counter[i];
-            tex.draw_texture(COMBO::COUNTER, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
+            tex.draw_texture(digit_tex, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
         }
 
     } else {
@@ -75,7 +91,7 @@ void Combo::draw(float y) {
         tex.draw_texture(tex.get_enum("combo/combo_100_" + global_data.config->general.language), {.y=y});
         for (int i = 0; i < counter.size(); i++) {
             char digit = counter[i];
-            tex.draw_texture(COMBO::COUNTER_100, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
+            tex.draw_texture(digit_tex, {.frame=digit - '0', .x=-(total_width / 2) + (i * margin), .y=y + (float)-stretch->attribute, .y2=(float)stretch->attribute});
         }
         std::vector<std::pair<float, float>> glimmer_positions = {
             {tex.skin_config[SC::COMBO_GLIMMER_1].x, tex.skin_config[SC::COMBO_GLIMMER_1].y},
