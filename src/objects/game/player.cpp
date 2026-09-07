@@ -865,7 +865,13 @@ void Player::handle_lyric(double ms_from_start, const TimelineObject& timeline_o
         current_lyric.reset();
     }
 
-    current_lyric.emplace(timeline_object.lyric.value(), 40, ray::WHITE, ray::BLUE, false, 4.0);
+    // Skin-configurable lyric line: optional "lyric" entry (font_size / y / outline);
+    // falls back to the historical 40px (scaled) at the bottom of the screen.
+    const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+    int font_size = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
+                                                             : static_cast<int>(40 * tex.screen_scale);
+    float outline = (lyric_cfg && lyric_cfg->outline >= 0) ? lyric_cfg->outline : 4.0f;
+    current_lyric.emplace(timeline_object.lyric.value(), font_size, ray::WHITE, ray::BLUE, false, outline);
     if (buffer_index != (int)timeline_buffer.size() - 1)
         timeline_buffer[buffer_index] = std::move(timeline_buffer.back());
     timeline_buffer.pop_back();
@@ -1624,7 +1630,10 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
         anim.draw(y);
     }
     if (current_lyric.has_value()) {
-        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5))});
+        const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+        float lyric_y = (lyric_cfg && lyric_cfg->y > 0) ? lyric_cfg->y
+                                                        : static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5));
+        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=lyric_y});
     }
 }
 
