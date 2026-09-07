@@ -870,7 +870,7 @@ void Player::handle_lyric(double ms_from_start, const TimelineObject& timeline_o
     const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
     int font_size = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
                                                              : static_cast<int>(40 * tex.screen_scale);
-    float outline = (lyric_cfg && lyric_cfg->outline >= 0) ? lyric_cfg->outline : 4.0f;
+    float outline = (lyric_cfg && lyric_cfg->outline >= 0) ? lyric_cfg->outline : 4.0f * tex.screen_scale;
     current_lyric.emplace(timeline_object.lyric.value(), font_size, ray::WHITE, ray::BLUE, false, outline);
     if (buffer_index != (int)timeline_buffer.size() - 1)
         timeline_buffer[buffer_index] = std::move(timeline_buffer.back());
