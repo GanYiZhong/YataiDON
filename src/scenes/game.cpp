@@ -22,30 +22,6 @@ void GameScreen::on_screen_start() {
     pause_time = 0;
     global_data.live_combo = global_data.live_score = global_data.live_drumroll = 0;
     global_data.live_gogo = false;
-    if (global_data.config->general.nijiiro_notes) {
-        tex.load_folder("game", "notes_nijiiro");
-        for (auto [src, dst] : std::initializer_list<std::pair<uint32_t, uint32_t>>{
-            {NOTES_NIJIIRO::_0,                  NOTES::_0},
-            {NOTES_NIJIIRO::_1,                  NOTES::_1},
-            {NOTES_NIJIIRO::_2,                  NOTES::_2},
-            {NOTES_NIJIIRO::_3,                  NOTES::_3},
-            {NOTES_NIJIIRO::_4,                  NOTES::_4},
-            {NOTES_NIJIIRO::_5,                  NOTES::_5},
-            {NOTES_NIJIIRO::_6,                  NOTES::_6},
-            {NOTES_NIJIIRO::_7,                  NOTES::_7},
-            {NOTES_NIJIIRO::_8,                  NOTES::_8},
-            {NOTES_NIJIIRO::_9,                  NOTES::_9},
-            {NOTES_NIJIIRO::_10,                 NOTES::_10},
-            {NOTES_NIJIIRO::DRUMROLL_BIG_TAIL,   NOTES::DRUMROLL_BIG_TAIL},
-            {NOTES_NIJIIRO::DRUMROLL_TAIL,       NOTES::DRUMROLL_TAIL},
-            {NOTES_NIJIIRO::MOJI,                NOTES::MOJI},
-            {NOTES_NIJIIRO::MOJI_DRUMROLL_MID,   NOTES::MOJI_DRUMROLL_MID},
-            {NOTES_NIJIIRO::MOJI_DRUMROLL_MID_BIG, NOTES::MOJI_DRUMROLL_MID_BIG},
-        }) {
-            auto it = tex.textures.find(src);
-            if (it != tex.textures.end()) tex.textures[dst] = it->second;
-        }
-    }
     auto rainbow_mask = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW_MASK]);
     auto rainbow = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW]);
     if (rainbow_mask && rainbow) {
