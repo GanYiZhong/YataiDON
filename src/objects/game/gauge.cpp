@@ -4,6 +4,9 @@
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {
     this->difficulty = std::min((int)Difficulty::ONI, difficulty);
+    clear_points = this->difficulty <= (int)Difficulty::EASY   ? 6000
+                 : this->difficulty == (int)Difficulty::NORMAL ? 7000
+                                                              : 8000;
     GaugeTable table_row = table[this->difficulty][std::min(9, level - 1)];
     good_points = (int)std::ceil(1000000 / (total_notes * table_row.soul_percent));
     ok_points   = (int)std::round(good_points * table_row.ok_multiplier);
