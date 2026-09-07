@@ -4,7 +4,11 @@
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {
     this->difficulty = std::min((int)Difficulty::ONI, difficulty);
-    GaugeTable table_row = table[this->difficulty][std::min(9, level - 1)];
+    // `level` is the 1-based star rating; clamp the row index into [0, 9].
+    // Guards against the out-of-bounds table[diff][-1] read a ★1 chart used to
+    // trigger (garbage soul_percent -> div-by-zero -> INT_MIN good_points ->
+    // the gauge could never fill).
+    GaugeTable table_row = table[this->difficulty][std::clamp(level - 1, 0, 9)];
     good_points = (int)std::ceil(1000000 / (total_notes * table_row.soul_percent));
     ok_points   = (int)std::round(good_points * table_row.ok_multiplier);
     bad_points  = (int)std::round(good_points * table_row.bad_multiplier);

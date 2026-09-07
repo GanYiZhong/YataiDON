@@ -666,7 +666,7 @@ void Player::reset_chart() {
         }
     }
     judgeable_note_count = gauge_total_notes;
-    gauge = Gauge(gauge_total_notes, difficulty, stars - 1, player_num);
+    gauge = Gauge(gauge_total_notes, difficulty, stars, player_num);
 
     //setup score
     base_score = 0;
