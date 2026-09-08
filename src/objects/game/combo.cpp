@@ -59,19 +59,20 @@ void Combo::draw(float y) {
 
     std::string counter = std::to_string(combo);
 
-    // Combo colour tiers: white (default) -> silver at 50+ -> gold at 100+.
-    // The skin ships counter (white), counter_100 (silver) and counter_gold
-    // (gold); the gold sheet is optional, so fall back to the silver sheet when
-    // a skin does not provide it. Only the 100+ tier keeps the wider three-digit
-    // spacing and the gleam animation.
+    // Skin option "combo_color_tiers":
+    //   off (default): white below 100, counter_100 (silver) at 100+  -- legacy look
+    //   on:            white -> counter_100 (silver) at 50+ -> counter_gold at 100+,
+    //                  falling back to counter_100 when the skin ships no gold sheet.
+    // Only the 100+ tier uses the wider three-digit spacing and the gleam animation.
+    const bool tiers  = tex.options[SCO::COMBO_COLOR_TIERS];
     const bool gold   = combo >= 100;
-    const bool silver = combo >= 50 && combo < 100;
+    const bool silver = tiers && combo >= 50 && combo < 100;
 
     auto have = [&](TexID id) {
         return tex.textures.find((uint32_t)id) != tex.textures.end();
     };
     TexID digit_tex = COMBO::COUNTER;
-    if (gold)        digit_tex = have(COMBO::COUNTER_GOLD) ? COMBO::COUNTER_GOLD : COMBO::COUNTER_100;
+    if (gold)        digit_tex = (tiers && have(COMBO::COUNTER_GOLD)) ? COMBO::COUNTER_GOLD : COMBO::COUNTER_100;
     else if (silver) digit_tex = COMBO::COUNTER_100;
 
     float margin;
