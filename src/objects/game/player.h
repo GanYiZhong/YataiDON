@@ -168,6 +168,7 @@ private:
     int balloon_index;
 
     std::optional<OutlinedText> current_lyric;
+    bool practice_lyric = false;   // set once draw_practice runs: lyric moves above the practice drums
 
     bool is_branch;
     std::tuple<float, float, double> curr_branch_reqs;
