@@ -1,4 +1,5 @@
 #include "gauge.h"
+#include <cmath>
 #include "../../libs/texture.h"
 
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
@@ -69,7 +70,11 @@ void Gauge::draw(float y) {
     tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_unfilled" + string_diff)),
                       {.mirror = mirror, .y = y, .index = mirrored});
 
-    constexpr int bar_units = 87;
+    // Cell count of the gauge art. Skins that ship a different grid (e.g. the
+    // cabinet's 50 x 21 px) declare it as skin_config "gauge_cells": {"x": N};
+    // the cell width always comes from the <n>p_bar texture.
+    const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
+    const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
     int gauge_length_int = points * bar_units / max_points;
     int previous_length_int = previous_points * bar_units / max_points;
     int clear_point = clear_points * bar_units / max_points;
