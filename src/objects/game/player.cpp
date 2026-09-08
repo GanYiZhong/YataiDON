@@ -458,16 +458,19 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
     for (Judgment& anim : draw_judge_list) {
         anim.draw_effect(judge_x, y + judge_y);
     }
-    for (Judgment& anim : draw_judge_list) {
-        anim.draw_text(judge_x, y + judge_y);
-    }
-
     {
         int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
         int win_w = ray::GetScreenWidth();
         ray::BeginScissorMode(scissor_x, 0, win_w - scissor_x, ray::GetScreenHeight());
         draw_notes(ms_from_start, y);
         ray::EndScissorMode();
+    }
+
+    for (Judgment& anim : draw_judge_list) {
+        anim.draw_outer_effect(judge_x, y + judge_y);
+    }
+    for (Judgment& anim : draw_judge_list) {
+        anim.draw_text(judge_x, y + judge_y);
     }
 
     draw_overlays(y, mask_shader);
@@ -507,9 +510,6 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
     for (Judgment& anim : draw_judge_list) {
         anim.draw_effect(judge_x, y + judge_y);
     }
-    for (Judgment& anim : draw_judge_list) {
-        anim.draw_text(judge_x, y + judge_y);
-    }
 
     if (draw_notes_on) {
         int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
@@ -519,7 +519,15 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
         ray::EndScissorMode();
     }
 
+    for (Judgment& anim : draw_judge_list) {
+        anim.draw_outer_effect(judge_x, y + judge_y);
+    }
+    for (Judgment& anim : draw_judge_list) {
+        anim.draw_text(judge_x, y + judge_y);
+    }
+
     draw_overlays(y, mask_shader);
+
 }
 
 void Player::get_load_time(Note& note) {

@@ -20,6 +20,8 @@ public:
 
     void draw_effect(float judge_x, float judge_y);
 
+    void draw_outer_effect(float judge_x, float judge_y);
+
     void draw_text(float judge_x, float judge_y);
 
     bool is_finished() const;

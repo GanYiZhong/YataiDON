@@ -36,18 +36,35 @@ void Judgment::draw_effect(float judge_x, float judge_y) {
     if (type == Judgments::GOOD) {
         if (big) {
             tex.draw_texture(HIT_EFFECT::HIT_EFFECT_GOOD_BIG, {.x=judge_x, .y=judge_y, .fade=fade});
-            tex.draw_texture(HIT_EFFECT::OUTER_GOOD_BIG,{.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
         } else {
             tex.draw_texture(HIT_EFFECT::HIT_EFFECT_GOOD, {.x=judge_x, .y=judge_y, .fade=fade});
-            tex.draw_texture(HIT_EFFECT::OUTER_GOOD, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
         }
     }
     else if (type == Judgments::OK) {
         if (big) {
             tex.draw_texture(HIT_EFFECT::HIT_EFFECT_OK_BIG, {.x=judge_x, .y=judge_y, .fade=fade});
-            tex.draw_texture(HIT_EFFECT::OUTER_OK_BIG, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
         } else {
             tex.draw_texture(HIT_EFFECT::HIT_EFFECT_OK, {.x=judge_x, .y=judge_y, .fade=fade});
+        }
+    }
+}
+
+void Judgment::draw_outer_effect(float judge_x, float judge_y) {
+    int index = static_cast<int>(texture_animation->attribute);
+    float hit_fade = fade_animation_1->attribute;
+    float fade = fade_animation_2->attribute;
+
+    if (type == Judgments::GOOD) {
+        if (big) {
+            tex.draw_texture(HIT_EFFECT::OUTER_GOOD_BIG,{.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
+        } else {
+            tex.draw_texture(HIT_EFFECT::OUTER_GOOD, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
+        }
+    }
+    else if (type == Judgments::OK) {
+        if (big) {
+            tex.draw_texture(HIT_EFFECT::OUTER_OK_BIG, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
+        } else {
             tex.draw_texture(HIT_EFFECT::OUTER_OK, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
         }
     }
