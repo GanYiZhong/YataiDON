@@ -332,6 +332,8 @@ void Navigator::enqueue_box(std::unique_ptr<BaseBox> box) {
             box->is_new = true;
     }
 
+    box->preregister_text();   // glyphs for the whole batch land before the first load_text()
+
     std::lock_guard<std::mutex> lock(pending_mutex);
     if (auto* song = dynamic_cast<SongBox*>(box.get())) {
         auto& t = song->parser.metadata.title;

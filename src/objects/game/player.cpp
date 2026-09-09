@@ -2,6 +2,7 @@
 #include "../../libs/audio.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
+#include "../../libs/text.h"
 #include <algorithm>
 #include <cmath>
 
@@ -632,6 +633,21 @@ void Player::reset_chart() {
     }
 
     this->timeline = notes.timeline;
+
+    // Rasterize every #LYRIC glyph now, in one go: otherwise each new line with an
+    // unseen character rebuilt the lyric-size font atlas mid-song (a ~20 ms hitch
+    // per line).
+    {
+        std::string all_lyrics;
+        for (const TimelineObject& t : this->timeline)
+            if (t.lyric.has_value()) all_lyrics += t.lyric.value();
+        if (!all_lyrics.empty()) {
+            const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+            int lyric_font = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
+                                                                     : static_cast<int>(40 * tex.screen_scale);
+            font_manager.register_text(all_lyrics, lyric_font);
+        }
+    }
 
     std::sort(this->timeline.begin(), this->timeline.end(),
               [](const TimelineObject& a, const TimelineObject& b) { return a.start_time < b.start_time; });
