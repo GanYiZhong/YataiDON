@@ -58,12 +58,7 @@ void Combo::draw(float y) {
     if (combo < 3) return;
 
     std::string counter = std::to_string(combo);
-
-    // Skin option "combo_color_tiers":
-    //   off (default): white below 100, counter_100 (silver) at 100+  -- legacy look
-    //   on:            white -> counter_100 (silver) at 50+ -> counter_gold at 100+,
-    //                  falling back to counter_100 when the skin ships no gold sheet.
-    // Only the 100+ tier uses the wider three-digit spacing and the gleam animation.
+    
     const bool tiers  = tex.options[SCO::COMBO_COLOR_TIERS];
     const bool gold   = combo >= 100;
     const bool silver = tiers && combo >= 50 && combo < 100;
