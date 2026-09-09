@@ -55,12 +55,19 @@ static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<So
     return SongParser(path);
 }
 
-static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
+// The back box closes a folder, so it wears that folder's genre (colour / board
+// frame) like the cabinet's もどる panel; without a folder def it stays Namco orange.
+static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path, const BoxDef* folder = nullptr) {
     BoxDef d;
     d.back_color    = BackBox::COLOR;
     d.fore_color    = BackBox::COLOR;
     d.texture_index = TextureIndex::NONE;
     d.genre_index   = GenreIndex::NAMCO;
+    if (folder) {
+        d.genre_index = folder->genre_index;
+        if (folder->back_color) d.back_color = folder->back_color;
+        if (folder->fore_color) d.fore_color = folder->fore_color;
+    }
     return std::make_unique<BackBox>(parent_path, d);
 }
 
@@ -512,7 +519,7 @@ void Navigator::parse_song_list(const fs::path& path, BoxDef box_def, bool inlin
         auto box = make_song_box(final_path, box_def, SongParser(final_path));
         box->preserve_order = true;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path().parent_path()));
+            { BoxDef folder = parse_box_def(path.parent_path()); enqueue_inline_box(make_back_box(path.parent_path().parent_path(), &folder)); }
         if (inline_mode)
             enqueue_inline_box(std::move(box));
         else
@@ -1440,9 +1447,11 @@ void Navigator::setup_back_box(const fs::path& path, bool has_children) {
         if (!reloading_roots) items.clear();
         if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
             return;
-        items.push_back(make_back_box(path.parent_path()));
+        BoxDef folder = parse_box_def(path);
+        items.push_back(make_back_box(path.parent_path(), &folder));
     } else {
-        auto back = make_back_box(path.parent_path());
+        BoxDef folder = parse_box_def(path);
+        auto back = make_back_box(path.parent_path(), &folder);
         back->fade_in(266);
         items.erase(items.begin() + open_index);
         items.insert(items.begin() + open_index, std::move(back));
