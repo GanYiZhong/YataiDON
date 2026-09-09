@@ -40,6 +40,7 @@ private:
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
     FolderBox*                  pending_inline_folder = nullptr;
+    BoxDef                      inline_back_def;      // genre/colours for the repeated back boxes of the open folder
     BoxDef                      pending_inline_box_def;
     bool is_inline = false;
 
