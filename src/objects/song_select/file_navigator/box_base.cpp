@@ -1,4 +1,5 @@
 #include "box_base.h"
+#include "../../../libs/text.h"
 #include "color_utils.h"
 #include <string_view>
 
@@ -26,6 +27,13 @@ BaseBox::BaseBox(const fs::path& path, const BoxDef& box_def)
 BaseBox::~BaseBox() {
     if (shader_loaded)
         ray::UnloadShader(shader);
+}
+
+void BaseBox::preregister_text() {
+    float font_size = tex.skin_config[SC::SONG_BOX_NAME].font_size;
+    if (utf8_char_count(text_name) >= 30)
+        font_size -= (int)(10 * tex.screen_scale);
+    font_manager.register_text(text_name, (int)font_size);
 }
 
 void BaseBox::load_text() {

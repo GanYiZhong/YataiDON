@@ -37,6 +37,8 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
         fn_handle_dan      = lua_object["handle_dan"];
         fn_handle_skip     = lua_object["handle_skip"];
         fn_handle_score    = lua_object["handle_score"];
+        fn_handle_ending   = lua_object["handle_ending"];
+        fn_draw_ending     = lua_object["draw_ending"];
         fn_draw_back     = lua_object["draw_back"];
         fn_draw_fore     = lua_object["draw_fore"];
         fn_draw_gauge    = lua_object["draw_gauge"];
@@ -136,6 +138,22 @@ void Background::handle_score(PlayerNum player_num, int score) {
     if (!result.valid()) {
         sol::error err = result;
         spdlog::error("Error calling handle_score: {}", err.what());
+      
+void Background::handle_ending(PlayerNum player_num, const std::string& kind) {
+    if (!fn_handle_ending.valid()) return;
+    auto result = fn_handle_ending(lua_object, static_cast<int>(player_num), kind);
+    if (!result.valid()) {
+        sol::error err = result;
+        spdlog::error("Error calling handle_ending: {}", err.what());
+    }
+}
+
+void Background::draw_ending(PlayerNum player_num) {
+    if (!fn_draw_ending.valid()) return;
+    auto result = fn_draw_ending(lua_object, static_cast<int>(player_num));
+    if (!result.valid()) {
+        sol::error err = result;
+        spdlog::error("Error calling draw_ending: {}", err.what());
     }
 }
 

@@ -62,6 +62,9 @@ public:
     virtual ~BaseBox();
 
     virtual void load_text();
+    // Rasterize this box's glyphs into the font caches ahead of load_text(), so a
+    // whole folder of new titles costs one atlas rebuild instead of one per box.
+    virtual void preregister_text();
     virtual void get_scores() {}
     virtual void draw_score_history() {}
     virtual void draw_diff_select();

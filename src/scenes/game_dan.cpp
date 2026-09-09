@@ -505,7 +505,7 @@ std::optional<Screens> DanGameScreen::update() {
             if (ms_from_start >= players[0]->end_time + 1000 && !score_saved) {
                 check_exam_failures(true, true);
                 save_result_data(false);
-                players[0]->spawn_ending_anim();
+                players[0]->spawn_ending_anim(background.has_value() ? &*background : nullptr);
                 score_saved = true;
             }
             constexpr double SKIP_RESULT_DELAY = 2800.0;
