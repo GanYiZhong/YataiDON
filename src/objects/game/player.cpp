@@ -75,8 +75,6 @@ ResultData Player::get_result_score() {
     result.bad = bad_count;
     result.max_combo = max_combo;
     result.total_drumroll = total_drumroll;
-    // ResultData.gauge_length is expected on the old 87-unit display scale
-    // (see result_player.lua); Gauge only exposes 0-100%, so convert.
     if (dan_gauge) result.gauge_length = dan_gauge->get_length() * 0.87f;
     else if (gauge.has_value()) result.gauge_length = gauge->get_length() * 0.87f;
     if (skipped_run) result.gauge_length = 0.0f;
@@ -481,6 +479,7 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
 }
 
 void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& mask_shader, bool draw_notes_on) {
+    practice_lyric = true;
     tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
     if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
     if (branch_indicator.has_value()) {
@@ -873,7 +872,11 @@ void Player::handle_lyric(double ms_from_start, const TimelineObject& timeline_o
         current_lyric.reset();
     }
 
-    current_lyric.emplace(timeline_object.lyric.value(), 40, ray::WHITE, ray::BLUE, false, 4.0);
+    const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+    int font_size = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
+                                                             : static_cast<int>(40 * tex.screen_scale);
+    float outline = (lyric_cfg && lyric_cfg->outline >= 0) ? lyric_cfg->outline : 4.0f * tex.screen_scale;
+    current_lyric.emplace(timeline_object.lyric.value(), font_size, ray::WHITE, ray::BLUE, false, outline);
     if (buffer_index != (int)timeline_buffer.size() - 1)
         timeline_buffer[buffer_index] = std::move(timeline_buffer.back());
     timeline_buffer.pop_back();
@@ -1632,7 +1635,20 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
         anim.draw(y);
     }
     if (current_lyric.has_value()) {
-        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5))});
+        const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+        float lyric_y = (lyric_cfg && lyric_cfg->y > 0) ? lyric_cfg->y
+                                                        : static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5));
+        if (practice_lyric) {
+            const SkinInfo* pcfg = tex.skin_entry("lyric_practice");
+            if (pcfg && pcfg->y > 0) {
+                lyric_y = pcfg->y;
+            } else {
+                auto drum = tex.textures.find((uint32_t)PRACTICE::LARGE_DRUM);
+                if (drum != tex.textures.end() && !drum->second->y.empty())
+                    lyric_y = drum->second->y[0] - current_lyric->height - 8.0f * tex.screen_scale;
+            }
+        }
+        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=lyric_y});
     }
 }
 
