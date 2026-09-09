@@ -5,8 +5,10 @@
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {
     this->difficulty = std::min((int)Difficulty::ONI, difficulty);
+    // Per-difficulty norma in cells of 50: easy 30, normal 35, hard 35, oni/ura 40
+    // -> 6000 / 7000 / 7000 / 8000 soul points.
     clear_points = this->difficulty <= (int)Difficulty::EASY   ? 6000
-                 : this->difficulty == (int)Difficulty::NORMAL ? 7000
+                 : this->difficulty <= (int)Difficulty::HARD   ? 7000
                                                               : 8000;
     GaugeTable table_row = table[this->difficulty][std::min(9, level - 1)];
     good_points = (int)std::ceil(1000000 / (total_notes * table_row.soul_percent));
@@ -14,9 +16,10 @@ Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     bad_points  = (int)std::round(good_points * table_row.bad_multiplier);
     points = 0;
 
-    if (this->difficulty == (int)Difficulty::EASY)        string_diff = "_easy";
-    else if (this->difficulty == (int)Difficulty::NORMAL) string_diff = "_normal";
-    else                                                   string_diff = "_hard";
+    // Clear-zone art tier follows the norma cell: Hard shares the normal (35-cell) art.
+    if (this->difficulty == (int)Difficulty::EASY)      string_diff = "_easy";
+    else if (this->difficulty <= (int)Difficulty::HARD) string_diff = "_normal";
+    else                                                 string_diff = "_hard";
 
     tamashii_fire_change = (TextureChangeAnimation*)tex.get_animation(25);
     gauge_update_anim    = (FadeAnimation*)tex.get_animation(10);
@@ -88,17 +91,26 @@ void Gauge::draw(float y) {
         tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar")),
                           {.y = y, .x2 = std::min(solid_length * bar_width, (clear_point - 1) * bar_width) - bar_width, .index = mirrored});
 
-    if (solid_length >= clear_point - 1)
+    // The transition piece is the first gold cell (index clear_point-1, the rounded
+    // cap of the clear zone). Light it exactly when the gauge is cleared: on grids
+    // where clear_points falls mid-cell (87 cells: 8000 -> 69.6) a cell-count test
+    // lights it up to a cell early or late relative to the クリア state.
+    const bool clear_cap_lit = get_is_clear() && !(cell_fade_in && cell_pending && gauge_length_int == clear_point);
+    if (clear_cap_lit)
         tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION,
                           {.mirror = mirror, .x = (clear_point - 1) * bar_width, .y = y, .index = mirrored});
 
+    // Gold zone = cells clear_point .. solid_length-1. The piece texture is already one
+    // cell wide, so the stretch is (cells - 1) * bar_width, like the red bar above;
+    // without the -bar_width the strip ran one cell ahead of the fill.
     if (solid_length > clear_point) {
+        const float gold_x2 = (solid_length - clear_point) * bar_width - bar_width;
         tex.draw_texture(GAUGE::BAR_CLEAR_TOP,
                           {.mirror = mirror, .x = clear_point * bar_width, .y = y,
-                           .x2 = (solid_length - clear_point) * bar_width, .index = mirrored});
+                           .x2 = gold_x2, .index = mirrored});
         tex.draw_texture(GAUGE::BAR_CLEAR_BOTTOM,
                           {.x = clear_point * bar_width, .y = y,
-                           .x2 = (solid_length - clear_point) * bar_width, .index = mirrored});
+                           .x2 = gold_x2, .index = mirrored});
     }
 
     if (get_is_rainbow() && rainbow_fade_in.has_value()) {
@@ -112,7 +124,15 @@ void Gauge::draw(float y) {
                           {.frame = frame_b, .mirror = mirror, .y = y, .fade = fade * t, .index = mirrored});
     }
 
-    if (gauge_length_int <= bar_units && gauge_length_int > previous_length_int) {
+    // Flash mode: the sprite fades out over the solid cell. Fade-in mode: it IS the
+    // cell while the animation runs, and must vanish once the solid bar takes over
+    // (otherwise it stays at full alpha on the last cell — visible in the gold zone
+    // and over the rainbow).
+    const bool show_gauge_up = cell_fade_in ? cell_pending
+                                            : (gauge_length_int <= bar_units && gauge_length_int > previous_length_int);
+    if (show_gauge_up) {
+        // The gauge-up sprite belongs on the cell that was just filled (index
+        // gauge_length_int - 1), not on the empty cell after it.
         const float fade_x = (gauge_length_int - 1) * bar_width;
         if (gauge_length_int == clear_point) {
             tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION_FADE,
@@ -132,9 +152,12 @@ void Gauge::draw(float y) {
     tex.draw_texture(tex.get_enum("gauge/overlay" + string_diff),
                       {.mirror = mirror, .y = y, .fade = 0.15f, .index = mirrored});
 
-    if (gauge_length_int >= clear_point - 1) {
+    // クリア label / 魂 light up with the cleared state itself, and the label frame
+    // follows the clear-zone art tier (easy / normal+hard / oni), not the raw difficulty.
+    const int art_tier = (string_diff == "_easy") ? 0 : (string_diff == "_normal") ? 1 : 2;
+    if (get_is_clear()) {
         tex.draw_texture(tex.get_enum("gauge/clear_" + global_data.config->general.language),
-                          {.y = y, .index = std::min(2, difficulty) + (mirrored * 3)});
+                          {.y = y, .index = art_tier + (mirrored * 3)});
         if (get_is_rainbow()) {
             tex.draw_texture(GAUGE::TAMASHII_FIRE,
                               {.frame = (int)tamashii_fire_change->attribute, .scale = 0.75f,
@@ -146,7 +169,7 @@ void Gauge::draw(float y) {
             tex.draw_texture(GAUGE::TAMASHII_OVERLAY, {.y = y, .fade = 0.5f, .index = mirrored});
     } else {
         tex.draw_texture(tex.get_enum("gauge/clear_dark_" + global_data.config->general.language),
-                          {.y = y, .index = std::min(2, difficulty) + (mirrored * 3)});
+                          {.y = y, .index = art_tier + (mirrored * 3)});
         tex.draw_texture(GAUGE::TAMASHII_DARK, {.y = y, .index = mirrored});
     }
 }
