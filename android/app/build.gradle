@@ -30,7 +30,9 @@ android {
                     "-DANDROID_FFMPEG_PREFIX=${rootProject.file('../.android-ffmpeg').absolutePath}",
                     "-DANDROID_OPENSSL_PREFIX=${rootProject.file('../.android-openssl').absolutePath}",
                     "-DANDROID_STL=c++_shared",
-                    "-DANDROID_PLATFORM=android-29"
+                    "-DANDROID_PLATFORM=android-29",
+                    "-DNETWORK_URL=${System.getenv('NETWORK_URL') ?: ''}",
+                    "-DNETWORK_AUTH_KEY=${System.getenv('NETWORK_AUTH_KEY') ?: ''}"
                 )
             }
         }

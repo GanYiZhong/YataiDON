@@ -446,6 +446,9 @@ jobs:
 
       - name: Build Release APK
         working-directory: android
+        env:
+          NETWORK_URL: ${{ secrets.NETWORK_URL }}
+          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
