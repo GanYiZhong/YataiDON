@@ -484,6 +484,9 @@ void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade
             : -offset;
     }
 
+    // a skin that draws the option panel itself keeps the character where it is
+    if (option_panel_by_lua) offset = 0.0f;
+
     if (player_num == PlayerNum::P1) {
         nameplate.draw(tex.skin_config[SC::SONG_SELECT_NAMEPLATE_1P].x, tex.skin_config[SC::SONG_SELECT_NAMEPLATE_1P].y);
         chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_1P].x, tex.skin_config[SC::SONG_SELECT_CHARA_1P].y + (offset * 0.6f), 1.0f);
@@ -492,7 +495,17 @@ void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade
         chara->draw(tex.skin_config[SC::SONG_SELECT_CHARA_2P].x, tex.skin_config[SC::SONG_SELECT_CHARA_2P].y + (offset * 0.6f), 1.0f);
     }
 
-    if (neiro_selector.has_value()    && !(script && script->draw_option_panel(this, 2))) neiro_selector->draw();
-    if (modifier_selector.has_value() && !(script && script->draw_option_panel(this, 1))) modifier_selector->draw();
+    bool panel_by_lua = false;
+    if (neiro_selector.has_value()) {
+        bool by_lua = script && script->draw_option_panel(this, 2);
+        if (!by_lua) neiro_selector->draw();
+        panel_by_lua = panel_by_lua || by_lua;
+    }
+    if (modifier_selector.has_value()) {
+        bool by_lua = script && script->draw_option_panel(this, 1);
+        if (!by_lua) modifier_selector->draw();
+        panel_by_lua = panel_by_lua || by_lua;
+    }
+    option_panel_by_lua = panel_by_lua;
     if (ura_switch.has_value()) ura_switch->draw();
 }
