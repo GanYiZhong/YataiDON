@@ -47,6 +47,9 @@ public:
 
     void update(double current_time);
     bool is_voice_playing();
+    // true from the moment a course is confirmed (start voice playing or done) until
+    // reset_selection(); the skin swaps the course mark to its decided look on it
+    bool difficulty_decided() const { return selected_difficulty >= Difficulty::EASY && (voice_played || is_ready); }
 
     SongSelectState select_song();
     void sync_ura(bool ura);
