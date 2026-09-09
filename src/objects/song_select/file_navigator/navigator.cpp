@@ -1404,7 +1404,7 @@ bool Navigator::jump_to_song_path(const fs::path& song_path) {
         pending_inline_folder  = folder_box;
         inline_state           = std::move(state);
 
-        setup_back_box(final_folder, false);
+        setup_back_box(final_folder, false, folder_box);
         genre_bg.emplace(folder_box->text_name, folder_box->back_color, folder_box->texture_index, 1000.0f);
 
         loading_complete = false;
@@ -1442,15 +1442,25 @@ bool Navigator::jump_to_song_path(const fs::path& song_path) {
     return true;
 }
 
-void Navigator::setup_back_box(const fs::path& path, bool has_children) {
+void Navigator::setup_back_box(const fs::path& path, bool has_children, const BaseBox* from) {
+    // The box that opened this folder is the authority on its genre and colours: a
+    // folder without box.def gets them from its name or the gen3/gen4 tables, which
+    // parse_box_def(path) alone does not see.
+    if (!from)
+        for (auto& b : items)
+            if (b && b->path == path) { from = b.get(); break; }
+    BoxDef folder = parse_box_def(path);
+    if (from) {
+        folder.genre_index = from->genre_index;
+        if (from->back_color) folder.back_color = from->back_color;
+        if (from->fore_color) folder.fore_color = from->fore_color;
+    }
     if (has_children) {
         if (!reloading_roots) items.clear();
         if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
             return;
-        BoxDef folder = parse_box_def(path);
         items.push_back(make_back_box(path.parent_path(), &folder));
     } else {
-        BoxDef folder = parse_box_def(path);
         auto back = make_back_box(path.parent_path(), &folder);
         back->fade_in(266);
         items.erase(items.begin() + open_index);
