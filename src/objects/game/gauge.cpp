@@ -70,9 +70,6 @@ void Gauge::draw(float y) {
     tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_unfilled" + string_diff)),
                       {.mirror = mirror, .y = y, .index = mirrored});
 
-    // Cell count of the gauge art. Skins that ship a different grid (e.g. the
-    // cabinet's 50 x 21 px) declare it as skin_config "gauge_cells": {"x": N};
-    // the cell width always comes from the <n>p_bar texture.
     const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
     const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
     int gauge_length_int = points * bar_units / max_points;
@@ -80,10 +77,6 @@ void Gauge::draw(float y) {
     int clear_point = clear_points * bar_units / max_points;
     float bar_width  = tex.textures[tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")]->width;
 
-    // Skin option "gauge_cell_fade_in": the newest cell is not part of the solid
-    // bar while the gauge-up animation runs; it is shown by the fade sprite
-    // instead, whose alpha is inverted so the stock 1->0 flash becomes a 0->1
-    // fade-in of that cell. Off (default) keeps the flash overlay on a solid bar.
     const bool cell_fade_in = tex.options[SCO::GAUGE_CELL_FADE_IN];
     const bool cell_pending = gauge_length_int <= bar_units && gauge_length_int > previous_length_int
                               && gauge_update_anim && gauge_update_anim->is_started && !gauge_update_anim->is_finished;
@@ -120,8 +113,6 @@ void Gauge::draw(float y) {
     }
 
     if (gauge_length_int <= bar_units && gauge_length_int > previous_length_int) {
-        // The gauge-up sprite belongs on the cell that was just filled (index
-        // gauge_length_int - 1), not on the empty cell after it.
         const float fade_x = (gauge_length_int - 1) * bar_width;
         if (gauge_length_int == clear_point) {
             tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION_FADE,
