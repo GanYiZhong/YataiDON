@@ -55,6 +55,10 @@ public:
     bool fetch_title_bg(const std::string& access_code, int& title_bg);
 
     bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
+    // One short synchronous /health round-trip. The boot-time sync fetches each wait
+    // out their 5 s timeout when the server is unreachable (20+ s of black screen
+    // offline); probe once and skip them all instead.
+    bool probe_online();
     void update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume);
 
     void poll_song_jump(const std::string& access_code);

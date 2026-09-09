@@ -40,6 +40,7 @@ private:
     std::optional<InlineState>  inline_state;
     std::optional<fs::path>     pending_inline_path;
     FolderBox*                  pending_inline_folder = nullptr;
+    BoxDef                      inline_back_def;      // genre/colours for the repeated back boxes of the open folder
     BoxDef                      pending_inline_box_def;
     bool is_inline = false;
 
@@ -95,7 +96,9 @@ private:
     bool load_gen4_genre_songs(const fs::path& genre_path, const BoxDef& box_def);
     bool has_def_file(const std::filesystem::path& path);
     fs::path find_box_def_folder(const fs::path& song_path);
-    void setup_back_box(const fs::path& path, bool has_children);
+    // `from`: the box that opened the folder, when the caller still has it; otherwise the
+    // matching FolderBox is looked up in `items` before they are cleared.
+    void setup_back_box(const fs::path& path, bool has_children, const BaseBox* from = nullptr);
     bool has_child_folders(const fs::path& path);
 
     void wait_for_song_files();

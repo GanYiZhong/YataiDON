@@ -102,6 +102,8 @@ public:
 
     void draw_practice(double ms_from_start, float x, float y, ray::Shader& mask_shader, bool draw_notes_on);
 
+    void draw_lyric(float y);   // practice scene draws it after the large drums
+
     void draw_overlays(float y, const ray::Shader& mask_shader);
     void draw_lane_cover(float y);
 
@@ -168,8 +170,8 @@ private:
     int balloon_index;
 
     std::optional<OutlinedText> current_lyric;
-    Background* ending_background = nullptr;   // skin ending hook target, set by spawn_ending_anim
-    bool practice_lyric = false;   // set once draw_practice runs: lyric moves above the practice drums
+    Background* ending_background = nullptr;
+    bool practice_lyric = false;
 
     bool is_branch;
     std::tuple<float, float, double> curr_branch_reqs;

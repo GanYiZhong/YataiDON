@@ -8,11 +8,21 @@ private:
     fs::path font_path;
 
     struct SizedFont {
-        ray::Font font{};
+        ray::Font font{};                    // texture + recs + glyph structs; glyph images alias `cache`
         std::unordered_set<int> codepoints;  // only what was asked for AT THIS SIZE
+        std::vector<ray::GlyphInfo> cache;   // rasterized once per codepoint (images owned here)
+        bool atlas_dirty = false;
         uint64_t last_used = 0;
         bool loaded = false;
     };
+
+    std::vector<unsigned char> font_data;    // the .ttf bytes, read once
+
+    void rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps);   // font_mutex held
+    void rebuild_atlas(SizedFont& entry, int font_size);                                // font_mutex held
+    void release_font(SizedFont& entry);                                                // font_mutex held
+    void release_cache(SizedFont& entry);                                               // font_mutex held
+    bool register_codepoints(SizedFont& entry, int font_size, const std::string& text); // font_mutex held
 
     std::unordered_map<int, SizedFont> fonts;
     uint64_t use_clock = 0;
@@ -32,6 +42,11 @@ public:
     void unload();
     ray::Font get_font(const std::string& text, int font_size);
     ray::Font copy_font(const std::string& text, int font_size);
+    // Rasterize the glyphs `text` needs at `font_size` now, without rebuilding the
+    // atlas. Call it for a whole batch (every song title of a genre, every lyric
+    // line of a chart) before the OutlinedTexts are created, so the atlas is
+    // rebuilt once for the batch instead of once per new string.
+    void register_text(const std::string& text, int font_size);
 };
 
 class OutlinedText {

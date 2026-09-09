@@ -495,6 +495,8 @@ void PracticeGameScreen::draw() {
     if (!paused) {
         tex.draw_texture(PRACTICE::PLAYING, {.fade = 0.5, .index = (int)global_data.player_num - 1});
     }
+    // lyric stays at its normal position but on top of the large drums
+    if (!players.empty()) players[0]->draw_lyric(184 * tex.screen_scale);
 
     // Progress bar
     tex.draw_texture(PRACTICE::PROGRESS_BAR_BG, {});

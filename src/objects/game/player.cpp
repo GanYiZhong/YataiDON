@@ -2,7 +2,10 @@
 #include "../../libs/audio.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
+#include "../../libs/text.h"
 #include <algorithm>
+#include <optional>
+#include <vector>
 #include <cmath>
 
 Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param, int difficulty_param,
@@ -639,6 +642,21 @@ void Player::reset_chart() {
     }
 
     this->timeline = notes.timeline;
+
+    // Rasterize every #LYRIC glyph now, in one go: otherwise each new line with an
+    // unseen character rebuilt the lyric-size font atlas mid-song (a ~20 ms hitch
+    // per line).
+    {
+        std::string all_lyrics;
+        for (const TimelineObject& t : this->timeline)
+            if (t.lyric.has_value()) all_lyrics += t.lyric.value();
+        if (!all_lyrics.empty()) {
+            const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+            int lyric_font = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
+                                                                     : static_cast<int>(40 * tex.screen_scale);
+            font_manager.register_text(all_lyrics, lyric_font);
+        }
+    }
 
     std::sort(this->timeline.begin(), this->timeline.end(),
               [](const TimelineObject& a, const TimelineObject& b) { return a.start_time < b.start_time; });
@@ -1542,29 +1560,61 @@ void Player::draw_modifiers(float y) {
         return y + tex.skin_config[SC::SCORE_COUNTER_2P_Y_OFFSET].y
                  + cover_h - icon_h - 2.0f * json_y;
     };
+    auto has = [&](uint32_t id) { return tex.textures.find(id) != tex.textures.end(); };
+
+    // Badge for the current speed: the cabinet has one per value (x1.1 .. x4);
+    // fall back to the three coarse tiers when the skin does not ship them.
+    auto speed_badge = [&]() -> std::optional<uint32_t> {
+        if (modifiers.speed <= 10) return std::nullopt;
+        static const std::pair<int, const char*> labels[] = {
+            {11, "x1_1"}, {12, "x1_2"}, {13, "x1_3"}, {14, "x1_4"}, {15, "x1_5"}, {16, "x1_6"},
+            {17, "x1_7"}, {18, "x1_8"}, {19, "x1_9"}, {20, "x2"},   {25, "x2_5"}, {30, "x3"},
+            {35, "x3_5"}, {40, "x4"}};
+        const char* label = labels[0].second;
+        for (const auto& [v, l] : labels) if (modifiers.speed >= v) label = l;
+        uint32_t id = tex.get_enum(std::string("lane/mod_speed_") + label);
+        if (has(id)) return id;
+        if (modifiers.speed >= 40) return (uint32_t)LANE::MOD_YONBAI;
+        if (modifiers.speed >= 30) return (uint32_t)LANE::MOD_SANBAI;
+        return (uint32_t)LANE::MOD_BAISAKU;
+    };
+
+    // Cabinet order: speed, doron, abekobe, random.
+    std::vector<uint32_t> badges;
+    if (auto sb = speed_badge()) badges.push_back(*sb);
+    if (modifiers.display) badges.push_back(LANE::MOD_DORON);
+    if (modifiers.inverse) badges.push_back(LANE::MOD_ABEKOBE);
+    if (modifiers.random == 2) badges.push_back(LANE::MOD_DETARAME);
+    else if (modifiers.random == 1) badges.push_back(LANE::MOD_KIMAGURE);
+
+    const SkinInfo* grid = tex.skin_entry("mod_badge_grid");
+    if (grid && grid->width > 0) {
+        // Sequential slots on the skin's grid (columns in font_size, default 3).
+        const int cols = grid->font_size > 0 ? grid->font_size : 3;
+        int slot = 0;
+        for (uint32_t id : badges) {
+            if (!has(id)) continue;
+            const float gx = grid->x + (slot % cols) * grid->width;
+            const float gy = grid->y + (slot / cols) * grid->height;
+            float by = y + gy;
+            if (is_2p) {
+                float cover_h = (float)tex.textures[LANE::LANE_SCORE_COVER]->y2[0];
+                float icon_h  = (float)tex.textures[id]->y2[0];
+                by = y + tex.skin_config[SC::SCORE_COUNTER_2P_Y_OFFSET].y + cover_h - icon_h - 2.0f * gy;
+            }
+            tex.draw_texture(id, {.x = gx - (float)tex.textures[id]->x[0], .y = by - (float)tex.textures[id]->y[0]});
+            slot++;
+        }
+        if (score_method == ScoreMethod::SHINUCHI && has(LANE::MOD_SHINUCHI))
+            tex.draw_texture(LANE::MOD_SHINUCHI, {.y = icon_y(LANE::MOD_SHINUCHI)});
+        return;
+    }
 
     if (score_method == ScoreMethod::SHINUCHI) {
         tex.draw_texture(LANE::MOD_SHINUCHI, {.y=icon_y(LANE::MOD_SHINUCHI)});
     }
-
-    if (modifiers.speed >= 40) {
-        tex.draw_texture(LANE::MOD_YONBAI, {.y=icon_y(LANE::MOD_YONBAI)});
-    } else if (modifiers.speed >= 30) {
-        tex.draw_texture(LANE::MOD_SANBAI, {.y=icon_y(LANE::MOD_SANBAI)});
-    } else if (modifiers.speed > 10) {
-        tex.draw_texture(LANE::MOD_BAISAKU, {.y=icon_y(LANE::MOD_BAISAKU)});
-    }
-
-    if (modifiers.display) {
-        tex.draw_texture(LANE::MOD_DORON, {.y=icon_y(LANE::MOD_DORON)});
-    }
-    if (modifiers.inverse) {
-        tex.draw_texture(LANE::MOD_ABEKOBE, {.y=icon_y(LANE::MOD_ABEKOBE)});
-    }
-    if (modifiers.random == 2) {
-        tex.draw_texture(LANE::MOD_DETARAME, {.y=icon_y(LANE::MOD_DETARAME)});
-    } else if (modifiers.random == 1) {
-        tex.draw_texture(LANE::MOD_KIMAGURE, {.y=icon_y(LANE::MOD_KIMAGURE)});
+    for (uint32_t id : badges) {
+        if (has(id)) tex.draw_texture(id, {.y = icon_y(id)});
     }
 }
 
@@ -1644,22 +1694,17 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     for (ScoreCounterAnimation& anim : base_score_list) {
         anim.draw(y);
     }
-    if (current_lyric.has_value()) {
-        const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
-        float lyric_y = (lyric_cfg && lyric_cfg->y > 0) ? lyric_cfg->y
-                                                        : static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5));
-        if (practice_lyric) {
-            const SkinInfo* pcfg = tex.skin_entry("lyric_practice");
-            if (pcfg && pcfg->y > 0) {
-                lyric_y = pcfg->y;
-            } else {
-                auto drum = tex.textures.find((uint32_t)PRACTICE::LARGE_DRUM);
-                if (drum != tex.textures.end() && !drum->second->y.empty())
-                    lyric_y = drum->second->y[0] - current_lyric->height - 8.0f * tex.screen_scale;
-            }
-        }
-        current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=lyric_y});
-    }
+    // Practice mode draws the lyric itself, after the large drums, so it is not hidden.
+    if (!practice_lyric) draw_lyric(y);
+}
+
+void Player::draw_lyric(float y) {
+    (void)y;
+    if (!current_lyric.has_value()) return;
+    const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
+    float lyric_y = (lyric_cfg && lyric_cfg->y > 0) ? lyric_cfg->y
+                                                    : static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5));
+    current_lyric->draw({.x=(int)(tex.screen_width/2) - current_lyric->width/2, .y=lyric_y});
 }
 
 void Player::seek_to(double resume_time) {

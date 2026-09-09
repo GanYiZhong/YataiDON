@@ -410,7 +410,8 @@ int main(int argc, char* argv[]) {
     if (auto pd = scores_manager.get_player_data(scores_manager.player_2))
         scores_manager.player_2_data = *pd;
 
-    if (global_data.config->network.access_code.empty()) {
+    const bool net_ok = network.probe_online();
+    if (net_ok && global_data.config->network.access_code.empty()) {
         std::string access_code = network.register_user(scores_manager.player_1_data.username);
         if (!access_code.empty()) {
             global_data.config->network.access_code = access_code;
@@ -418,14 +419,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (!global_data.config->network.access_code.empty() &&
+    if (net_ok && !global_data.config->network.access_code.empty() &&
         network.check_import_requested(global_data.config->network.access_code)) {
         spdlog::info("hiroba requested a score import, exporting scores.db");
         scores_manager.export_to_hiroba(global_data.config->network.access_code, scores_manager.player_1);
         network.clear_import_flag(global_data.config->network.access_code);
     }
 
-    if (!global_data.config->network.access_code.empty()) {
+    if (net_ok && !global_data.config->network.access_code.empty()) {
         ray::Color chara_color_1, chara_color_2, chara_color_3;
         if (network.fetch_chara_colors(global_data.config->network.access_code, chara_color_1, chara_color_2, chara_color_3)) {
             scores_manager.player_1_data.chara_color_1 = chara_color_1;

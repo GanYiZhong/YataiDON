@@ -1,4 +1,8 @@
 #include "text.h"
+#include <chrono>
+#include <vector>
+#include <cmath>
+#include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <math.h>
 
@@ -10,6 +14,12 @@ void FontManager::init(const fs::path& font_path) {
         throw std::runtime_error("Failed to load font: " + font_path.string());
     }
     this->font_path = font_path;
+    {
+        int size = 0;
+        unsigned char* data = ray::LoadFileData(font_path.string().c_str(), &size);
+        font_data.assign(data, data + size);
+        ray::UnloadFileData(data);
+    }
 
     if (sentinel_texture.id == 0) {
         ray::Image px = ray::GenImageColor(1, 1, ray::BLANK);
@@ -20,9 +30,7 @@ void FontManager::init(const fs::path& font_path) {
 
 void FontManager::unload() {
     std::lock_guard<std::mutex> lock(font_mutex);
-    for (auto& [size, entry] : fonts) {
-        if (entry.loaded) ray::UnloadFont(entry.font);
-    }
+    for (auto& [size, entry] : fonts) { release_font(entry); release_cache(entry); }
     fonts.clear();
     if (sentinel_texture.id != 0) {
         ray::UnloadTexture(sentinel_texture);
@@ -41,47 +49,209 @@ void FontManager::evict_lru(int keep_size) {
         if (victim == fonts.end()) break;
         spdlog::debug("font: evicting {}px atlas ({} codepoints), {} resident",
                       victim->first, victim->second.codepoints.size(), fonts.size());
-        if (victim->second.loaded) ray::UnloadFont(victim->second.font);
+        release_font(victim->second);
+        release_cache(victim->second);
         fonts.erase(victim);
     }
+}
+
+// Rasterize only the codepoints not yet in the cache (stb_truetype via LoadFontData).
+void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps) {
+    if (cps.empty()) return;
+    int count = 0;
+    ray::GlyphInfo* g = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
+                                          cps.data(), (int)cps.size(), ray::FONT_DEFAULT, &count);
+    if (!g) return;
+    for (int i = 0; i < count; i++) entry.cache.push_back(g[i]);   // take ownership of the glyph images
+    RL_FREE(g);                                                    // array only; images now live in `cache`
+    entry.atlas_dirty = true;
+}
+
+// Pack the cached glyphs into a fresh atlas texture. Glyph images stay in `cache`
+// (raylib's LoadFontEx would crop them out of the atlas; nothing here reads them).
+void FontManager::rebuild_atlas(SizedFont& entry, int font_size) {
+    release_font(entry);
+    const int n = (int)entry.cache.size();
+    ray::Font f{};
+    f.baseSize     = font_size;
+    f.glyphCount   = n;
+    f.glyphPadding = 4;   // FONT_TTF_DEFAULT_CHARS_PADDING, same as LoadFontEx
+    f.glyphs = (ray::GlyphInfo*)RL_MALLOC(sizeof(ray::GlyphInfo) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) f.glyphs[i] = entry.cache[i];
+    ray::Image atlas = ray::GenImageFontAtlas(f.glyphs, &f.recs, n, font_size, f.glyphPadding, 0);
+    f.texture = ray::LoadTextureFromImage(atlas);
+    // Like LoadFontEx: the Font's own glyph images are GRAY_ALPHA crops of the atlas
+    // (ImageDrawTextEx / OutlinedText composite from them). The cache keeps the raw
+    // GRAYSCALE bitmaps GenImageFontAtlas needs for the next repack.
+    for (int i = 0; i < n; i++) f.glyphs[i].image = ray::ImageFromImage(atlas, f.recs[i]);
+    ray::UnloadImage(atlas);
+    ray::SetTextureFilter(f.texture, ray::TEXTURE_FILTER_BILINEAR);
+    entry.font = f;
+    entry.loaded = true;
+    entry.atlas_dirty = false;
+}
+
+// Free texture/recs/glyph-struct array of a font built by rebuild_atlas. Never
+// UnloadFont(): that would free the glyph images we still own in `cache`.
+void FontManager::release_font(SizedFont& entry) {
+    if (!entry.loaded) return;
+    if (entry.font.texture.id != 0) ray::UnloadTexture(entry.font.texture);
+    if (entry.font.glyphs)
+        for (int i = 0; i < entry.font.glyphCount; i++) ray::UnloadImage(entry.font.glyphs[i].image);
+    if (entry.font.recs)   RL_FREE(entry.font.recs);
+    if (entry.font.glyphs) RL_FREE(entry.font.glyphs);
+    entry.font = {};
+    entry.loaded = false;
+}
+
+void FontManager::release_cache(SizedFont& entry) {
+    for (auto& g : entry.cache) ray::UnloadImage(g.image);
+    entry.cache.clear();
+    entry.codepoints.clear();
+}
+
+bool FontManager::register_codepoints(SizedFont& entry, int font_size, const std::string& text) {
+    std::vector<int> fresh;
+    if (entry.codepoints.empty()) {
+        // "A" is what OutlinedText measures line height with; keep it (and '?') always present.
+        for (int cp : {'A', '?', ' '}) { entry.codepoints.insert(cp); fresh.push_back(cp); }
+    }
+    const char* ptr = text.c_str();
+    while (*ptr) {
+        int cp_size = 0;
+        int codepoint = ray::GetCodepointNext(ptr, &cp_size);
+        if (cp_size <= 0) break;
+        if (codepoint > 0 && entry.codepoints.insert(codepoint).second) fresh.push_back(codepoint);
+        ptr += cp_size;
+    }
+    if (fresh.empty()) return false;
+    rasterize_new(entry, font_size, fresh);
+    return true;
+}
+
+void FontManager::register_text(const std::string& text, int font_size) {
+    std::lock_guard<std::mutex> lock(font_mutex);
+    if (font_size < 1) font_size = 1;
+    register_codepoints(fonts[font_size], font_size, text);
 }
 
 FontManager::SizedFont& FontManager::acquire(const std::string& text, int font_size) {
     if (font_size < 1) font_size = 1;
 
     SizedFont& entry = fonts[font_size];
-
-    bool reload = !entry.loaded;
-    if (entry.codepoints.empty()) {
-        for (int i = 32; i < 127; i++)
-            entry.codepoints.insert(i);
-    }
-
-    const char* ptr = text.c_str();
-    while (*ptr) {
-        int cp_size = 0;
-        int codepoint = ray::GetCodepointNext(ptr, &cp_size);
-        if (cp_size <= 0) break;
-        if (codepoint > 0 && entry.codepoints.insert(codepoint).second)
-            reload = true;
-        ptr += cp_size;
-    }
-
-    if (reload) {
-        if (entry.loaded) ray::UnloadFont(entry.font);
-        std::vector<int> codepoints(entry.codepoints.begin(), entry.codepoints.end());
-        entry.font = ray::LoadFontEx(font_path.string().c_str(), font_size,
-                                     codepoints.data(), (int)codepoints.size());
-        ray::SetTextureFilter(entry.font.texture, ray::TEXTURE_FILTER_BILINEAR);
-        entry.loaded = true;
-        spdlog::debug("font: {}px atlas -> {} codepoints, {}x{} texture ({} sizes resident)",
-                      font_size, codepoints.size(),
-                      entry.font.texture.width, entry.font.texture.height, fonts.size());
-    }
+    register_codepoints(entry, font_size, text);
+    if (!entry.loaded || entry.atlas_dirty) rebuild_atlas(entry, font_size);
 
     entry.last_used = ++use_clock;
     evict_lru(font_size);   // never evicts `font_size` itself, so `entry` stays valid
     return entry;
+}
+
+// Transparent base for text composition. raylib blends src*a + dst*(1-a) with the
+// destination's RGB even where dst alpha is 0, so drawing onto BLANK (0,0,0,0) pulls every
+// anti-aliased edge towards black (a white outline on a light background gets a dark
+// fringe). A base that is the stroke's own colour at alpha 0 keeps the edges pure.
+static ray::Color clear_of(ray::Color c) { return ray::Color{c.r, c.g, c.b, 0}; }
+
+// ImageDrawTextEx renders the string into a BLANK scratch image first, so every
+// anti-aliased edge is already blended towards black before it reaches our canvas
+// (16 overlapping outline stamps turn that into a grey rim around a light outline).
+// Render the string ourselves, force the RGB to the tint and keep only the coverage
+// in alpha, then composite.
+// Composite an RGBA8 image onto an RGBA8 image with a correctly clamped "over".
+// raylib's ImageDrawImagePro/ColorAlphaBlend integer path yields 256 for two
+// partially transparent pixels of the same colour and wraps it to 0 -- every
+// overlap of anti-aliased outline stamps came out black.
+static void blit_over(ray::Image* dst, const ray::Image& src, int x0, int y0) {
+    if (!dst->data || !src.data) return;
+    if (dst->format != ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 || src.format != ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) {
+        ray::Rectangle sr = {0, 0, (float)src.width, (float)src.height};
+        ray::Rectangle dr = {(float)x0, (float)y0, (float)src.width, (float)src.height};
+        ray::ImageDrawImagePro(dst, src, sr, dr, {0, 0}, 0.0f, ray::WHITE);
+        return;
+    }
+    unsigned char* d = (unsigned char*)dst->data;
+    const unsigned char* sp = (const unsigned char*)src.data;
+    for (int y = 0; y < src.height; y++) {
+        int dy = y0 + y; if (dy < 0 || dy >= dst->height) continue;
+        for (int x = 0; x < src.width; x++) {
+            int dx = x0 + x; if (dx < 0 || dx >= dst->width) continue;
+            const unsigned char* s = sp + (y * src.width + x) * 4;
+            unsigned char* o = d + (dy * dst->width + dx) * 4;
+            const int sa = s[3];
+            if (sa == 0) continue;
+            if (sa == 255) { o[0] = s[0]; o[1] = s[1]; o[2] = s[2]; o[3] = 255; continue; }
+            const int da = o[3];
+            const int oa = sa * 255 + da * (255 - sa);           // out alpha * 255
+            for (int c = 0; c < 3; c++) {
+                int v = (s[c] * sa * 255 + o[c] * da * (255 - sa) + oa / 2) / (oa ? oa : 1);
+                o[c] = (unsigned char)(v > 255 ? 255 : v);
+            }
+            o[3] = (unsigned char)((oa + 127) / 255);
+        }
+    }
+}
+
+static void draw_text_clean(ray::Image* dst, const ray::Font& font, const char* text, ray::Vector2 pos,
+                            float font_size, float spacing, ray::Color tint) {
+    ray::Image t = ray::ImageTextEx(font, text, font_size, spacing, ray::WHITE);
+    if (t.data && t.width > 0 && t.height > 0) {
+        if (t.format != ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) ray::ImageFormat(&t, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+        unsigned char* px = (unsigned char*)t.data;
+        const int n = t.width * t.height;
+        for (int i = 0; i < n; i++) {
+            px[i * 4 + 0] = tint.r; px[i * 4 + 1] = tint.g; px[i * 4 + 2] = tint.b;
+            px[i * 4 + 3] = (unsigned char)((px[i * 4 + 3] * (int)tint.a) / 255);
+        }
+        blit_over(dst, t, (int)pos.x, (int)pos.y);
+    }
+    ray::UnloadImage(t);
+}
+
+// Outline = the glyph coverage dilated by a disk of `radius` px (max over the disk),
+// coloured with `outline_color`. Stamping the text at 16 angles left a ragged,
+// "hairy" rim because the stamps only touch the disk at 16 points; a per-row
+// running max over the disk's chord gives the exact Minkowski sum.
+static void stamp_outline(ray::Image* dst, const ray::Font& font, const char* text, ray::Vector2 pos,
+                          float font_size, float spacing, ray::Color outline_color, float radius) {
+    ray::Image cov = ray::ImageTextEx(font, text, font_size, spacing, ray::WHITE);
+    if (!cov.data || cov.width <= 0 || cov.height <= 0) { ray::UnloadImage(cov); return; }
+    if (cov.format != ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) ray::ImageFormat(&cov, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    const int r  = (int)std::ceil(radius);
+    const int W  = cov.width, H = cov.height;
+    const int OW = W + 2 * r, OH = H + 2 * r;
+    std::vector<unsigned char> a(W * H), rowmax(OW * H, 0), out(OW * OH, 0);
+    const unsigned char* cp = (const unsigned char*)cov.data;
+    for (int i = 0; i < W * H; i++) a[i] = cp[i * 4 + 3];
+    // chord half-width for each dy (sub-pixel radius -> smoother ends)
+    std::vector<int> half(2 * r + 1);
+    for (int dy = -r; dy <= r; dy++) {
+        float rem = radius * radius - (float)dy * dy;
+        half[dy + r] = rem < 0 ? -1 : (int)std::floor(std::sqrt(rem) + 0.5f);
+    }
+    // horizontal running max for the widest chord is not enough (chords differ per dy),
+    // so dilate per dy with its own chord; H*(2r+1)*W*(2r+1) byte ops — fine for HUD text.
+    for (int dy = -r; dy <= r; dy++) {
+        const int hw = half[dy + r];
+        if (hw < 0) continue;
+        for (int y = 0; y < H; y++) {
+            const int oy = y + dy + r;
+            const unsigned char* src = &a[y * W];
+            unsigned char* orow = &out[oy * OW];
+            for (int x = 0; x < W; x++) {
+                const unsigned char v = src[x];
+                if (!v) continue;
+                const int x0 = x - hw + r, x1 = x + hw + r;
+                for (int ox = x0; ox <= x1; ox++) if (orow[ox] < v) orow[ox] = v;
+            }
+        }
+    }
+    ray::Image o = ray::GenImageColor(OW, OH, ray::Color{outline_color.r, outline_color.g, outline_color.b, 0});
+    unsigned char* op = (unsigned char*)o.data;
+    for (int i = 0; i < OW * OH; i++) op[i * 4 + 3] = (unsigned char)((out[i] * (int)outline_color.a) / 255);
+    blit_over(dst, o, (int)pos.x - r, (int)pos.y - r);
+    ray::UnloadImage(o);
+    ray::UnloadImage(cov);
 }
 
 static ray::Font deep_copy_font(const ray::Font& src) {
@@ -302,17 +472,13 @@ OutlinedText::BuildData OutlinedText::build_horizontal_text(
     ray::Image img = ray::GenImageColor(
         (int)max_w + pad * 2,
         (int)(line_advance * (float)(lines.size() - 1) + line_h) + pad * 2,
-        ray::BLANK);
+        clear_of(outline_thickness > 0 ? outline_color : color));
 
     for (int li = 0; li < (int)lines.size(); li++) {
         float y = pad + li * line_advance;
-        for (float angle = 0; angle < 2 * PI; angle += (PI / 8)) {
-            float ox = cosf(angle) * outline_thickness;
-            float oy = sinf(angle) * outline_thickness;
-            ray::ImageDrawTextEx(&img, worker_font, lines[li].c_str(),
-                                 {pad + ox, y + oy}, font_size, sp, outline_color);
-        }
-        ray::ImageDrawTextEx(&img, worker_font, lines[li].c_str(),
+        if (outline_thickness > 0)
+            stamp_outline(&img, worker_font, lines[li].c_str(), {(float)pad, y}, font_size, sp, outline_color, outline_thickness);
+        draw_text_clean(&img, worker_font, lines[li].c_str(),
                              {(float)pad, y}, font_size, sp, color);
     }
 
@@ -396,8 +562,8 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
                 ? pad * 2
                 : (int)(y_positions.back() + char_height + pad);
 
-    ray::Image img         = ray::GenImageColor(img_w, img_h, ray::BLANK);
-    ray::Image outline_img = ray::GenImageColor(img_w, img_h, ray::BLANK);
+    ray::Image img         = ray::GenImageColor(img_w, img_h, clear_of(color));
+    ray::Image outline_img = ray::GenImageColor(img_w, img_h, clear_of(outline_color));
 
     // Two passes: 0 = outlines onto outline_img, 1 = fills onto img.
     for (int pass = 0; pass < 2; pass++) {
@@ -413,14 +579,11 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
                 for (const auto& s : item.chars) {
                     float cw = ray::MeasureTextEx(worker_font, s.c_str(), font_size, spacing).x;
                     if (pass == 0) {
-                        for (float angle = 0; angle < 2 * PI; angle += (PI / 8)) {
-                            float ox = cosf(angle) * outline_thickness;
-                            float oy = sinf(angle) * outline_thickness;
-                            ray::ImageDrawTextEx(target, worker_font, s.c_str(),
-                                                 {cx + ox, y + oy}, font_size, spacing, outline_color);
-                        }
+                        if (outline_thickness > 0)
+                            stamp_outline(target, worker_font, s.c_str(), {cx, y},
+                                          font_size, spacing, outline_color, outline_thickness);
                     } else {
-                        ray::ImageDrawTextEx(target, worker_font, s.c_str(),
+                        draw_text_clean(target, worker_font, s.c_str(),
                                              {cx, y}, font_size, spacing, color);
                     }
                     cx += cw;
@@ -436,18 +599,14 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
                 if (!is_beside_prev_char(s) && in_rotate_set(s)) {
                     int tmp_w = (int)char_width + pad * 2;
                     int tmp_h = (int)char_height + pad * 2;
-                    ray::Image tmp = ray::GenImageColor(tmp_w, tmp_h, ray::BLANK);
+                    ray::Image tmp = ray::GenImageColor(tmp_w, tmp_h, clear_of(outline_thickness > 0 ? outline_color : color));
 
                     if (pass == 0) {
-                        for (float angle = 0; angle < 2 * PI; angle += (PI / 8)) {
-                            float ox = cosf(angle) * outline_thickness;
-                            float oy = sinf(angle) * outline_thickness;
-                            ray::ImageDrawTextEx(&tmp, worker_font, s.c_str(),
-                                                 {(float)pad + ox, (float)pad + oy},
-                                                 font_size, spacing, outline_color);
-                        }
+                        if (outline_thickness > 0)
+                            stamp_outline(&tmp, worker_font, s.c_str(), {(float)pad, (float)pad},
+                                          font_size, spacing, outline_color, outline_thickness);
                     } else {
-                        ray::ImageDrawTextEx(&tmp, worker_font, s.c_str(),
+                        draw_text_clean(&tmp, worker_font, s.c_str(),
                                              {(float)pad, (float)pad}, font_size, spacing, color);
                     }
                     ray::ImageRotateCW(&tmp);
@@ -456,18 +615,15 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
                     float dy = draw_y + (char_height - (float)tmp.height) / 2.0f;
                     ray::Rectangle src = {0, 0, (float)tmp.width, (float)tmp.height};
                     ray::Rectangle dst = {dx, dy, (float)tmp.width, (float)tmp.height};
-                    ray::ImageDrawImagePro(target, tmp, src, dst, {0, 0}, 0.0f, ray::WHITE);
+                    blit_over(target, tmp, (int)dst.x, (int)dst.y);
                     ray::UnloadImage(tmp);
                 } else {
                     if (pass == 0) {
-                        for (float angle = 0; angle < 2 * PI; angle += (PI / 8)) {
-                            float ox = cosf(angle) * outline_thickness;
-                            float oy = sinf(angle) * outline_thickness;
-                            ray::ImageDrawTextEx(target, worker_font, s.c_str(),
-                                                 {x + ox, draw_y + oy}, font_size, spacing, outline_color);
-                        }
+                        if (outline_thickness > 0)
+                            stamp_outline(target, worker_font, s.c_str(), {x, draw_y},
+                                          font_size, spacing, outline_color, outline_thickness);
                     } else {
-                        ray::ImageDrawTextEx(target, worker_font, s.c_str(),
+                        draw_text_clean(target, worker_font, s.c_str(),
                                              {x, draw_y}, font_size, spacing, color);
                     }
                 }

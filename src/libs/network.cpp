@@ -1,4 +1,5 @@
 #include "network.h"
+#include <thread>
 #include "scores.h"
 #include "color_utils.h"
 #include "global_data.h"
@@ -172,6 +173,19 @@ static std::string network_url(const std::string& endpoint) {
     std::string base = NETWORK_URL;
     while (!base.empty() && base.back() == '/') base.pop_back();
     return base + endpoint;
+}
+
+bool NetworkClient::probe_online() {
+    if (!network_enabled()) { online = false; return false; }
+    cpr::Response r = cpr::Get(
+        cpr::Url{network_url("/health")},
+        signed_headers("GET", "/health", {}),
+        cpr::Timeout{1500}
+        NETWORK_CA_OPT
+    );
+    online = (r.status_code == 200);
+    if (!online) spdlog::warn("Network: server unreachable at startup (HTTP {}), skipping profile sync", r.status_code);
+    return online;
 }
 
 void NetworkClient::check_heartbeat() {
@@ -435,35 +449,40 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
         {"drumroll", std::to_string(score.drumroll)},
         {"max_combo", std::to_string(score.max_combo)},
     };
-    cpr::Response response = cpr::Post(
-        cpr::Url{network_url("/submit_score")},
-        signed_headers("POST", "/submit_score", params),
-        cpr::Parameters{
-            {"access_code", params["access_code"]},
-            {"hash", params["hash"]},
-            {"difficulty", params["difficulty"]},
-            {"crown", params["crown"]},
-            {"rank", params["rank"]},
-            {"score", params["score"]},
-            {"good", params["good"]},
-            {"ok", params["ok"]},
-            {"bad", params["bad"]},
-            {"drumroll", params["drumroll"]},
-            {"max_combo", params["max_combo"]},
-        },
-        cpr::Payload{
-            {"input_log", map_to_json(input_log)},
-            {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
-            {"modifiers", modifiers_json},
-            {"chara_is_costume", chara_is_costume ? "true" : "false"},
-            {"chara_cos_index", std::to_string(chara_cos_index)},
-        },
-        cpr::Timeout{5000}
-        NETWORK_CA_OPT
-    );
-    if (response.status_code != 200) {
-        spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
-    }
+    // The upload runs off the render thread: a synchronous POST stalled the end of
+    // the song for up to the 5 s timeout whenever the server was unreachable.
+    std::thread([this, params = std::move(params), input_log = std::move(input_log), played_at,
+                 modifiers_json, chara_is_costume, chara_cos_index]() mutable {
+        cpr::Response response = cpr::Post(
+            cpr::Url{network_url("/submit_score")},
+            signed_headers("POST", "/submit_score", params),
+            cpr::Parameters{
+                {"access_code", params["access_code"]},
+                {"hash", params["hash"]},
+                {"difficulty", params["difficulty"]},
+                {"crown", params["crown"]},
+                {"rank", params["rank"]},
+                {"score", params["score"]},
+                {"good", params["good"]},
+                {"ok", params["ok"]},
+                {"bad", params["bad"]},
+                {"drumroll", params["drumroll"]},
+                {"max_combo", params["max_combo"]},
+            },
+            cpr::Payload{
+                {"input_log", map_to_json(input_log)},
+                {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
+                {"modifiers", modifiers_json},
+                {"chara_is_costume", chara_is_costume ? "true" : "false"},
+                {"chara_cos_index", std::to_string(chara_cos_index)},
+            },
+            cpr::Timeout{5000}
+            NETWORK_CA_OPT
+        );
+        if (response.status_code != 200) {
+            spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
+        }
+    }).detach();
 }
 
 void NetworkClient::poll_song_jump(const std::string& access_code) {
