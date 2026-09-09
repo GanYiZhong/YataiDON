@@ -1,4 +1,5 @@
 #include "gauge.h"
+#include <cmath>
 #include "../../libs/texture.h"
 
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
@@ -64,31 +65,40 @@ void Gauge::draw(float y) {
     bool mirrored = y > tex.screen_height / 2.0f;
     Mirror mirror = mirrored ? Mirror::VERTICAL : Mirror::NONE;
 
-    tex.draw_texture(tex.get_enum("gauge/border" + string_diff), {.mirror = mirror, .y = y});
+    tex.draw_texture(tex.get_enum("gauge/border" + string_diff), {.mirror = mirror, .y = y, .index = mirrored});
 
     tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_unfilled" + string_diff)),
                       {.mirror = mirror, .y = y, .index = mirrored});
 
-    constexpr int bar_units = 87;
+    const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
+    const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
     int gauge_length_int = points * bar_units / max_points;
     int previous_length_int = previous_points * bar_units / max_points;
     int clear_point = clear_points * bar_units / max_points;
     float bar_width  = tex.textures[tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")]->width;
 
-    tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar")),
-                      {.y = y, .x2 = std::min(gauge_length_int * bar_width, (clear_point - 1) * bar_width) - bar_width, .index = mirrored});
+    const bool cell_fade_in = tex.options[SCO::GAUGE_CELL_FADE_IN];
+    const bool cell_pending = gauge_length_int <= bar_units && gauge_length_int > previous_length_int
+                              && gauge_update_anim && gauge_update_anim->is_started && !gauge_update_anim->is_finished;
+    const int  solid_length = (cell_fade_in && cell_pending) ? gauge_length_int - 1 : gauge_length_int;
+    const float anim_alpha  = gauge_update_anim ? (float)gauge_update_anim->attribute : 0.0f;
+    const float cell_alpha  = cell_fade_in ? 1.0f - anim_alpha : anim_alpha;
 
-    if (gauge_length_int >= clear_point - 1)
+    if (solid_length > 0)
+        tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar")),
+                          {.y = y, .x2 = std::min(solid_length * bar_width, (clear_point - 1) * bar_width) - bar_width, .index = mirrored});
+
+    if (solid_length >= clear_point - 1)
         tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION,
                           {.mirror = mirror, .x = (clear_point - 1) * bar_width, .y = y, .index = mirrored});
 
-    if (gauge_length_int > clear_point) {
+    if (solid_length > clear_point) {
         tex.draw_texture(GAUGE::BAR_CLEAR_TOP,
                           {.mirror = mirror, .x = clear_point * bar_width, .y = y,
-                           .x2 = (gauge_length_int - clear_point) * bar_width, .index = mirrored});
+                           .x2 = (solid_length - clear_point) * bar_width, .index = mirrored});
         tex.draw_texture(GAUGE::BAR_CLEAR_BOTTOM,
                           {.x = clear_point * bar_width, .y = y,
-                           .x2 = (gauge_length_int - clear_point) * bar_width, .index = mirrored});
+                           .x2 = (solid_length - clear_point) * bar_width, .index = mirrored});
     }
 
     if (get_is_rainbow() && rainbow_fade_in.has_value()) {
@@ -103,18 +113,19 @@ void Gauge::draw(float y) {
     }
 
     if (gauge_length_int <= bar_units && gauge_length_int > previous_length_int) {
+        const float fade_x = (gauge_length_int - 1) * bar_width;
         if (gauge_length_int == clear_point) {
             tex.draw_texture(GAUGE::BAR_CLEAR_TRANSITION_FADE,
-                              {.mirror = mirror, .x = gauge_length_int * bar_width, .y = y,
-                               .fade = gauge_update_anim->attribute, .index = mirrored});
+                              {.mirror = mirror, .x = fade_x, .y = y,
+                               .fade = cell_alpha, .index = mirrored});
         } else if (gauge_length_int > clear_point) {
             tex.draw_texture(GAUGE::BAR_CLEAR_FADE,
-                              {.x = gauge_length_int * bar_width, .y = y,
-                               .fade = gauge_update_anim->attribute, .index = mirrored});
+                              {.x = fade_x, .y = y,
+                               .fade = cell_alpha, .index = mirrored});
         } else {
             tex.draw_texture(tex.get_enum("gauge/" + (std::to_string((int)player_num) + "p_bar_fade")),
-                              {.x = gauge_length_int * bar_width, .y = y,
-                               .fade = gauge_update_anim->attribute, .index = mirrored});
+                              {.x = fade_x, .y = y,
+                               .fade = cell_alpha, .index = mirrored});
         }
     }
 
