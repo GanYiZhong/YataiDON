@@ -92,7 +92,7 @@ public:
 
     void reload_for_dan(std::optional<SongParser>& new_parser, int new_difficulty);
 
-    void spawn_ending_anim();
+    void spawn_ending_anim(Background* background = nullptr);
 
     void seek_to(double resume_time);
 
@@ -170,7 +170,8 @@ private:
     int balloon_index;
 
     std::optional<OutlinedText> current_lyric;
-    bool practice_lyric = false;   // set once draw_practice runs: the practice scene draws the lyric itself (over the drums)
+    Background* ending_background = nullptr;
+    bool practice_lyric = false;
 
     bool is_branch;
     std::tuple<float, float, double> curr_branch_reqs;

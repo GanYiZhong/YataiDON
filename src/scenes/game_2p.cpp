@@ -75,7 +75,7 @@ std::optional<Screens> Game2PScreen::update() {
             save_score(get_player_id(PlayerNum::P1), PlayerNum::P1);
             save_score(get_player_id(PlayerNum::P2), PlayerNum::P2);
             for (int i = 0; i < 2; i++) {
-                players[i]->spawn_ending_anim();
+                players[i]->spawn_ending_anim(background.has_value() ? &*background : nullptr);
             }
             global_data.songs_played += 1;
             score_saved = true;
