@@ -55,19 +55,15 @@ static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<So
     return SongParser(path);
 }
 
-// The back box closes a folder, so it wears that folder's genre (colour / board
-// frame) like the cabinet's もどる panel; without a folder def it stays Namco orange.
+// The back box closes a folder, so it carries that folder's genre: the genre
+// background behind the cursor (and a skin's board frame) follow it, like the
+// cabinet's もどる panel.  The box itself keeps its own colour.
 static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path, const BoxDef* folder = nullptr) {
     BoxDef d;
     d.back_color    = BackBox::COLOR;
     d.fore_color    = BackBox::COLOR;
     d.texture_index = TextureIndex::NONE;
-    d.genre_index   = GenreIndex::NAMCO;
-    if (folder) {
-        d.genre_index = folder->genre_index;
-        if (folder->back_color) d.back_color = folder->back_color;
-        if (folder->fore_color) d.fore_color = folder->fore_color;
-    }
+    d.genre_index   = folder ? folder->genre_index : GenreIndex::NAMCO;
     return std::make_unique<BackBox>(parent_path, d);
 }
 
@@ -1450,11 +1446,7 @@ void Navigator::setup_back_box(const fs::path& path, bool has_children, const Ba
         for (auto& b : items)
             if (b && b->path == path) { from = b.get(); break; }
     BoxDef folder = parse_box_def(path);
-    if (from) {
-        folder.genre_index = from->genre_index;
-        if (from->back_color) folder.back_color = from->back_color;
-        if (from->fore_color) folder.fore_color = from->fore_color;
-    }
+    if (from) folder.genre_index = from->genre_index;
     // the loaders repeat a back box every ten songs; those wear the same genre
     inline_back_def = folder;
     if (has_children) {
