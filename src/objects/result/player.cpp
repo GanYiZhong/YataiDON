@@ -145,9 +145,6 @@ void ResultPlayer::update_score_animation(double current_ms, bool is_skipped) {
         }
     }
     if (rows_done_ms == 0 && update_index >= (int)update_list.size()) rows_done_ms = current_ms;
-    // The best-score voice belongs to the "ベストスコア更新" banner, which the result
-    // scripts raise when the total-score row lands -- not when the first row (good) does.
-    // `score` is set the moment that row is assigned (count-up, instant, or skipped).
     if (!score.empty() && !high_score_sound_played) {
         SessionData& sd = global_data.session_data[(int)player_num];
         if (sd.result_data.score > sd.result_data.prev_score) {
