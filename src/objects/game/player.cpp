@@ -413,6 +413,10 @@ void Player::update(double ms_from_start, double current_ms, std::optional<Backg
         gauge->update(current_ms);
         if (background.has_value()) {
             background->handle_gauge(player_num, gauge->get_length() / 100.0f, gauge->get_is_clear(), gauge->get_is_rainbow());
+            if (score != last_reported_score) {
+                last_reported_score = score;
+                background->handle_score(player_num, score);
+            }
         }
         bool gauge_full_now = gauge->get_is_rainbow();
         if (gauge_full_now && !was_gauge_full) {

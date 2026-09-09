@@ -14,6 +14,7 @@ private:
     sol::protected_function fn_handle_song_end;
     sol::protected_function fn_handle_dan;
     sol::protected_function fn_handle_skip;
+    sol::protected_function fn_handle_score;
     sol::protected_function fn_handle_ending;
     sol::protected_function fn_draw_ending;
     sol::protected_function fn_draw_back;
@@ -37,9 +38,7 @@ public:
     bool wants_dan() const { return fn_handle_dan.valid(); }
     void handle_skip(PlayerNum player_num, const sol::table& state);
     bool wants_skip() const { return fn_handle_skip.valid(); }
-    // Ending banner (clear / full combo / donderful / fail): a skin that defines both
-    // handle_ending(player_num, kind) and draw_ending(player_num) draws it itself; the
-    // engine keeps running its own animation for the sounds but skips its drawing.
+    void handle_score(PlayerNum player_num, int score);
     void handle_ending(PlayerNum player_num, const std::string& kind);
     void draw_ending(PlayerNum player_num);
     bool wants_ending() const { return fn_handle_ending.valid() && fn_draw_ending.valid(); }

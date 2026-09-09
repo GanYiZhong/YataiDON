@@ -130,6 +130,7 @@ private:
     int bad_count;
     int combo;
     int score;
+    int last_reported_score = -1;   // last value sent to Background::handle_score
     int max_combo;
     int total_drumroll;
 
