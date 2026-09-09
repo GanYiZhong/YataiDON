@@ -117,6 +117,7 @@ void register_song_select_lua_bindings(sol::state& lua) {
     lua.new_usertype<SongSelectPlayer>("SongSelectPlayer",
         "selected_difficulty", [](SongSelectPlayer& self) { return (int)self.selected_difficulty; },
         "player_num",           [](SongSelectPlayer& self) { return (int)self.player_num; },
+        "difficulty_decided",   [](SongSelectPlayer& self) { return self.difficulty_decided(); },
         "neiro_active",         [](SongSelectPlayer& self) { return self.neiro_selector.has_value(); },
         "modifier_active",      [](SongSelectPlayer& self) { return self.modifier_selector.has_value(); },
         "modifier_offset",      [](SongSelectPlayer& self) -> sol::optional<float> {
