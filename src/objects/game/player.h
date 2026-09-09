@@ -102,6 +102,8 @@ public:
 
     void draw_practice(double ms_from_start, float x, float y, ray::Shader& mask_shader, bool draw_notes_on);
 
+    void draw_lyric(float y);   // practice scene draws it after the large drums
+
     void draw_overlays(float y, const ray::Shader& mask_shader);
     void draw_lane_cover(float y);
 
@@ -168,7 +170,7 @@ private:
     int balloon_index;
 
     std::optional<OutlinedText> current_lyric;
-    bool practice_lyric = false;   // set once draw_practice runs: lyric moves above the practice drums
+    bool practice_lyric = false;   // set once draw_practice runs: the practice scene draws the lyric itself (over the drums)
 
     bool is_branch;
     std::tuple<float, float, double> curr_branch_reqs;
