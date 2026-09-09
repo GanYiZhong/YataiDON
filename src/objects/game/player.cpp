@@ -75,8 +75,6 @@ ResultData Player::get_result_score() {
     result.bad = bad_count;
     result.max_combo = max_combo;
     result.total_drumroll = total_drumroll;
-    // ResultData.gauge_length is expected on the old 87-unit display scale
-    // (see result_player.lua); Gauge only exposes 0-100%, so convert.
     if (dan_gauge) result.gauge_length = dan_gauge->get_length() * 0.87f;
     else if (gauge.has_value()) result.gauge_length = gauge->get_length() * 0.87f;
     if (skipped_run) result.gauge_length = 0.0f;
@@ -866,8 +864,6 @@ void Player::handle_lyric(double ms_from_start, const TimelineObject& timeline_o
         current_lyric.reset();
     }
 
-    // Skin-configurable lyric line: optional "lyric" entry (font_size / y / outline);
-    // falls back to the historical 40px (scaled) at the bottom of the screen.
     const SkinInfo* lyric_cfg = tex.skin_entry("lyric");
     int font_size = (lyric_cfg && lyric_cfg->font_size > 0) ? lyric_cfg->font_size
                                                              : static_cast<int>(40 * tex.screen_scale);
@@ -1635,9 +1631,6 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
         float lyric_y = (lyric_cfg && lyric_cfg->y > 0) ? lyric_cfg->y
                                                         : static_cast<float>(tex.screen_height - (int)(current_lyric->height*1.5));
         if (practice_lyric) {
-            // Practice mode draws the two large drums over the bottom of the screen
-            // after the player overlays; keep the lyric just above them (or where
-            // the skin's optional "lyric_practice" entry says).
             const SkinInfo* pcfg = tex.skin_entry("lyric_practice");
             if (pcfg && pcfg->y > 0) {
                 lyric_y = pcfg->y;
