@@ -55,12 +55,15 @@ static SongParser take_parser(std::unordered_map<std::string, std::unique_ptr<So
     return SongParser(path);
 }
 
-static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path) {
+// The back box closes a folder, so it carries that folder's genre: the genre
+// background behind the cursor (and a skin's board frame) follow it, like the
+// cabinet's もどる panel.  The box itself keeps its own colour.
+static std::unique_ptr<BackBox> make_back_box(const fs::path& parent_path, const BoxDef* folder = nullptr) {
     BoxDef d;
     d.back_color    = BackBox::COLOR;
     d.fore_color    = BackBox::COLOR;
     d.texture_index = TextureIndex::NONE;
-    d.genre_index   = GenreIndex::NAMCO;
+    d.genre_index   = folder ? folder->genre_index : GenreIndex::NAMCO;
     return std::make_unique<BackBox>(parent_path, d);
 }
 
@@ -514,7 +517,7 @@ void Navigator::parse_song_list(const fs::path& path, BoxDef box_def, bool inlin
         auto box = make_song_box(final_path, box_def, SongParser(final_path));
         box->preserve_order = true;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path().parent_path()));
+            enqueue_inline_box(make_back_box(path.parent_path().parent_path(), &inline_back_def));
         if (inline_mode)
             enqueue_inline_box(std::move(box));
         else
@@ -717,7 +720,7 @@ void Navigator::load_collection_new(const fs::path& path, const BoxDef& box_def)
                     last_write - std::filesystem::file_time_type::clock::now());
             if (last_write_sys < two_weeks_ago) continue;
             if (songs_added > 0 && songs_added % 10 == 0)
-                enqueue_inline_box(make_back_box(path.parent_path()));
+                enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
             auto song = make_song_box(entry.path(), box_def, SongParser(entry.path()));
             apply_song_genre(song.get(), sibling_box_def);
             song->fade_in(266);
@@ -769,7 +772,7 @@ void Navigator::load_collection_difficulty(const fs::path& path, const BoxDef& b
     for (const auto& h : hits) {
         if (abort_loading) break;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path()));
+            enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
         SongParser parser(h.path);
         parser.get_metadata();
         auto song = make_song_box(h.path, box_def, parser);
@@ -808,7 +811,7 @@ void Navigator::load_from_song_list(const fs::path& path, const BoxDef& box_def,
             song_path = it->second;
         }
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path()));
+            enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
         song->preserve_order = true;
         if (mark_favorite) song->is_favorite = true;
@@ -945,7 +948,7 @@ void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_d
         std::transform(title.begin(), title.end(), title.begin(), ::tolower);
         if (title.find(query) == std::string::npos) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path()));
+            enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
         fs::path genre_folder = find_box_def_folder(song_path);
         if (!genre_folder.empty())
@@ -972,7 +975,7 @@ void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
 
     auto add_song = [&](const fs::path& song_path) {
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(path.parent_path()));
+            enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
         auto box = make_song_box(song_path, box_def, take_parser(preparsed, song_path));
         box->fade_in(266);
         enqueue_inline_box(std::move(box));
@@ -1399,7 +1402,7 @@ bool Navigator::jump_to_song_path(const fs::path& song_path) {
         pending_inline_folder  = folder_box;
         inline_state           = std::move(state);
 
-        setup_back_box(final_folder, false);
+        setup_back_box(final_folder, false, folder_box);
         genre_bg.emplace(folder_box->text_name, folder_box->back_color, folder_box->texture_index, 1000.0f);
 
         loading_complete = false;
@@ -1437,14 +1440,24 @@ bool Navigator::jump_to_song_path(const fs::path& song_path) {
     return true;
 }
 
-void Navigator::setup_back_box(const fs::path& path, bool has_children) {
+void Navigator::setup_back_box(const fs::path& path, bool has_children, const BaseBox* from) {
+    // The box that opened this folder is the authority on its genre and colours: a
+    // folder without box.def gets them from its name or the gen3/gen4 tables, which
+    // parse_box_def(path) alone does not see.
+    if (!from)
+        for (auto& b : items)
+            if (b && b->path == path) { from = b.get(); break; }
+    BoxDef folder = parse_box_def(path);
+    if (from) folder.genre_index = from->genre_index;
+    // the loaders repeat a back box every ten songs; those wear the same genre
+    inline_back_def = folder;
     if (has_children) {
         if (!reloading_roots) items.clear();
         if (std::find(root_paths.begin(), root_paths.end(), path) != root_paths.end())
             return;
-        items.push_back(make_back_box(path.parent_path()));
+        items.push_back(make_back_box(path.parent_path(), &folder));
     } else {
-        auto back = make_back_box(path.parent_path());
+        auto back = make_back_box(path.parent_path(), &folder);
         back->fade_in(266);
         items.erase(items.begin() + open_index);
         items.insert(items.begin() + open_index, std::move(back));
@@ -1601,7 +1614,7 @@ bool Navigator::load_gen4_genre_songs(const fs::path& path, const BoxDef& box_de
         std::error_code ec;
         if (!fs::is_directory(song_folder, ec)) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(data_root));
+            enqueue_inline_box(make_back_box(data_root, &inline_back_def));
         auto box = make_song_box(song_folder, def, SongParser(song_folder));
         box->preserve_order = true;
         box->fade_in(266);
@@ -1714,7 +1727,7 @@ bool Navigator::load_gen3_genre_songs(const fs::path& path, const BoxDef& box_de
         std::error_code ec;
         if (!fs::is_directory(song_folder, ec)) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
-            enqueue_inline_box(make_back_box(data_root));
+            enqueue_inline_box(make_back_box(data_root, &inline_back_def));
         auto box = make_song_box(song_folder, def, SongParser(song_folder));
         // The file's own order is the game's order.
         box->preserve_order = true;
