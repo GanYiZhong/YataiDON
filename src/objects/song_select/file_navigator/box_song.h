@@ -8,6 +8,7 @@
 #include <cmath>
 
 class SongBox : public BaseBox {
+    void preregister_text() override;
 public:
     std::array<std::string, 5> hashes;
     std::array<std::optional<Score>, 5> scores;
