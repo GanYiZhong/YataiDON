@@ -36,6 +36,7 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
         fn_handle_song_end = lua_object["handle_song_end"];
         fn_handle_dan      = lua_object["handle_dan"];
         fn_handle_skip     = lua_object["handle_skip"];
+        fn_handle_score    = lua_object["handle_score"];
         fn_draw_back     = lua_object["draw_back"];
         fn_draw_fore     = lua_object["draw_fore"];
         fn_draw_gauge    = lua_object["draw_gauge"];
@@ -126,6 +127,15 @@ void Background::handle_dan(PlayerNum player_num, const sol::table& state) {
     if (!result.valid()) {
         sol::error err = result;
         spdlog::error("Error calling handle_dan: {}", err.what());
+    }
+}
+
+void Background::handle_score(PlayerNum player_num, int score) {
+    if (!fn_handle_score.valid()) return;
+    auto result = fn_handle_score(lua_object, static_cast<int>(player_num), score);
+    if (!result.valid()) {
+        sol::error err = result;
+        spdlog::error("Error calling handle_score: {}", err.what());
     }
 }
 

@@ -14,6 +14,7 @@ private:
     sol::protected_function fn_handle_song_end;
     sol::protected_function fn_handle_dan;
     sol::protected_function fn_handle_skip;
+    sol::protected_function fn_handle_score;
     sol::protected_function fn_draw_back;
     sol::protected_function fn_draw_fore;
     sol::protected_function fn_draw_gauge;
@@ -35,6 +36,9 @@ public:
     bool wants_dan() const { return fn_handle_dan.valid(); }
     void handle_skip(PlayerNum player_num, const sol::table& state);
     bool wants_skip() const { return fn_handle_skip.valid(); }
+    // Optional: the running score, sent whenever it changes (skins draw the
+    // score-rank badge from it).
+    void handle_score(PlayerNum player_num, int score);
     void draw_back();
     void draw_fore();
 
