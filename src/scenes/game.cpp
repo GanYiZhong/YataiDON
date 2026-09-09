@@ -422,7 +422,7 @@ void GameScreen::end_song() {
         global_data.session_data[(int)players[0]->player_num].result_data = players[0]->get_result_score();
         save_score(global_data.config->general.player_1_id, players[0]->player_num);
         for (auto& player : players) {
-            player->spawn_ending_anim();
+            player->spawn_ending_anim(background.has_value() ? &*background : nullptr);
             if (background.has_value()) {
                 int g = player->get_good(), o = player->get_ok(), b = player->get_bad();
                 background->handle_song_end(player->player_num, g, o, b, g + o + b);

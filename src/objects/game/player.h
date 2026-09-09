@@ -92,7 +92,7 @@ public:
 
     void reload_for_dan(std::optional<SongParser>& new_parser, int new_difficulty);
 
-    void spawn_ending_anim();
+    void spawn_ending_anim(Background* background = nullptr);
 
     void seek_to(double resume_time);
 
@@ -168,6 +168,7 @@ private:
     int balloon_index;
 
     std::optional<OutlinedText> current_lyric;
+    Background* ending_background = nullptr;   // skin ending hook target, set by spawn_ending_anim
     bool practice_lyric = false;   // set once draw_practice runs: lyric moves above the practice drums
 
     bool is_branch;

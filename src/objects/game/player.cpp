@@ -81,20 +81,27 @@ ResultData Player::get_result_score() {
     return result;
 }
 
-void Player::spawn_ending_anim() {
+void Player::spawn_ending_anim(Background* background) {
+    ending_background = background;
     if (skipped_run) {
         ending_anim.reset();
         return;
     }
     if (!gauge.has_value() && !dan_gauge) return;
     bool is_clear = dan_gauge ? dan_gauge->get_is_clear() : gauge->get_is_clear();
+    const char* kind;
     if (!is_clear) {
         ending_anim = FailAnimation(is_2p);
+        kind = "fail";
     } else if (bad_count == 0) {
         ending_anim = FCAnimation(is_2p, ok_count == 0);
+        kind = (ok_count == 0) ? "donderful" : "full_combo";
     } else {
         ending_anim = ClearAnimation(is_2p);
+        kind = "clear";
     }
+    if (ending_background && ending_background->wants_ending())
+        ending_background->handle_ending(player_num, kind);
 }
 
 void Player::reload_for_dan(std::optional<SongParser>& new_parser, int new_difficulty) {
@@ -1577,7 +1584,10 @@ void Player::draw_lane_cover(float y) {
 void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     tex.draw_texture(LANE::DRUM, {.y=y});
     if (ending_anim.has_value()) {
-        std::visit([](auto& anim) { anim.draw(); }, ending_anim.value());
+        if (ending_background && ending_background->wants_ending())
+            ending_background->draw_ending(player_num);
+        else
+            std::visit([](auto& anim) { anim.draw(); }, ending_anim.value());
     }
 
     for (auto& anim : draw_drum_hit_list) {
