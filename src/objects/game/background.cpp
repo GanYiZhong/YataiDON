@@ -138,7 +138,9 @@ void Background::handle_score(PlayerNum player_num, int score) {
     if (!result.valid()) {
         sol::error err = result;
         spdlog::error("Error calling handle_score: {}", err.what());
-      
+    }
+}
+
 void Background::handle_ending(PlayerNum player_num, const std::string& kind) {
     if (!fn_handle_ending.valid()) return;
     auto result = fn_handle_ending(lua_object, static_cast<int>(player_num), kind);
