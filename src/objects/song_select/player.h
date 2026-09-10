@@ -42,6 +42,9 @@ public:
 
     SongSelectScript* script = nullptr;
     bool selector_handled_by_lua = false;
+    // set each frame from draw_option_panel: the skin drew the option panel itself, so
+    // the character stays put instead of riding the panel (the cabinet's Don does not move)
+    bool option_panel_by_lua = false;
 
     SongSelectPlayer(PlayerNum player_num);
 
