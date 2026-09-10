@@ -56,6 +56,22 @@ private:
     MoveAnimation* background_move;
 
     std::thread              loader_thread;
+    // Folder open: the song-file scan and the TJA header parse for the folder start on
+    // their own thread the moment the open begins, so that work overlaps the genre
+    // board's ~1.1 s slide instead of starting after it (load_songs_inline_async picks
+    // the result up when it starts, or redoes the work if the path no longer matches).
+    struct InlinePrefetch {
+        fs::path path;
+        std::vector<fs::path> song_paths;
+        std::unordered_map<std::string, std::vector<std::pair<bool, fs::path>>> plan;
+        std::unordered_map<std::string, std::unique_ptr<SongParser>> preparsed;
+    };
+    std::thread              prefetch_thread;
+    std::unique_ptr<InlinePrefetch> prefetch;
+    void start_inline_prefetch(const fs::path& path);
+    void join_prefetch();
+    void scan_song_tree(const fs::path& path, std::vector<fs::path>& song_paths,
+                        std::unordered_map<std::string, std::vector<std::pair<bool, fs::path>>>& plan);
     std::thread              song_files_thread;
     std::mutex               pending_mutex;
     std::queue<std::unique_ptr<BaseBox>> pending_boxes;
