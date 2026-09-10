@@ -209,40 +209,55 @@ static void draw_text_clean(ray::Image* dst, const ray::Font& font, const char* 
 }
 
 // Outline = the glyph coverage dilated by a disk of `radius` px (max over the disk),
-// coloured with `outline_color`. Stamping the text at 16 angles left a ragged,
-// "hairy" rim because the stamps only touch the disk at 16 points; a per-row
-// running max over the disk's chord gives the exact Minkowski sum.
+// coloured with `outline_color`.  Stamping the text at 16 angles left a ragged,
+// "hairy" rim because the stamps only touch the disk at 16 points; a per-pixel max
+// over the disk gives the exact Minkowski sum.  The disk is anti-aliased: a
+// neighbour at distance d contributes a * clamp(radius + 0.5 - d, 0, 1), so the
+// outer edge of the outline has the same 1 px soft ramp as the glyph itself instead
+// of the pixel staircase a hard disk leaves on curves (the cabinet's strokes are
+// smooth; a hard rim read as "sharper" next to them).
 static void stamp_outline(ray::Image* dst, const ray::Font& font, const char* text, ray::Vector2 pos,
                           float font_size, float spacing, ray::Color outline_color, float radius) {
     ray::Image cov = ray::ImageTextEx(font, text, font_size, spacing, ray::WHITE);
     if (!cov.data || cov.width <= 0 || cov.height <= 0) { ray::UnloadImage(cov); return; }
     if (cov.format != ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) ray::ImageFormat(&cov, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    const int r  = (int)std::ceil(radius);
+    const int r  = (int)std::ceil(radius + 0.5f);
     const int W  = cov.width, H = cov.height;
     const int OW = W + 2 * r, OH = H + 2 * r;
-    std::vector<unsigned char> a(W * H), rowmax(OW * H, 0), out(OW * OH, 0);
+    std::vector<unsigned char> a(W * H), out(OW * OH, 0);
     const unsigned char* cp = (const unsigned char*)cov.data;
     for (int i = 0; i < W * H; i++) a[i] = cp[i * 4 + 3];
-    // chord half-width for each dy (sub-pixel radius -> smoother ends)
-    std::vector<int> half(2 * r + 1);
+    // disk weights, 0..255, with the soft 1 px rim; rows carry their non-zero span
+    const int D = 2 * r + 1;
+    std::vector<unsigned char> wt(D * D, 0);
+    std::vector<int> lo(D, D), hi(D, -1);
     for (int dy = -r; dy <= r; dy++) {
-        float rem = radius * radius - (float)dy * dy;
-        half[dy + r] = rem < 0 ? -1 : (int)std::floor(std::sqrt(rem) + 0.5f);
+        for (int dx = -r; dx <= r; dx++) {
+            float d = std::sqrt((float)dx * dx + (float)dy * dy);
+            float w = radius + 0.5f - d;
+            if (w <= 0.0f) continue;
+            if (w > 1.0f) w = 1.0f;
+            wt[(dy + r) * D + (dx + r)] = (unsigned char)(w * 255.0f + 0.5f);
+            if (dx + r < lo[dy + r]) lo[dy + r] = dx + r;
+            if (dx + r > hi[dy + r]) hi[dy + r] = dx + r;
+        }
     }
-    // horizontal running max for the widest chord is not enough (chords differ per dy),
-    // so dilate per dy with its own chord; H*(2r+1)*W*(2r+1) byte ops — fine for HUD text.
-    for (int dy = -r; dy <= r; dy++) {
-        const int hw = half[dy + r];
-        if (hw < 0) continue;
-        for (int y = 0; y < H; y++) {
-            const int oy = y + dy + r;
-            const unsigned char* src = &a[y * W];
-            unsigned char* orow = &out[oy * OW];
-            for (int x = 0; x < W; x++) {
-                const unsigned char v = src[x];
-                if (!v) continue;
-                const int x0 = x - hw + r, x1 = x + hw + r;
-                for (int ox = x0; ox <= x1; ox++) if (orow[ox] < v) orow[ox] = v;
+    // H*W*D*D byte ops -- fine for HUD text
+    for (int y = 0; y < H; y++) {
+        const unsigned char* src = &a[y * W];
+        for (int x = 0; x < W; x++) {
+            const unsigned v = src[x];
+            if (!v) continue;
+            for (int dy = -r; dy <= r; dy++) {
+                const int row = dy + r;
+                if (hi[row] < 0) continue;
+                unsigned char* orow = &out[(y + dy + r) * OW + x];
+                const unsigned char* wrow = &wt[row * D];
+                for (int k = lo[row]; k <= hi[row]; k++) {
+                    const unsigned char c = (unsigned char)((v * wrow[k] + 127) / 255);
+                    unsigned char& o = orow[k];        // ox = x + (k - r) + r = x + k
+                    if (o < c) o = c;
+                }
             }
         }
     }
