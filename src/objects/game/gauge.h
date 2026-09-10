@@ -7,6 +7,10 @@ class Gauge {
 public:
 
     Gauge(int total_notes, int difficulty, int level, PlayerNum player_num);
+    // Dan course gauge: one bar across the whole course, no clear zone, filled by every
+    // note (good 1, ok 1/2, bad -2 per note out of total_notes), drawn from game/gauge_dan
+    // at the positions its texture.json gives (not relative to a lane).
+    static Gauge dan(int total_notes, PlayerNum player_num);
 
     void add_good();
     void add_ok();
@@ -16,9 +20,12 @@ public:
 
     bool get_is_clear() const { return points >= clear_points; }
     bool get_is_rainbow() const { return points >= max_points; }
+    bool is_dan() const { return dan_mode; }
     float get_length() const { return (float)points / max_points * 100;}
 
 private:
+    void draw_dan();
+    bool dan_mode = false;
     int good_points;
     int ok_points;
     int bad_points;
