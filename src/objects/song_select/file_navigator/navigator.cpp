@@ -1222,6 +1222,11 @@ void Navigator::begin_inline_load() {
     genre_bg.emplace(items[open_index]->text_name, items[open_index]->back_color,
                      items[open_index]->texture_index, approx_items * 100);
     is_processing = true;
+    // The boxes below the opened folder slide out of the way for the inline list.
+    // A skin that draws the wheel itself animates them on its own (the cabinet
+    // flies them out on the decide clip); the slide would take them off screen at
+    // once, before that animation can play, so leave their positions to the swap.
+    if (script && script->has_draw_box()) return;
     for (int i = 0; i < (int)items.size(); i++) {
         if (items[i]->position > items[open_index]->position)
             items[i]->move_box(tex.screen_width + 150, 600);

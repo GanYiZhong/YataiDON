@@ -31,6 +31,7 @@ public:
     void draw_top(float dan_progress);
 
     bool draw_box(BaseBox* box);
+    bool has_draw_box() const { return fn_draw_box.valid(); }   // the skin draws the wheel itself
     bool draw_box_bg(BaseBox* box);
     bool has_box_bg() const { return fn_draw_box_bg.valid(); }
     bool draw_background(Navigator* nav);
