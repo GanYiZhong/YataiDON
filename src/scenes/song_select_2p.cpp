@@ -134,6 +134,9 @@ std::optional<Screens> SongSelect2PScreen::update() {
         script->restart_text_fade();
         if (state == SongSelectState::SEARCHING) {
             search_box.emplace();
+            // The don key that opened the search (F/J) is also a typed character still
+            // queued in raylib's char buffer; drop it so it does not land in the query.
+            while (ray::GetCharPressed() > 0) {}
         }
     }
 
