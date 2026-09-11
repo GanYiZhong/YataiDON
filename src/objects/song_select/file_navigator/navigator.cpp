@@ -1,4 +1,5 @@
 #include <cctype>
+#include "../../../libs/han_fold_table.h"
 #include "navigator.h"
 #include "box_song_osu.h"
 #include "box_back.h"
@@ -13,10 +14,46 @@
 #include <algorithm>
 #include <cmath>
 
-// Byte-wise ASCII case fold: UTF-8 (CJK) bytes pass through untouched.
-static std::string ascii_fold(std::string s) {
-    for (char& ch : s) ch = (char)std::tolower((unsigned char)ch);
-    return s;
+// Song Search normalisation: ASCII is lower-cased, full-width ASCII (U+FF01..FF5E) becomes
+// half-width, and simplified / traditional Chinese characters are folded to their Japanese
+// shinjitai form (han_fold_table.h), so a query in any of the three scripts matches a title
+// written in another. Invalid UTF-8 bytes pass through unchanged.
+static uint32_t han_fold(uint32_t cp) {
+    size_t lo = 0, hi = HAN_FOLD_TABLE_SIZE;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (HAN_FOLD_TABLE[mid].from < cp) lo = mid + 1;
+        else hi = mid;
+    }
+    return (lo < HAN_FOLD_TABLE_SIZE && HAN_FOLD_TABLE[lo].from == cp) ? HAN_FOLD_TABLE[lo].to : cp;
+}
+
+static std::string search_fold(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        unsigned char b = (unsigned char)s[i];
+        int len = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 0;
+        if (len == 0 || i + len > s.size()) { out += (char)b; i++; continue; }
+        uint32_t cp = len == 1 ? b : len == 2 ? (b & 0x1F) : len == 3 ? (b & 0x0F) : (b & 0x07);
+        bool ok = true;
+        for (int k = 1; k < len; k++) {
+            unsigned char cb = (unsigned char)s[i + k];
+            if ((cb & 0xC0) != 0x80) { ok = false; break; }
+            cp = (cp << 6) | (cb & 0x3F);
+        }
+        if (!ok) { out += (char)b; i++; continue; }
+        i += len;
+        if (cp >= 0xFF01 && cp <= 0xFF5E) cp -= 0xFEE0;          // full-width ASCII
+        else if (cp == 0x3000) cp = ' ';                          // ideographic space
+        if (cp < 0x80) { out += (char)std::tolower((int)cp); continue; }
+        cp = han_fold(cp);
+        if (cp < 0x800)        { out += (char)(0xC0 | (cp >> 6)); out += (char)(0x80 | (cp & 0x3F)); }
+        else if (cp < 0x10000) { out += (char)(0xE0 | (cp >> 12)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+        else                   { out += (char)(0xF0 | (cp >> 18)); out += (char)(0x80 | ((cp >> 12) & 0x3F)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+    }
+    return out;
 }
 
 static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef& box_def, SongParser parser) {
@@ -193,7 +230,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                             std::string text;
                             for (const auto& [lang, t] : parsed_entry.metadata.title)    text += t + '\n';
                             for (const auto& [lang, t] : parsed_entry.metadata.subtitle) text += t + '\n';
-                            song_search_text[file.string()] = ascii_fold(text);
+                            song_search_text[file.string()] = search_fold(text);
                         }
                     } catch (const std::exception& inner) {
                         spdlog::warn("Skipping song during scan: {}", inner.what());
@@ -951,13 +988,13 @@ void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& 
 
 void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_def) {
     if (current_search.empty()) return;
-    const std::string query = ascii_fold(current_search);
+    const std::string query = search_fold(current_search);
     int songs_added = 0;
     for (const auto& [key, song_path] : song_files) {
         if (abort_loading) break;
         // Match any title / subtitle in any language (the box key is the English pair only).
         auto st = song_search_text.find(song_path.string());
-        const std::string& text = (st != song_search_text.end()) ? st->second : ascii_fold(key.first);
+        const std::string& text = (st != song_search_text.end()) ? st->second : search_fold(key.first);
         if (text.find(query) == std::string::npos) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
