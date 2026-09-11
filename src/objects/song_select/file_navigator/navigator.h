@@ -29,6 +29,8 @@ private:
     std::vector<fs::path> root_paths;
     std::vector<std::unique_ptr<BaseBox>> items;
     std::map<std::pair<std::string, std::string>, fs::path> song_files;
+    // song path -> every title and subtitle in every language, ASCII-folded, for Song Search
+    std::unordered_map<std::string, std::string> song_search_text;
     int open_index;
     bool is_init      = false;
     bool is_preloaded = false;
