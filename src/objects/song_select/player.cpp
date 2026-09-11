@@ -223,6 +223,9 @@ std::optional<std::pair<int,int>> SongSelectPlayer::handle_input_diff_sort(DiffS
 
 std::optional<std::string> SongSelectPlayer::handle_input_search() {
     if (ray::IsKeyPressed(ray::KEY_BACKSPACE)) {
+        // Remove one whole UTF-8 code point (continuation bytes first, then the lead byte).
+        while (!search_string.empty() && ((unsigned char)search_string.back() & 0xC0) == 0x80)
+            search_string.pop_back();
         if (!search_string.empty())
             search_string.pop_back();
     } else if (ray::IsKeyPressed(ray::KEY_ENTER)
@@ -244,7 +247,12 @@ std::optional<std::string> SongSelectPlayer::handle_input_search() {
             clear_input_buffers();
             return result;
         }
-        search_string += (char)key;
+        // GetCharPressed yields a Unicode code point (IME-composed CJK included); store it as UTF-8.
+        if (key >= 0x20) {
+            int n = 0;
+            const char* utf8 = ray::CodepointToUTF8(key, &n);
+            search_string.append(utf8, n);
+        }
         key = ray::GetCharPressed();
     }
     return std::nullopt;

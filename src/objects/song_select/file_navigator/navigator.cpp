@@ -1,3 +1,4 @@
+#include <cctype>
 #include "navigator.h"
 #include "box_song_osu.h"
 #include "box_back.h"
@@ -941,12 +942,13 @@ void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& 
 void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_def) {
     if (current_search.empty()) return;
     std::string query = current_search;
-    std::transform(query.begin(), query.end(), query.begin(), ::tolower);
+    // byte-wise ASCII fold only: UTF-8 (CJK) bytes pass through untouched
+    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
     int songs_added = 0;
     for (const auto& [key, song_path] : song_files) {
         if (abort_loading) break;
         std::string title = key.first;
-        std::transform(title.begin(), title.end(), title.begin(), ::tolower);
+        std::transform(title.begin(), title.end(), title.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
         if (title.find(query) == std::string::npos) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
