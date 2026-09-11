@@ -23,6 +23,9 @@ public:
     int ura_toggle;
     bool diff_select_move_right;
     std::string search_string;
+    // Set when a don key opens Song Search: typed characters are dropped until that key
+    // (and any other don key) is released, so the opening keystroke is not typed.
+    bool search_guard = false;
 
     std::optional<NeiroSelector> neiro_selector;
     std::optional<ModifierSelector> modifier_selector;

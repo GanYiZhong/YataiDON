@@ -198,8 +198,10 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
 
     if (!navigated && (l_don || r_don)) {
         BaseBox* item = navigator.get_current_item();
-        if (navigator.is_directory(item) && item->collection == COLLECTIONS[5])
+        if (navigator.is_directory(item) && item->collection == COLLECTIONS[5]) {
+            search_guard = true;
             return SongSelectState::SEARCHING;
+        }
         return select_song();
     }
     return SongSelectState::BROWSING;
@@ -221,7 +223,25 @@ std::optional<std::pair<int,int>> SongSelectPlayer::handle_input_diff_sort(DiffS
     return std::nullopt;
 }
 
+static bool any_don_key_down(PlayerNum player_num) {
+    const auto& c = *global_data.config;
+    auto down = [](const std::vector<int>& keys) {
+        for (int k : keys) if (ray::IsKeyDown(k)) return true;
+        return false;
+    };
+    if (player_num != PlayerNum::P2 && (down(c.keys_1p.left_don) || down(c.keys_1p.right_don))) return true;
+    if (player_num != PlayerNum::P1 && (down(c.keys_2p.left_don) || down(c.keys_2p.right_don))) return true;
+    return false;
+}
+
 std::optional<std::string> SongSelectPlayer::handle_input_search() {
+    if (search_guard) {
+        // The don key that opened the box (F/J) arrives as a typed character a frame
+        // later, and repeats while held: swallow everything until every don key is up.
+        while (ray::GetCharPressed() > 0) {}
+        if (!any_don_key_down(player_num)) search_guard = false;
+        return std::nullopt;
+    }
     if (ray::IsKeyPressed(ray::KEY_BACKSPACE)) {
         if (!search_string.empty())
             search_string.pop_back();
