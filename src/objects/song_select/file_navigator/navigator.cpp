@@ -13,6 +13,12 @@
 #include <algorithm>
 #include <cmath>
 
+// Byte-wise ASCII case fold: UTF-8 (CJK) bytes pass through untouched.
+static std::string ascii_fold(std::string s) {
+    for (char& ch : s) ch = (char)std::tolower((unsigned char)ch);
+    return s;
+}
+
 static std::unique_ptr<SongBox> make_song_box(const fs::path& path, const BoxDef& box_def, SongParser parser) {
     if (path.extension() == ".osu")
         return std::make_unique<SongBoxOsu>(path, box_def, std::move(parser));
@@ -184,6 +190,10 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                         if (playable) {
                             std::lock_guard<std::mutex> lock(map_mutex);
                             song_files[{parsed_entry.metadata.title["en"], parsed_entry.metadata.subtitle["en"]}] = file;
+                            std::string text;
+                            for (const auto& [lang, t] : parsed_entry.metadata.title)    text += t + '\n';
+                            for (const auto& [lang, t] : parsed_entry.metadata.subtitle) text += t + '\n';
+                            song_search_text[file.string()] = ascii_fold(text);
                         }
                     } catch (const std::exception& inner) {
                         spdlog::warn("Skipping song during scan: {}", inner.what());
@@ -941,15 +951,14 @@ void Navigator::load_collection_recommended(const fs::path& path, const BoxDef& 
 
 void Navigator::load_collection_search(const fs::path& path, const BoxDef& box_def) {
     if (current_search.empty()) return;
-    std::string query = current_search;
-    // byte-wise ASCII fold only: UTF-8 (CJK) bytes pass through untouched
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
+    const std::string query = ascii_fold(current_search);
     int songs_added = 0;
     for (const auto& [key, song_path] : song_files) {
         if (abort_loading) break;
-        std::string title = key.first;
-        std::transform(title.begin(), title.end(), title.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
-        if (title.find(query) == std::string::npos) continue;
+        // Match any title / subtitle in any language (the box key is the English pair only).
+        auto st = song_search_text.find(song_path.string());
+        const std::string& text = (st != song_search_text.end()) ? st->second : ascii_fold(key.first);
+        if (text.find(query) == std::string::npos) continue;
         if (songs_added > 0 && songs_added % 10 == 0)
             enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
         auto song = make_song_box(song_path, box_def, SongParser(song_path));
