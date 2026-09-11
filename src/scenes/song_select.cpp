@@ -96,9 +96,13 @@ void SongSelectScreen::handle_input_search() {
     auto result = player->handle_input_search();
     search_box->current_search = player->search_string;
     if (result) {
-        navigator.current_search = *result;
         search_box.reset();
         state = SongSelectState::BROWSING;
+        // Enter on an empty (or blank) query just closes the box: there is nothing to
+        // search for, so do not open the search folder.
+        const bool blank = result->find_first_not_of(" \t\r\n") == std::string::npos;
+        if (blank) return;
+        navigator.current_search = *result;
         navigator.load_current_directory(navigator.get_current_item()->path);
     }
 }
