@@ -248,6 +248,9 @@ std::optional<Screens> SongSelectScreen::update() {
             diff_select_timer = std::make_unique<Timer>(60, current_time, [this]() { select_song((SongBox*)navigator.get_current_item()); });
         } else if (state == SongSelectState::SEARCHING) {
             search_box.emplace();
+            // The don key that opened the search (F/J) is also a typed character still
+            // queued in raylib's char buffer; drop it so it does not land in the query.
+            while (ray::GetCharPressed() > 0) {}
             android_set_keyboard_visible(true);
         } else if (state == SongSelectState::DAN_SELECTED) {
             dan_transition.emplace();
