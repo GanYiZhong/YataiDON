@@ -200,6 +200,7 @@ SongSelectState SongSelectPlayer::handle_input_browsing(double current_ms) {
         BaseBox* item = navigator.get_current_item();
         if (navigator.is_directory(item) && item->collection == COLLECTIONS[5]) {
             search_guard = true;
+            search_guard_until_ms = ray::GetTime() * 1000.0 + 150.0;
             return SongSelectState::SEARCHING;
         }
         return select_song();
@@ -223,6 +224,25 @@ std::optional<std::pair<int,int>> SongSelectPlayer::handle_input_diff_sort(DiffS
     return std::nullopt;
 }
 
+// Strip leading / trailing blanks: ASCII whitespace and the ideographic space U+3000.
+static std::string trim_search(std::string s) {
+    auto blank_at = [&](size_t i, size_t& len) {
+        unsigned char b = (unsigned char)s[i];
+        if (b == ' ' || b == '\t' || b == '\r' || b == '\n') { len = 1; return true; }
+        if (b == 0xE3 && i + 2 < s.size() && (unsigned char)s[i + 1] == 0x80 && (unsigned char)s[i + 2] == 0x80) { len = 3; return true; }
+        return false;
+    };
+    size_t len = 0;
+    while (!s.empty() && blank_at(0, len)) s.erase(0, len);
+    for (;;) {
+        if (s.empty()) break;
+        if (s.size() >= 3 && blank_at(s.size() - 3, len) && len == 3) { s.resize(s.size() - 3); continue; }
+        if (blank_at(s.size() - 1, len) && len == 1) { s.pop_back(); continue; }
+        break;
+    }
+    return s;
+}
+
 static bool any_don_key_down(PlayerNum player_num) {
     const auto& c = *global_data.config;
     auto down = [](const std::vector<int>& keys) {
@@ -236,10 +256,24 @@ static bool any_don_key_down(PlayerNum player_num) {
 
 std::optional<std::string> SongSelectPlayer::handle_input_search() {
     if (search_guard) {
-        // The don key that opened the box (F/J) arrives as a typed character a frame
-        // later, and repeats while held: swallow everything until every don key is up.
+        // The don press is seen by the input thread a few ms before raylib's own key state
+        // and the typed character catch up, so the opening keystroke (F/J) would land in the
+        // query. Swallow typed input for a short grace period and until every don key is up.
         while (ray::GetCharPressed() > 0) {}
-        if (!any_don_key_down(player_num)) search_guard = false;
+        if (ray::GetTime() * 1000.0 >= search_guard_until_ms && !any_don_key_down(player_num))
+            search_guard = false;
+        return std::nullopt;
+    }
+    // Ctrl+V pastes the clipboard (first line only, UTF-8 as raylib hands it over).
+    if ((ray::IsKeyDown(ray::KEY_LEFT_CONTROL) || ray::IsKeyDown(ray::KEY_RIGHT_CONTROL)) && ray::IsKeyPressed(ray::KEY_V)) {
+        const char* clip = ray::GetClipboardText();
+        if (clip) {
+            std::string s(clip);
+            const size_t eol = s.find_first_of("\r\n");
+            if (eol != std::string::npos) s.resize(eol);
+            search_string += s;
+        }
+        while (ray::GetCharPressed() > 0) {}   // the 'v' itself is not typed
         return std::nullopt;
     }
     if (ray::IsKeyPressed(ray::KEY_BACKSPACE)) {
@@ -250,7 +284,7 @@ std::optional<std::string> SongSelectPlayer::handle_input_search() {
                || is_l_don_pressed(player_num) || is_r_don_pressed(player_num)
 #endif
     ) {
-        std::string result = search_string;
+        std::string result = trim_search(search_string);
         search_string = "";
         clear_input_buffers();
         return result;
@@ -259,7 +293,7 @@ std::optional<std::string> SongSelectPlayer::handle_input_search() {
     int key = ray::GetCharPressed();
     while (key > 0) {
         if (key == '\n' || key == '\r') {
-            std::string result = search_string;
+            std::string result = trim_search(search_string);
             search_string = "";
             clear_input_buffers();
             return result;

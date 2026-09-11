@@ -26,6 +26,7 @@ public:
     // Set when a don key opens Song Search: typed characters are dropped until that key
     // (and any other don key) is released, so the opening keystroke is not typed.
     bool search_guard = false;
+    double search_guard_until_ms = 0.0;
 
     std::optional<NeiroSelector> neiro_selector;
     std::optional<ModifierSelector> modifier_selector;
