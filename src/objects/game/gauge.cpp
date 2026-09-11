@@ -25,6 +25,19 @@ Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     gauge_update_anim    = (FadeAnimation*)tex.get_animation(10);
 }
 
+Gauge Gauge::dan(int total_notes, PlayerNum player_num) {
+    Gauge g(total_notes, (int)Difficulty::ONI, 10, player_num);
+    g.dan_mode     = true;
+    g.string_diff  = "";
+    g.max_points   = std::max(1, total_notes) * 40;   // all-good fills it exactly
+    g.clear_points = g.max_points;                     // no norma: clear == full
+    g.good_points  = 40;
+    g.ok_points    = 20;
+    g.bad_points   = -80;
+    g.points = g.previous_points = 0;
+    return g;
+}
+
 void Gauge::add_good() {
     if (gauge_update_anim) gauge_update_anim->start();
     previous_points = points;
@@ -65,6 +78,7 @@ void Gauge::update(double current_ms) {
 }
 
 void Gauge::draw(float y) {
+    if (dan_mode) { draw_dan(); return; }
     bool mirrored = y > tex.screen_height / 2.0f;
     Mirror mirror = mirrored ? Mirror::VERTICAL : Mirror::NONE;
 
@@ -171,5 +185,57 @@ void Gauge::draw(float y) {
         tex.draw_texture(tex.get_enum("gauge/clear_dark_" + global_data.config->general.language),
                           {.y = y, .index = art_tier + (mirrored * 3)});
         tex.draw_texture(GAUGE::TAMASHII_DARK, {.y = y, .index = mirrored});
+    }
+}
+
+// The dan gauge lives at the absolute positions of game/gauge_dan/texture.json, so it
+// takes no lane offset; the fill is one bar-texture-width per cell like the normal gauge.
+void Gauge::draw_dan() {
+    const std::string p = std::to_string((int)player_num) + "p_";
+    const TexID bar_id  = tex.get_enum("gauge_dan/" + p + "bar");
+    const TexID fade_id = tex.get_enum("gauge_dan/" + p + "bar_fade");
+    tex.draw_texture(GAUGE_DAN::BORDER, {});
+    tex.draw_texture(tex.get_enum("gauge_dan/" + p + "unfilled"), {});
+
+    const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
+    const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
+    const int gauge_length_int    = points * bar_units / max_points;
+    const int previous_length_int = previous_points * bar_units / max_points;
+    const float bar_width = tex.textures[bar_id]->width;
+
+    const bool cell_fade_in = tex.options[SCO::GAUGE_CELL_FADE_IN];
+    const bool cell_pending = gauge_length_int <= bar_units && gauge_length_int > previous_length_int
+                              && gauge_update_anim && gauge_update_anim->is_started && !gauge_update_anim->is_finished;
+    const int  solid_length = (cell_fade_in && cell_pending) ? gauge_length_int - 1 : gauge_length_int;
+    const float anim_alpha  = gauge_update_anim ? (float)gauge_update_anim->attribute : 0.0f;
+    const float cell_alpha  = cell_fade_in ? 1.0f - anim_alpha : anim_alpha;
+
+    if (solid_length > 0)
+        tex.draw_texture(bar_id, {.x2 = solid_length * bar_width - bar_width});
+
+    if (get_is_rainbow() && rainbow_fade_in.has_value()) {
+        const float fade = rainbow_fade_in.value()->attribute;
+        const int frame_a = (int)rainbow_frac % 8;
+        const int frame_b = (frame_a + 1) % 8;
+        const float t = rainbow_frac - (int)rainbow_frac;
+        tex.draw_texture(GAUGE_DAN::RAINBOW, {.frame = frame_a, .fade = fade});
+        tex.draw_texture(GAUGE_DAN::RAINBOW, {.frame = frame_b, .fade = fade * t});
+    }
+
+    const bool show_gauge_up = cell_fade_in ? cell_pending
+                                            : (gauge_length_int <= bar_units && gauge_length_int > previous_length_int);
+    if (show_gauge_up && gauge_length_int > 0)
+        tex.draw_texture(fade_id, {.x = (gauge_length_int - 1) * bar_width, .fade = cell_alpha});
+
+    tex.draw_texture(GAUGE_DAN::OVERLAY, {.fade = 0.15f});
+
+    if (get_is_rainbow()) {
+        const int f = tamashii_fire_change ? (int)tamashii_fire_change->attribute : 0;
+        tex.draw_texture(GAUGE_DAN::TAMASHII_FIRE, {.frame = f, .scale = 0.75f, .center = true});
+        tex.draw_texture(GAUGE_DAN::TAMASHII, {});
+        if (f == 0 || f == 1 || f == 4 || f == 5)
+            tex.draw_texture(GAUGE_DAN::TAMASHII_OVERLAY, {.fade = 0.5f});
+    } else {
+        tex.draw_texture(GAUGE_DAN::TAMASHII_DARK, {});
     }
 }
