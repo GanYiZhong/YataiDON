@@ -200,7 +200,6 @@ struct LoopState {
     std::chrono::time_point<std::chrono::steady_clock> next_frame_time = std::chrono::steady_clock::now();
     FPSCounter fps_counter;
     ray::Color last_color = ray::BLACK;
-    TextureResizeAnimation* touch_drum_resize = nullptr;
     double screen_fade_start = 0.0;
 };
 
@@ -349,10 +348,14 @@ static void run_frame() {
     }
 
     if (global_data.config->general.touch_input) {
+        // Settings reloads global_tex and destroys its animations. Resolve the
+        // current animation each frame instead of retaining a pointer across reloads.
+        auto* touch_drum_resize = static_cast<TextureResizeAnimation*>(global_tex.get_animation(66));
+        if (!touch_drum_resize->isStarted()) touch_drum_resize->start();
         if (touch_drum_pressed.exchange(false, std::memory_order_relaxed))
-            L.touch_drum_resize->restart();
-        L.touch_drum_resize->update(get_current_ms());
-        const float scale = (float)L.touch_drum_resize->attribute;
+            touch_drum_resize->restart();
+        touch_drum_resize->update(get_current_ms());
+        const float scale = (float)touch_drum_resize->attribute;
         float y_fix = 0.0f;
         auto drum_it = global_tex.textures.find(OVERLAY::TOUCH_DRUM);
         if (drum_it != global_tex.textures.end())
@@ -531,8 +534,6 @@ int main(int argc, char* argv[]) {
     L.current_screen     = initial_screen;
     global_data.current_screen = screens_to_string(initial_screen);
     L.target_duration    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps));
-    L.touch_drum_resize  = (TextureResizeAnimation*)global_tex.get_animation(66);
-    L.touch_drum_resize->start();
 
     populate_screens(L.screens);
 
