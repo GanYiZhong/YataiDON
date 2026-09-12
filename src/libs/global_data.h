@@ -56,6 +56,9 @@ struct Exam {
     // songs. Empty for the usual course-wide pair; red/gold above then hold song 1's.
     std::vector<int> song_red;
     std::vector<int> song_gold;
+    // An omitted gold border means "perfect": 0 for a less exam, 100 % gauge, every note
+    // for good / hit / combo. Stored as GOLD_FULL and resolved where the note count is known.
+    static constexpr int GOLD_FULL = -1;
     bool per_song() const { return !song_red.empty(); }
     // The exam as it applies to song i: red/gold swapped for that song's pair.
     Exam for_song(int i) const {
