@@ -27,9 +27,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 if(IOS_DEVELOPMENT_TEAM)
   set_target_properties(${PROJECT_NAME} PROPERTIES
     XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${IOS_DEVELOPMENT_TEAM}")
-else()
-  set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
 endif()
+# Leave signing enabled in the generated project so selecting a team in Xcode
+# works. Unsigned command-line checks disable signing for that build only.
 
 set(IOS_SONGS_DIR "${CMAKE_SOURCE_DIR}/Songs" CACHE PATH "Songs included in the iOS app")
 if(NOT EXISTS "${YATAIDON_SKINS_DIR}/PyTaikoGreen/Graphics/skin_config.json")

@@ -30,5 +30,9 @@ fi
     -DIOS_FFMPEG_PREFIX="$FFMPEG_PREFIX" \
     -DIOS_DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-}" \
     -DIOS_BUNDLE_IDENTIFIER="${IOS_BUNDLE_IDENTIFIER:-com.yataidon.app}" "$@"
-"$CMAKE" --build "$BUILD_DIR" --config "${CONFIGURATION:-Release}" --target YataiDON --parallel "${JOBS:-$(sysctl -n hw.logicalcpu)}"
+BUILD_ARGS=(--build "$BUILD_DIR" --config "${CONFIGURATION:-Release}" --target YataiDON --parallel "${JOBS:-$(sysctl -n hw.logicalcpu)}")
+if [[ -z "${IOS_DEVELOPMENT_TEAM:-}" ]]; then
+    BUILD_ARGS+=(-- CODE_SIGNING_ALLOWED=NO)
+fi
+"$CMAKE" "${BUILD_ARGS[@]}"
 printf '\nBuild complete. Xcode project: %s/YataiDON.xcodeproj\n' "$BUILD_DIR"

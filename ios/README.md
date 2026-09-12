@@ -49,6 +49,11 @@ Select your connected device and the YataiDON scheme. Check Signing & Capabiliti
 and select your Apple team, then Run. Enable Developer Mode on the device when
 Xcode requests it. Without a team, the script builds an unsigned `.app` for compile
 checks; it cannot be installed on a physical device until it is signed.
+Signing is disabled only for that command-line build, not in the generated Xcode
+project. Select your team and a unique Bundle Identifier in Xcode before running.
+Pass these same values to the script on subsequent builds so regeneration keeps
+your signing configuration. If an older generated project reports “No code
+signature found”, regenerate it and rebuild with signing enabled.
 
 The build does not publish to TestFlight or the App Store. Distribution requires
 appropriate signing, artwork, and rights to the assets you include.
