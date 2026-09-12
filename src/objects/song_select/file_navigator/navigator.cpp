@@ -235,6 +235,12 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
                             for (const auto& [course, data] : parsed_entry.metadata.course_data)
                                 if (course >= 0 && course <= 4) lv[course] = (int)data.level;
                             song_levels[file.string()] = lv;
+                            try {
+                                auto lw = fs::last_write_time(file.parent_path());
+                                auto sys = ch::time_point_cast<ch::seconds>(ch::system_clock::now() +
+                                    ch::duration_cast<ch::system_clock::duration>(lw - fs::file_time_type::clock::now()));
+                                song_dir_mtime[file.string()] = (long long)sys.time_since_epoch().count();
+                            } catch (...) {}
                         }
                     } catch (const std::exception& inner) {
                         spdlog::warn("Skipping song during scan: {}", inner.what());
@@ -757,29 +763,45 @@ void Navigator::load_current_directory_async(const fs::path path) {
     if (!reloading_roots) FolderBox::run_deferred_scans(abort_loading);
 }
 
+// NEW collection: songs whose folder changed in the last two weeks. Folder times come
+// from the startup scan (song_dir_mtime), so no directory walk or stat here; the hits
+// are parsed in parallel for their boxes.
 void Navigator::load_collection_new(const fs::path& path, const BoxDef& box_def) {
-    auto two_weeks_ago = ch::system_clock::now() - ch::weeks(2);
-    int songs_added = 0;
-    for (const auto& sibling : fs::directory_iterator(path.parent_path())) {
+    const long long two_weeks_ago = (long long)ch::duration_cast<ch::seconds>(
+        (ch::system_clock::now() - ch::weeks(2)).time_since_epoch()).count();
+    wait_for_song_files();
+    const fs::path parent = path.parent_path();
+    struct Hit { fs::path path; fs::path sibling; long long mtime; };
+    std::vector<Hit> hits;
+    for (const auto& [path_str, mtime] : song_dir_mtime) {
         if (abort_loading) break;
-        if (!fs::is_directory(sibling) || sibling.path() == path) continue;
-        BoxDef sibling_box_def = parse_box_def(sibling.path());
-        for (const auto& entry : fs::recursive_directory_iterator(sibling)) {
-            if (abort_loading) break;
-            if (!is_song_file(entry.path())) continue;
-            auto last_write = fs::last_write_time(entry.path().parent_path());
-            auto last_write_sys = ch::system_clock::now() +
-                std::chrono::duration_cast<ch::system_clock::duration>(
-                    last_write - std::filesystem::file_time_type::clock::now());
-            if (last_write_sys < two_weeks_ago) continue;
-            if (songs_added > 0 && songs_added % 10 == 0)
-                enqueue_inline_box(make_back_box(path.parent_path(), &inline_back_def));
-            auto song = make_song_box(entry.path(), box_def, SongParser(entry.path()));
-            apply_song_genre(song.get(), sibling_box_def);
-            song->fade_in(266);
-            enqueue_inline_box(std::move(song));
-            songs_added++;
-        }
+        if (mtime < two_weeks_ago) continue;
+        fs::path song_path(path_str);
+        fs::path rel = song_path.lexically_relative(parent);
+        if (rel.empty() || rel.begin()->string() == "..") continue;
+        fs::path sibling = parent / *rel.begin();
+        if (sibling == path || !fs::is_directory(sibling)) continue;
+        hits.push_back(Hit{song_path, sibling, mtime});
+    }
+    // newest first, ties by path for a stable order
+    std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) {
+        return a.mtime != b.mtime ? a.mtime > b.mtime : a.path < b.path; });
+
+    std::vector<fs::path> hit_paths;
+    hit_paths.reserve(hits.size());
+    for (const auto& h : hits) hit_paths.push_back(h.path);
+    auto preparsed = parse_songs_parallel(hit_paths, abort_loading);
+
+    int songs_added = 0;
+    for (const auto& h : hits) {
+        if (abort_loading) break;
+        if (songs_added > 0 && songs_added % 10 == 0)
+            enqueue_inline_box(make_back_box(parent, &inline_back_def));
+        auto song = make_song_box(h.path, box_def, take_parser(preparsed, h.path));
+        apply_song_genre(song.get(), parse_box_def(h.sibling));
+        song->fade_in(266);
+        enqueue_inline_box(std::move(song));
+        songs_added++;
     }
 }
 

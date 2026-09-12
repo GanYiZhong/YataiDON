@@ -34,6 +34,9 @@ private:
     // song path -> level per course 0..4 (-1 = course absent), filled by the same scan; the
     // difficulty filter reads this instead of re-parsing every chart on disk
     std::unordered_map<std::string, std::array<int, 5>> song_levels;
+    // song path -> last write time of its folder (seconds since epoch), from the same scan;
+    // the NEW collection reads this instead of stat-ing every folder
+    std::unordered_map<std::string, long long> song_dir_mtime;
     int open_index;
     bool is_init      = false;
     bool is_preloaded = false;
