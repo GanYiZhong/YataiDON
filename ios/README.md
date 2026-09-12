@@ -99,6 +99,8 @@ The presets assume ARM64. Override `CMAKE_OSX_ARCHITECTURES` and
 `CONFIGURATION` (default `Release`). Use a separate build directory when changing
 SDK or architecture. `CONFIGURATION=Debug ./build_ios.sh simulator` builds symbols
 without the desktop sanitizer flags.
+After an Xcode upgrade, configuration automatically clears cached dependency paths
+inside removed SDK directories so they are discovered in the current SDK.
 
 Online profile sync is currently disabled for iOS: the desktop curl/TLS dependency
 setup is not cross-compiled by this port. Local gameplay and local scores do not

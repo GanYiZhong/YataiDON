@@ -54,6 +54,18 @@ else()
 endif()
 
 if(IOS)
+  # Xcode upgrades remove versioned SDK directories. Let find_package/find_library
+  # rediscover those dependencies instead of retaining paths into the old SDK.
+  get_cmake_property(_ios_cache_variables CACHE_VARIABLES)
+  foreach(_ios_cache_variable IN LISTS _ios_cache_variables)
+    get_property(_ios_cache_type CACHE "${_ios_cache_variable}" PROPERTY TYPE)
+    if(_ios_cache_type MATCHES "^(PATH|FILEPATH)$"
+        AND "${${_ios_cache_variable}}" MATCHES "/SDKs/[^/]+\\.sdk/"
+        AND NOT EXISTS "${${_ios_cache_variable}}")
+      message(STATUS "Clearing stale SDK cache entry: ${_ios_cache_variable}")
+      unset(${_ios_cache_variable} CACHE)
+    endif()
+  endforeach()
   if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "16.3")
     message(FATAL_ERROR "YataiDON requires iOS 16.3+ for C++20 floating-point formatting")
   endif()
