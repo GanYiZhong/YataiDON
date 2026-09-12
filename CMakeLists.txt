@@ -75,11 +75,10 @@ if(IOS)
   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-  # Backend credentials in a desktop .env should not enable an unconfigured
-  # cross-compiled curl/TLS stack on iOS.
   if(NETWORK_ENABLED)
-    message(STATUS "Online profile sync is not yet supported by the iOS port")
-    set(NETWORK_ENABLED OFF)
+    message(STATUS "iOS online services enabled (CPR/curl with Apple native TLS)")
+  else()
+    message(STATUS "iOS online services disabled: configure NETWORK_URL and NETWORK_AUTH_KEY to enable")
   endif()
 endif()
 
@@ -205,6 +204,10 @@ if(SUPPORT_FUMEN)
 endif()
 
 include(cmake/platform.cmake)
+option(YATAIDON_BUILD_NETWORK_TESTS "Build isolated Simulator network integration checks" OFF)
+if(YATAIDON_BUILD_NETWORK_TESTS)
+  add_subdirectory(tests/network)
+endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
