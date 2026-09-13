@@ -1,4 +1,7 @@
 #include "audio.h"
+#ifdef PLATFORM_IOS
+#include "../platform/ios.h"
+#endif
 #ifdef SUPPORT_FUMEN
 #include "optional/nus3bank.h"
 #include "optional/nub.h"
@@ -548,6 +551,9 @@ bool AudioEngine::init_portaudio_device(PaHostApiTypeId api, const char* label) 
 #endif
 
 bool AudioEngine::init_sdl3_device() {
+#ifdef PLATFORM_IOS
+    ios_request_audio_buffer();
+#endif
     SDL_ResetHint(SDL_HINT_AUDIO_DRIVER);
 
     char frames_str[16];
@@ -593,6 +599,9 @@ bool AudioEngine::init_sdl3_device() {
     spdlog::info("    > Channels:      {} (requested 2)", actual_spec.channels);
     spdlog::info("    > Sample rate:   {} Hz (requested {} Hz)", actual_spec.freq, (int)target_sample_rate);
     spdlog::info("    > Buffer size:   {} frames (device-reported)", actual_frames);
+#ifdef PLATFORM_IOS
+    ios_log_audio_session();
+#endif
     return true;
 }
 
@@ -1598,6 +1607,9 @@ AudioEngine audio;
 void AudioEngine::suspend_ios_audio(bool suspended) {
     if (!sdl_stream) return;
     if (suspended) SDL_PauseAudioStreamDevice(sdl_stream);
-    else SDL_ResumeAudioStreamDevice(sdl_stream);
+    else {
+        SDL_ResumeAudioStreamDevice(sdl_stream);
+        ios_log_audio_session();
+    }
 }
 #endif
