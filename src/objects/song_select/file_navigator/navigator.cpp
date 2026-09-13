@@ -2214,6 +2214,25 @@ std::string normalize_title(std::string s) {
     s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char c) {
         return c < 0x80 && !std::isalnum(c);
     }), s.end());
+    // Drop dingbats / misc symbols (U+2000..U+2BFF: ♢ vs ♦, ☆ vs ★, arrows, spaces): they
+    // differ between song lists and chart files for the same title.
+    {
+        std::string out;
+        out.reserve(s.size());
+        for (size_t i = 0; i < s.size();) {
+            unsigned char b = (unsigned char)s[i];
+            size_t len = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+            if (i + len > s.size()) len = 1;
+            bool drop = false;
+            if (len == 3) {
+                uint32_t cp = ((b & 0x0F) << 12) | ((s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F);
+                drop = cp >= 0x2000 && cp <= 0x2BFF;
+            }
+            if (!drop) out.append(s, i, len);
+            i += len;
+        }
+        s.swap(out);
+    }
 
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
 
