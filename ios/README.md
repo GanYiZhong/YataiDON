@@ -102,34 +102,13 @@ without the desktop sanitizer flags.
 After an Xcode upgrade, configuration automatically clears cached dependency paths
 inside removed SDK directories so they are discovered in the current SDK.
 
-## Latency trial on physical devices
+## Audio latency
 
-The iOS SDL AudioQueue build uses `IOS_AUDIO_QUEUE_MIN_MS=4` by default. For a
-48 kHz device with 128-frame buffers, this reduces the queue from 12 buffers
-(32 ms capacity) to 4 (10.67 ms). This is queue capacity, not a measured
-touch-to-speaker delay. The app also requests a 5 ms hardware I/O cycle; iOS may
-choose a different duration. Other platforms retain SDL's original behavior.
-
-Startup and foreground logs prefixed `iOS latency:` report the actual audio
-session rate, I/O cycle, output latency and route. SDL prints the AudioQueue
-capacity to the Xcode console. During manual gameplay, each group of 32 touches
-logs average OS event delivery, average wait until gameplay consumes the event,
-and maximum total processing delay. These timings exclude physical touch sensing,
-audio output and display scanout. Event timestamps are currently diagnostic only;
-this trial does not change judgment offsets or the chart's audio clock.
-
-Compare the same chart, speaker output and calibration settings before/after.
-Check both timing feel and crackles/dropouts, including after background/resume.
-To compare with SDL's original queue sizing, reconfigure with
-`-DIOS_AUDIO_QUEUE_MIN_MS=15` (the hardware I/O preference remains 5 ms).
-
-Physical-device check (2026-09-12): on an iPad Pro 11-inch (3rd generation)
-using its speaker, the session reported 48 kHz, a 5.33 ms I/O cycle and 5.50 ms
-output latency. Across 160 manual hits, grouped average event delivery was
-1.3–1.6 ms and gameplay processing wait about 0.3 ms. The tester reported no
-perceptible delay with this build. This is a subjective gameplay result plus
-software timing, not an external measurement of total input-to-sound latency;
-iPhone, other routes and long-session dropout behavior still need testing.
+The iOS build retains the reduced AudioQueue buffering and 5 ms hardware I/O
+preference validated on an iPad Pro speaker. Temporary latency instrumentation
+and its build switch have been removed. See [the latency fix log](LATENCY_FIX.md)
+for the investigation, measurements, and instructions for rebuilding diagnostics
+if the problem recurs.
 
 ## Online services
 

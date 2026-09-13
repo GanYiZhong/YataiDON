@@ -7,4 +7,3 @@ double ios_game_time_ms();
 void ios_set_suspended(bool suspended);
 bool ios_is_suspended();
 void ios_request_audio_buffer();
-void ios_log_audio_session();

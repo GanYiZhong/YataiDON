@@ -46,16 +46,6 @@ void ios_request_audio_buffer() {
     }
 }
 
-void ios_log_audio_session() {
-    @autoreleasepool {
-        AVAudioSession* session = [AVAudioSession sharedInstance];
-        spdlog::info("iOS latency: hardware {:.0f} Hz, IO cycle {:.2f} ms, reported output {:.2f} ms",
-                     session.sampleRate, session.IOBufferDuration * 1000.0, session.outputLatency * 1000.0);
-        for (AVAudioSessionPortDescription* port in session.currentRoute.outputs) {
-            spdlog::info("iOS latency: route {} ({})", port.portType.UTF8String, port.portName.UTF8String);
-        }
-    }
-}
 
 void ios_prepare_filesystem() {
     namespace fs = std::filesystem;

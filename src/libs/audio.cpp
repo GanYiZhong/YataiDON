@@ -599,9 +599,6 @@ bool AudioEngine::init_sdl3_device() {
     spdlog::info("    > Channels:      {} (requested 2)", actual_spec.channels);
     spdlog::info("    > Sample rate:   {} Hz (requested {} Hz)", actual_spec.freq, (int)target_sample_rate);
     spdlog::info("    > Buffer size:   {} frames (device-reported)", actual_frames);
-#ifdef PLATFORM_IOS
-    ios_log_audio_session();
-#endif
     return true;
 }
 
@@ -1609,7 +1606,6 @@ void AudioEngine::suspend_ios_audio(bool suspended) {
     if (suspended) SDL_PauseAudioStreamDevice(sdl_stream);
     else {
         SDL_ResumeAudioStreamDevice(sdl_stream);
-        ios_log_audio_session();
     }
 }
 #endif

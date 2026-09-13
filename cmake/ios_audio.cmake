@@ -1,5 +1,6 @@
 # SDL's AudioQueue backend queues at least twice its 15 ms minimum even when
 # the app requests 128 frames. Keep the change confined to this iOS target.
+# Investigation and device measurements: ios/LATENCY_FIX.md.
 set(IOS_AUDIO_QUEUE_MIN_MS "4" CACHE STRING "iOS playback queue half-duration target in ms (15 restores SDL default)")
 if(NOT IOS_AUDIO_QUEUE_MIN_MS MATCHES "^[0-9]+$" OR
    IOS_AUDIO_QUEUE_MIN_MS LESS 1 OR IOS_AUDIO_QUEUE_MIN_MS GREATER 40)
@@ -7,25 +8,32 @@ if(NOT IOS_AUDIO_QUEUE_MIN_MS MATCHES "^[0-9]+$" OR
 endif()
 set(_ios_coreaudio "${SDL3_SOURCE_DIR}/src/audio/coreaudio/SDL_coreaudio.m")
 file(READ "${_ios_coreaudio}" _ios_audio_source)
-if(NOT _ios_audio_source MATCHES "YATAIDON_IOS_AUDIO_QUEUE_MIN_MS")
-  set(_ios_audio_anchor "    device->hidden->numAudioBuffers = numAudioBuffers;")
-  string(FIND "${_ios_audio_source}" "${_ios_audio_anchor}" _ios_audio_pos)
-  if(_ios_audio_pos EQUAL -1)
-    message(FATAL_ERROR "SDL AudioQueue implementation changed; review the iOS latency patch")
-  endif()
-  set(_ios_audio_replacement [=[
-#if defined(SDL_PLATFORM_IOS) && defined(YATAIDON_IOS_AUDIO_QUEUE_MIN_MS)
+set(_ios_audio_anchor "    device->hidden->numAudioBuffers = numAudioBuffers;")
+string(FIND "${_ios_audio_source}" "${_ios_audio_anchor}" _ios_audio_end)
+if(_ios_audio_end EQUAL -1)
+  message(FATAL_ERROR "SDL AudioQueue implementation changed; review the iOS latency patch")
+endif()
+# Replace an existing patch as well as applying to fresh sources. This removes
+# instrumentation left in dependency checkouts by earlier development builds.
+set(_ios_audio_marker "#if defined(SDL_PLATFORM_IOS) && defined(YATAIDON_IOS_AUDIO_QUEUE_MIN_MS)")
+string(FIND "${_ios_audio_source}" "${_ios_audio_marker}" _ios_audio_start)
+if(_ios_audio_start EQUAL -1)
+  set(_ios_audio_start ${_ios_audio_end})
+elseif(_ios_audio_start GREATER _ios_audio_end)
+  message(FATAL_ERROR "Unexpected SDL iOS audio patch layout")
+endif()
+set(_ios_audio_replacement [=[#if defined(SDL_PLATFORM_IOS) && defined(YATAIDON_IOS_AUDIO_QUEUE_MIN_MS)
     if (!device->recording) {
         numAudioBuffers = (msecs < YATAIDON_IOS_AUDIO_QUEUE_MIN_MS)
             ? (int)SDL_ceil(YATAIDON_IOS_AUDIO_QUEUE_MIN_MS / msecs) * 2 : 3;
-        SDL_Log("iOS latency: AudioQueue %d x %.2f ms = %.2f ms capacity (not measured output latency)",
-                numAudioBuffers, msecs, numAudioBuffers * msecs);
     }
 #endif
-    device->hidden->numAudioBuffers = numAudioBuffers;
 ]=])
-  string(REPLACE "${_ios_audio_anchor}" "${_ios_audio_replacement}" _ios_audio_source "${_ios_audio_source}")
-  file(WRITE "${_ios_coreaudio}" "${_ios_audio_source}")
+string(SUBSTRING "${_ios_audio_source}" 0 ${_ios_audio_start} _ios_audio_prefix)
+string(SUBSTRING "${_ios_audio_source}" ${_ios_audio_end} -1 _ios_audio_suffix)
+set(_ios_audio_patched "${_ios_audio_prefix}${_ios_audio_replacement}${_ios_audio_suffix}")
+if(NOT _ios_audio_source STREQUAL _ios_audio_patched)
+  file(WRITE "${_ios_coreaudio}" "${_ios_audio_patched}")
 endif()
 target_compile_definitions(SDL3-static PRIVATE
   YATAIDON_IOS_AUDIO_QUEUE_MIN_MS=${IOS_AUDIO_QUEUE_MIN_MS}.0)
