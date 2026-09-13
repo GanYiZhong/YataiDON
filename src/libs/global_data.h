@@ -67,6 +67,9 @@ struct Exam {
             ex.red  = song_red[i];
             ex.gold = i < (int)song_gold.size() ? song_gold[i] : song_red[i];
         }
+        // the view of one song is a plain pair again (captions print a single number)
+        ex.song_red.clear();
+        ex.song_gold.clear();
         return ex;
     }
 };
