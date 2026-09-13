@@ -301,7 +301,10 @@ void SongSelectScreen::draw() {
 
     draw_overlays();
 
-    if (screen_init) navigator.draw_score_history();
+    // the personal-best panel gives way to the neiro / option popup, which shares its corner
+    const bool popup_open = !player->option_panel_by_lua &&
+                            (player->neiro_selector.has_value() || player->modifier_selector.has_value());
+    if (screen_init && !popup_open) navigator.draw_score_history();
 
     if (diff_sort_selector) diff_sort_selector->draw();
     if (search_box) search_box->draw();
