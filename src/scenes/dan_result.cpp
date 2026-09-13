@@ -1073,7 +1073,8 @@ void DanResultScreen::draw_nosave_banner() {
                          "\xE8\xA8\x98\xE9\x8C\xB2\xE3\x81\x95\xE3\x82\x8C\xE3\x81\xBE\xE3\x81\x9B\xE3\x82\x93";   // 今回の挑戦は記録されません
         const std::string s = tex.skin_text("dan_result_nosave", lang, tex.skin_text("dan_result_nosave", "ja", jp));
         const SkinInfo* nt = tex.skin_entry("dan_result_nosave_text");
-        nosave_text = std::make_unique<OutlinedText>(s, nt && nt->font_size > 0 ? nt->font_size : 24, ray::WHITE, ray::BLACK, false);
+        // plain white on the plate, no outline (the cabinet's text field has border 0)
+        nosave_text = std::make_unique<OutlinedText>(s, nt && nt->font_size > 0 ? nt->font_size : 24, ray::WHITE, ray::BLANK, false, 0.0f);
     }
     auto it = tex.textures.find((uint32_t)plate);
     if (it == tex.textures.end()) return;
