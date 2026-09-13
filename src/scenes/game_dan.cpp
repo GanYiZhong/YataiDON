@@ -387,6 +387,7 @@ void DanGameScreen::save_result_data(bool all_failed) {
     else                 result = 0;
     if (skipped) result = 0;
     sd.dan_result_data.odai_result = result;
+    sd.dan_result_data.skipped     = skipped;
     spdlog::info("Dan course verdict: check={} ok={} bad={} odai_result={}{}",
                  check, total_ok, total_bad, result, all_failed ? " (fail-out)" : "");
 }

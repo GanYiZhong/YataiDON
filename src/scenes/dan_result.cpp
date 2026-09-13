@@ -137,6 +137,7 @@ void DanResultScreen::apply_reward() {
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
     const DanResultData& rd = sd.dan_result_data;
     if (rd.odai_result < 0) return;               // legacy record — no verdict
+    if (rd.skipped) return;                       // skipped out: the cabinet records nothing
 
     const int pid = get_player_id(global_data.player_num);
     auto prev = scores_manager.get_dan_record(pid, rd.dan_title);
@@ -492,8 +493,12 @@ void DanResultScreen::draw_page1(double now) {
         draw_stat(RESULT_INFO::OK,       song.ok,       1);
         draw_stat(RESULT_INFO::BAD,      song.bad,      2);
         draw_stat(RESULT_INFO::DRUMROLL, song.drumroll, 3);
-        if (song.unreached && tex.has_texture("result_info/unreached"))
-            tex.draw_texture(tex.get_enum("result_info/unreached"), {.x=sx, .y=y});
+        if (song.unreached) {
+            // 未到達 plate, per language when the skin has it (result_info/unreached_<lang>)
+            std::string key = "result_info/unreached_" + global_data.config->general.language;
+            if (!tex.has_texture(key)) key = "result_info/unreached";
+            if (tex.has_texture(key)) tex.draw_texture(tex.get_enum(key), {.x=sx, .y=y});
+        }
     }
 }
 
@@ -1054,6 +1059,29 @@ void DanResultScreen::draw_congrats(double now) {
     nameplate.draw(763.0f, 912.0f);
 }
 
+// Top-right notice of a skipped run: the plate from the skin (result_info/nosave) with
+// the skin's text for the language (skin_text dan_result_nosave), centred on the plate.
+void DanResultScreen::draw_nosave_banner() {
+    const DanResultData& rd = global_data.session_data[(int)global_data.player_num].dan_result_data;
+    if (!rd.skipped || congrats_showing || celebrating) return;
+    if (!tex.has_texture("result_info/nosave")) return;
+    const TexID plate = tex.get_enum("result_info/nosave");
+    tex.draw_texture(plate, {});
+    const std::string& lang = global_data.config->general.language;
+    if (!nosave_text) {
+        const char* jp = "\xE4\xBB\x8A\xE5\x9B\x9E\xE3\x81\xAE\xE6\x8C\x91\xE6\x88\xA6\xE3\x81\xAF"
+                         "\xE8\xA8\x98\xE9\x8C\xB2\xE3\x81\x95\xE3\x82\x8C\xE3\x81\xBE\xE3\x81\x9B\xE3\x82\x93";   // 今回の挑戦は記録されません
+        const std::string s = tex.skin_text("dan_result_nosave", lang, tex.skin_text("dan_result_nosave", "ja", jp));
+        const SkinInfo* nt = tex.skin_entry("dan_result_nosave_text");
+        nosave_text = std::make_unique<OutlinedText>(s, nt && nt->font_size > 0 ? nt->font_size : 24, ray::WHITE, ray::BLACK, false);
+    }
+    auto it = tex.textures.find((uint32_t)plate);
+    if (it == tex.textures.end()) return;
+    const float cx = it->second->x[0] + it->second->width / 2.0f;
+    const float cy = it->second->y[0] + it->second->height / 2.0f;
+    nosave_text->draw({.x = cx - nosave_text->width / 2.0f, .y = cy - nosave_text->height / 2.0f});
+}
+
 void DanResultScreen::draw() {
     double now = get_current_ms();
     if (background.has_value()) background->draw();
@@ -1067,6 +1095,7 @@ void DanResultScreen::draw() {
         draw_page1(now);
         draw_page2(page2_fade->attribute, now);
     }
+    draw_nosave_banner();
     ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height,
                        ray::Fade(ray::BLACK, (float)fade_out->attribute));
     coin_overlay.draw();

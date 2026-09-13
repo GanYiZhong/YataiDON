@@ -78,6 +78,8 @@ private:
     int  prev_arrival    = 0;
     void draw_best_score(double fade, double on_page);
     void draw_congrats(double now);
+    void draw_nosave_banner();
+    std::unique_ptr<OutlinedText> nosave_text;
 
     void handle_input(double current_ms);
     void build_page2_timeline();

@@ -130,6 +130,7 @@ struct DanResultData {
     std::vector<Exam> exams;
     std::vector<DanResultExam> exam_data;
     int odai_result = -1;
+    bool skipped = false;       // the player skipped out: nothing is recorded
 };
 
 struct ResultData {
