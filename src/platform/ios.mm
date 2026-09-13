@@ -61,15 +61,19 @@ void ios_prepare_filesystem() {
         // Keep the existing relative-path asset loaders and all writable files
         // together. Copy only missing files so upgrades preserve user content.
         for (const auto& entry : fs::recursive_directory_iterator(resources)) {
-            fs::path relative = fs::relative(entry.path(), resources);
+            // The iterator already yields paths rooted at resources. Avoid
+            // canonicalizing both paths (and querying every ancestor) per file.
+            fs::path relative = entry.path().lexically_relative(resources);
             fs::path target = destination / relative;
             if (entry.is_directory()) fs::create_directories(target);
             else if (entry.is_regular_file()) {
-                fs::create_directories(target.parent_path());
+                // Parent directories were visited before their children.
                 // Shaders ship with the executable and must match its version.
                 bool shader = *relative.begin() == "shader";
-                fs::copy_file(entry.path(), target, shader ? fs::copy_options::overwrite_existing
-                                                         : fs::copy_options::skip_existing);
+                if (shader || !fs::exists(target)) {
+                    fs::copy_file(entry.path(), target, shader ? fs::copy_options::overwrite_existing
+                                                             : fs::copy_options::skip_existing);
+                }
             }
         }
         fs::create_directories(destination / "Songs");
