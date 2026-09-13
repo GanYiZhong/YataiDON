@@ -219,6 +219,7 @@ public:
     void clear_screen(const ray::Color& color);
 
     TexID get_enum(const std::string& name);
+    std::vector<std::string> language_variants(const std::string& name) const;
 
     bool has_texture(const std::string& name);
 

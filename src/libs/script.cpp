@@ -466,8 +466,10 @@ void ScriptManager::register_lua_bindings() {
     tex.set_function("get_id", [](const std::string& subset, const std::string& texture_name) -> sol::optional<uint32_t> {
         auto it = tex_id_map.find(subset + "/" + texture_name);
         if (it != tex_id_map.end()) return it->second;
-        it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
-        if (it != tex_id_map.end()) return it->second;
+        for (const auto& v : script_manager.tex.language_variants(subset + "/" + texture_name + "_" + global_data.config->general.language)) {
+            it = tex_id_map.find(v);
+            if (it != tex_id_map.end()) return it->second;
+        }
         return std::nullopt;
     });
 
@@ -488,9 +490,12 @@ void ScriptManager::register_lua_bindings() {
 
         script_manager.tex.load_folder(screen_name, subset);
 
-        auto it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
-        if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
-        it = tex_id_map.find(subset + "/" + texture_name);
+        // the current language's variant, then _en / _ja, then the plain name
+        for (const auto& v : script_manager.tex.language_variants(subset + "/" + texture_name + "_" + global_data.config->general.language)) {
+            auto it = tex_id_map.find(v);
+            if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
+        }
+        auto it = tex_id_map.find(subset + "/" + texture_name);
         if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
         return sol::nullopt;
     });
