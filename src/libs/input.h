@@ -30,6 +30,11 @@ bool check_key_released(int key);
 int take_gamepad_button_pressed();
 
 double get_last_input_ms();
+#ifdef PLATFORM_IOS
+// Called only after consuming gameplay input; aggregates rather than logging
+// from the event callback or audio thread.
+void ios_log_consumed_touch_latency();
+#endif
 
 // Clear all buffered input events
 // Useful when changing screens or locking input

@@ -2,6 +2,10 @@
 #include "texture.h"
 #include <array>
 #include <unordered_set>
+#ifdef PLATFORM_IOS
+#include <deque>
+#include <optional>
+#endif
 
 #ifdef _WIN32
 #define CloseWindow CloseWindow_WinAPI
@@ -71,6 +75,11 @@ static const int TOUCH_L_DON = 40003;
 static const int TOUCH_R_DON = 40004;
 
 static std::unordered_map<SDL_FingerID, int> touch_id_to_vkey;
+#ifdef PLATFORM_IOS
+struct TouchTiming { double event_ms; double received_ms; };
+static std::unordered_map<int, std::deque<TouchTiming>> touch_timings;
+static std::optional<TouchTiming> consumed_touch_timing;
+#endif
 
 std::atomic<bool> touch_drum_pressed{false};
 
@@ -338,6 +347,14 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             last_input_ms.store(get_current_ms(), std::memory_order_relaxed);
             std::lock_guard<std::mutex> lock(input_mutex);
             pressed_keys.insert(vkey);
+#ifdef PLATFORM_IOS
+            const Uint64 now_ns = SDL_GetTicksNS();
+            const Uint64 event_ns = event->tfinger.timestamp;
+            const double received_ms = get_current_ms();
+            const double age_ms = (event_ns && now_ns >= event_ns)
+                ? static_cast<double>(now_ns - event_ns) / 1000000.0 : 0.0;
+            touch_timings[vkey].push_back({received_ms - age_ms, received_ms});
+#endif
         }
     } else if (event->type == SDL_EVENT_FINGER_UP ||
                event->type == SDL_EVENT_FINGER_CANCELED) {
@@ -475,6 +492,15 @@ bool check_key_pressed(int key) {
     auto it = pressed_keys.find(key);
     if (it != pressed_keys.end()) {
         pressed_keys.erase(it);
+#ifdef PLATFORM_IOS
+        consumed_touch_timing.reset();
+        auto timing = touch_timings.find(key);
+        if (timing != touch_timings.end() && !timing->second.empty()) {
+            consumed_touch_timing = timing->second.front();
+            timing->second.pop_front();
+            if (timing->second.empty()) touch_timings.erase(timing);
+        }
+#endif
         return true;
     }
     return false;
@@ -494,7 +520,31 @@ void clear_input_buffers() {
     std::lock_guard<std::mutex> lock(input_mutex);
     pressed_keys.clear();
     released_keys.clear();
+#ifdef PLATFORM_IOS
+    touch_timings.clear();
+    consumed_touch_timing.reset();
+#endif
 }
+
+#ifdef PLATFORM_IOS
+void ios_log_consumed_touch_latency() {
+    if (!consumed_touch_timing) return;
+    const auto timing = *consumed_touch_timing;
+    consumed_touch_timing.reset();
+    const double now = get_current_ms();
+    static unsigned count = 0;
+    static double delivery_sum = 0.0, queue_sum = 0.0, max_total = 0.0;
+    delivery_sum += timing.received_ms - timing.event_ms;
+    queue_sum += now - timing.received_ms;
+    max_total = std::max(max_total, now - timing.event_ms);
+    if (++count == 32) {
+        spdlog::info("iOS latency: 32 touches, OS delivery avg {:.2f} ms, game wait avg {:.2f} ms, total max {:.2f} ms (excludes audio/display output)",
+                     delivery_sum / count, queue_sum / count, max_total);
+        count = 0;
+        delivery_sum = queue_sum = max_total = 0.0;
+    }
+}
+#endif
 
 void shutdown_sdl_joysticks() {
     for (auto& [id, joy] : sdl_joysticks) {
