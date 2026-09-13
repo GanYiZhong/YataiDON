@@ -48,13 +48,13 @@ Exam DanNavigator::parse_exam(const rapidjson::Value& e) {
             exam.song_gold.push_back(gold);
         }
         if (!exam.song_red.empty()) { exam.red = exam.song_red[0]; exam.gold = exam.song_gold[0]; }
-        exam.gothrough = false;   // a per-song border is judged per song by definition
     } else if (e.HasMember("value") && e["value"].IsArray() && e["value"].Size() >= 1 && e["value"][0].IsInt()) {
         exam.red  = e["value"][0].GetInt();
         exam.gold = e["value"].Size() >= 2 && e["value"][1].IsInt() ? e["value"][1].GetInt() : Exam::GOLD_FULL;
     }
-    if (e.HasMember("gothrough") && e["gothrough"].IsBool())
-        exam.gothrough = e["gothrough"].GetBool();
+    // The shape of `value` says how the exam is judged: one [red, gold] pair = the whole
+    // course, one pair per song = each song on its own. (`gothrough` is no longer read.)
+    exam.gothrough = !exam.per_song();
     return exam;
 }
 
