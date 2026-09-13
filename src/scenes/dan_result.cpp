@@ -1,4 +1,5 @@
 #include "dan_result.h"
+TexID exam_icon_id(TexID preferred, const char* folder);
 #include <cmath>
 #include "../libs/input.h"
 #include "../libs/scores.h"
@@ -739,7 +740,7 @@ void DanResultScreen::draw_exam_info(double fade, double now, float scale) {
         };
         auto icon_it = icon_ids.find(exam.type);
         if (icon_it != icon_ids.end())
-            tex.draw_texture(icon_it->second, {.scale=scale, .y=y, .fade=fade});
+            tex.draw_texture(exam_icon_id(icon_it->second, "exam_info"), {.scale=scale, .y=y, .fade=fade});
 
         if (exam.gothrough || tamashii_row) {
         const std::string red_str = std::to_string(exam.red);

@@ -1,4 +1,5 @@
 #include "box_dan.h"
+TexID exam_icon_id(TexID preferred, const char* folder);
 #include "../../../libs/song_parser.h"
 #include "../../../libs/scores.h"
 #include <algorithm>
@@ -355,7 +356,7 @@ void DanBox::draw_exam_box() {
         };
         auto icon_it = exam_icons.find(exam.type);
         if (icon_it != exam_icons.end())
-            tex.draw_texture(icon_it->second, {.y=y, .fade=f});
+            tex.draw_texture(exam_icon_id(icon_it->second, "yellow_box"), {.y=y, .fade=f});
 
         float x_offset = 0;
         if (exam.type == "gauge") {
