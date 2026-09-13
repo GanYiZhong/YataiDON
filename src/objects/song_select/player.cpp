@@ -85,24 +85,42 @@ bool SongSelectPlayer::is_voice_playing() {
 }
 
 void SongSelectPlayer::init_diff_cursor() {
+    // Ura mode follows the song: a chart with only an ura course opens in ura mode (there is
+    // no oni to toggle from), and a chart without one leaves it.
+    const bool has_ura = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::URA) != curr_diffs.end();
+    const bool has_oni = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::ONI) != curr_diffs.end();
+    if (has_ura && !has_oni)      is_ura = true;
+    else if (!has_ura && is_ura)  is_ura = false;
+    ura_toggle = 0;
+    if (SongBox* song = dynamic_cast<SongBox*>(navigator.get_current_item())) song->is_ura = is_ura;
+
     int last = global_data.last_difficulty[(int)player_num];
     if (last < (int)Difficulty::EASY) return;
 
     Difficulty desired = (Difficulty)std::min(last, (int)Difficulty::ONI);
 
+    // the oni slot holds ura in ura mode
+    auto slot = [&](Difficulty d) -> Difficulty {
+        if (d == Difficulty::URA) return is_ura ? Difficulty::ONI : Difficulty::BACK;
+        if (d == Difficulty::ONI) return is_ura ? Difficulty::BACK : Difficulty::ONI;
+        return d;
+    };
     Difficulty pick = Difficulty::BACK;
-    for (Difficulty d : curr_diffs) {
+    for (Difficulty raw : curr_diffs) {
+        Difficulty d = slot(raw);
         if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
         if (d <= desired && (pick == Difficulty::BACK || d > pick)) pick = d;
     }
     if (pick == Difficulty::BACK) {
         // nothing at or below the remembered difficulty - take the lowest
-        for (Difficulty d : curr_diffs) {
+        for (Difficulty raw : curr_diffs) {
+            Difficulty d = slot(raw);
             if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
             if (pick == Difficulty::BACK || d < pick) pick = d;
         }
     }
     if (pick != Difficulty::BACK) {
+        if (pick == Difficulty::ONI && is_ura) pick = Difficulty::URA;
         selected_difficulty = pick;
         prev_diff = pick;
     }
@@ -383,9 +401,11 @@ void SongSelectPlayer::navigate_difficulty_left() {
     if (is_ura && selected_difficulty == Difficulty::URA) {
         diff_selector_move_1->start();
         prev_diff = selected_difficulty;
-        selected_difficulty = (curr_diffs.size() == 1)
-            ? (neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO)
-            : curr_diffs[curr_diffs.size() - 3];
+        Difficulty below = Difficulty::BACK;
+        for (Difficulty d : curr_diffs)
+            if (d >= Difficulty::EASY && d <= Difficulty::HARD && (below == Difficulty::BACK || d > below)) below = d;
+        selected_difficulty = (below != Difficulty::BACK) ? below
+            : (neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO);
     } else if (selected_difficulty == Difficulty::NEIRO || selected_difficulty == Difficulty::MODIFIER) {
         diff_selector_move_2->start();
         prev_diff = selected_difficulty;
@@ -411,14 +431,14 @@ void SongSelectPlayer::navigate_difficulty_left() {
 void SongSelectPlayer::navigate_difficulty_right() {
     diff_select_move_right = true;
 
-    if (is_ura && selected_difficulty == Difficulty::HARD) {
+    bool has_ura = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::URA) != curr_diffs.end();
+    bool has_oni = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::ONI) != curr_diffs.end();
+
+    if (is_ura && has_ura && selected_difficulty == Difficulty::HARD) {
         prev_diff = selected_difficulty;
         selected_difficulty = Difficulty::URA;
         diff_selector_move_1->start();
     }
-
-    bool has_ura = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::URA) != curr_diffs.end();
-    bool has_oni = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::ONI) != curr_diffs.end();
 
     if ((selected_difficulty == Difficulty::ONI || selected_difficulty == Difficulty::URA) && has_ura && has_oni) {
         ura_toggle = (ura_toggle + 1) % 10;
