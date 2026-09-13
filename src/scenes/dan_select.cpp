@@ -52,6 +52,15 @@ Exam DanNavigator::parse_exam(const rapidjson::Value& e) {
         exam.red  = e["value"][0].GetInt();
         exam.gold = e["value"].Size() >= 2 && e["value"][1].IsInt() ? e["value"][1].GetInt() : Exam::GOLD_FULL;
     }
+    // A gold on the wrong side of its red is not a border (bad data would light the rainbow
+    // the moment the value passes it): treat that song as red-only.
+    auto sane = [&](int red, int gold) {
+        if (gold == Exam::GOLD_FULL) return gold;
+        const bool bad = exam.range == "less" ? gold > red : gold < red;
+        return bad ? Exam::GOLD_FULL : gold;
+    };
+    for (size_t i = 0; i < exam.song_gold.size(); i++) exam.song_gold[i] = sane(exam.song_red[i], exam.song_gold[i]);
+    exam.gold = sane(exam.red, exam.gold);
     // The shape of `value` says how the exam is judged: one [red, gold] pair = the whole
     // course, one pair per song = each song on its own. (`gothrough` is no longer read.)
     exam.gothrough = !exam.per_song();
