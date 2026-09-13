@@ -58,6 +58,41 @@ signature found”, regenerate it and rebuild with signing enabled.
 The build does not publish to TestFlight or the App Store. Distribution requires
 appropriate signing, artwork, and rights to the assets you include.
 
+## Build an unsigned IPA with GitHub Actions
+
+The existing [Release workflow](../.github/workflows/build.yml) includes a
+`build-ios` job. In GitHub, open **Actions → Build YataiDON (Release) → Run workflow**
+and select the branch containing the iOS changes. This runs all platform builds.
+
+The iOS job uses a `macos-15` runner and `./build_ios.sh device` to build an ARM64
+Release app for iOS 16.3 or later, with Bundle ID `com.yataidon.app` and code signing
+disabled. It packages the app as `Payload/YataiDON.app` inside
+`YataiDON-iOS-unsigned.ipa`, alongside `checksums-ios.sha256`. No Apple certificate,
+provisioning profile, or App Store Connect credentials are required. There is no
+TestFlight or App Store upload step. Sign the downloaded IPA with your own signing
+tool and credentials before installing it on an iPhone or iPad.
+
+The job reuses the existing repository secrets:
+
+- `GITEA_USER` and `GITEA_TOKEN` to fetch the private skin submodules.
+- `NETWORK_URL` and `NETWORK_AUTH_KEY` to enable the online client. When either is
+  absent, the build uses the offline implementation; runtime network switches
+  still follow the configuration described below.
+
+Download the `YataiDON-iOS` artifact from the workflow run after the iOS job
+succeeds. Once all platform builds succeed, the existing `latest` GitHub Release
+also receives the unsigned IPA and its SHA-256 checksum file. An iOS failure is
+included in the build summary and prevents that combined Release from publishing.
+
+The FFmpeg cache is separate from macOS and Simulator builds and includes the
+host architecture, device target, minimum iOS version, Xcode version/build, and
+FFmpeg build-script hash. The workflow logs the selected Xcode and iOS SDK versions.
+Runner images may update; available toolchains are listed in GitHub's
+[runner image documentation](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md).
+The artifact uses
+[compression level 0](https://github.com/actions/upload-artifact#altering-compressions-level-speed-v-size)
+because the IPA is already a compressed ZIP archive.
+
 ## Songs, skins, and saves
 
 On first launch, bundled resources are copied into the app's Documents directory.

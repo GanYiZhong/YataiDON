@@ -81,6 +81,8 @@
 
 ## 发布与回归
 
+- [x] 在现有 Release workflow 中接入 iOS ARM64 未签名 IPA 构建、Actions artifact、SHA-256 校验及 GitHub Release 附件；下载后自行签名安装，不上传 TestFlight。
+- [ ] 在 GitHub Actions 实际运行 iOS job，并验证下载的 IPA 经自行签名后可在真机安装启动。
 - [ ] 回归 Android 和桌面构建，确认共享代码改动未引入问题。
 - [ ] 如需支持可选 Fumen 功能，使用所需 seeds 构建并验证。
 - [ ] 补齐正式应用图标，确认版本号、Bundle ID 和发布资源范围。
