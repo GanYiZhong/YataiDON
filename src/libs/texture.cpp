@@ -79,6 +79,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (r.HasMember("fit") && r["fit"].IsBool()) row.fit = r["fit"].GetBool();
             if (r.HasMember("glow")) row.glow = r["glow"].GetFloat();
             if (r.HasMember("sharpen")) row.sharpen = r["sharpen"].GetFloat();
+            if (r.HasMember("weight")) row.weight = r["weight"].GetFloat();
             if (r.HasMember("highlight")) row.highlight = r["highlight"].GetFloat();
             if (r.HasMember("highlight_dx")) row.highlight_dx = r["highlight_dx"].GetFloat();
             if (r.HasMember("highlight_dy")) row.highlight_dy = r["highlight_dy"].GetFloat();
@@ -93,7 +94,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
             };
             for (auto& m : r.GetObject()) {   // <field>_<lang> overrides
                 std::string k = m.name.GetString();
-                for (const char* f : {"x", "y", "scale_x", "font_size", "align", "outline"}) {
+                for (const char* f : {"x", "y", "scale_x", "font_size", "align", "outline", "weight"}) {
                     std::string pre = std::string(f) + "_";
                     if (k.rfind(pre, 0) == 0 && k.size() > pre.size() && k != "scale_x") {
                         std::string lang = k.substr(pre.size());
@@ -123,6 +124,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
                 if (!r.HasMember("scale_x")) row.scale_x = defaults.scale_x;
                 if (!r.HasMember("outline2")) { row.outline2 = defaults.outline2; row.outline2_color = defaults.outline2_color; }
                 if (!r.HasMember("sharpen")) row.sharpen = defaults.sharpen;
+                if (!r.HasMember("weight"))  row.weight  = defaults.weight;
                 if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; }
                 if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
                 spec.rows.push_back(row);
@@ -692,7 +694,7 @@ void TextureWrapper::clear_screen(const ray::Color& color) {
     ray::ClearBackground(color);
 }
 // Language-suffixed textures (`combo/combo_<lang>`): a skin rarely ships every language, so
-// a name ending in the current language falls back to the `_en` and then the `_ja` variant
+// a name ending in the current language falls back to the `_ja` and then the `_en` variant
 // instead of the warning placeholder. Names without the suffix are returned unchanged.
 std::vector<std::string> TextureWrapper::language_variants(const std::string& name) const {
     std::vector<std::string> out{name};
@@ -701,7 +703,7 @@ std::vector<std::string> TextureWrapper::language_variants(const std::string& na
     const std::string suffix = "_" + lang;
     if (name.size() <= suffix.size() || name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) return out;
     const std::string base = name.substr(0, name.size() - suffix.size());
-    for (const char* fb : {"en", "ja"})
+    for (const char* fb : {"ja", "en"})   // the cabinet's own order: untranslated rows draw from the Japanese set
         if (lang != fb) out.push_back(base + "_" + fb);
     return out;
 }
@@ -843,11 +845,14 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
     if (row.outline2 > 0.0f) layers.push_back({mk(C(row.outline2_color), C(row.outline2_color), row.outline + row.outline2), 1.0f});
     if (row.shade > 0.0f)     layers.push_back({mk(C(row.shade_color), C(row.shade_color), row.outline + row.shade), 1.0f, row.shade_dx, row.shade_dy});
     if (row.highlight > 0.0f) layers.push_back({mk(C(row.highlight_color), C(row.highlight_color), row.outline + row.highlight), 1.0f, row.highlight_dx, row.highlight_dy});
-    auto body = mk(row.gradient ? oc : col, oc, row.outline);
+    const bool own_fill = row.gradient || row.weight != 0.0f;
+    auto body = mk(own_fill ? oc : col, oc, row.outline);
     layers.push_back({body, 1.0f});
-    if (row.gradient) {
+    if (own_fill) {
         auto f = mk(ray::WHITE, ray::WHITE, 0.0f);
-        f->tint_vertical_gradient(col, C(row.color2));
+        if (row.gradient) f->tint_vertical_gradient(col, C(row.color2));
+        else              f->tint_vertical_gradient(col, col);
+        if (row.weight != 0.0f) f->post_weight(row.weight);
         layers.push_back({f, 1.0f});
     }
     float sx = row.scale_x;
@@ -869,7 +874,8 @@ static void label_row_origin(const LabelRow& row, const OutlinedText& body, floa
 static const OutlinedText* label_body(const std::vector<LabelLayer>& layers, const LabelRow& row) {
     // body is the last layer unless a gradient fill follows it
     if (layers.empty()) return nullptr;
-    return layers[row.gradient ? layers.size() - 2 : layers.size() - 1].text.get();
+    const bool own_fill = row.gradient || row.weight != 0.0f;
+    return layers[own_fill ? layers.size() - 2 : layers.size() - 1].text.get();
 }
 
 bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const DrawTextureParams& params) {
