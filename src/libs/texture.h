@@ -7,6 +7,11 @@
 #include <filesystem>
 #include <stdexcept>
 #include <unordered_set>
+#include <array>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -58,6 +63,32 @@ struct SkinInfo {
         : x(x), y(y), font_size(font_size), width(width), height(height), text(text),
           outline(outline) {}
 };
+
+// A text label drawn in place of a language-suffixed texture (`label:combo/combo` in
+// skin_config). One or more rows, each with its own text map and style; positions are
+// offsets from the centre of the texture it replaces.
+struct LabelRow {
+    std::map<std::string, std::string> text;
+    int   font_size = 0;
+    float outline   = 3.0f;
+    float spacing   = 2.0f;
+    float x = 0.0f, y = 0.0f;
+    std::array<int, 4> color{255, 255, 255, 255};
+    std::array<int, 4> outline_color{0, 0, 0, 255};
+    bool gradient = false;            // color (top) -> color2 (bottom)
+    std::array<int, 4> color2{255, 255, 255, 255};
+    std::string align = "center";     // center | left | right (x is measured from that edge)
+    std::string font  = "main";       // main (the skin's font.ttf) | label (Graphics/font_label*.ttf when the skin has one)
+    float outline2 = 0.0f;            // an outer rim drawn behind the text (e.g. black outside a red outline), 0 = none
+    std::array<int, 4> outline2_color{0, 0, 0, 255};
+    float scale_x = 1.0f;
+    bool  fit = true;                 // squeeze further when the text would overflow the texture's width             // horizontal squeeze/stretch of the drawn text (the baked art is often condensed)
+};
+struct LabelSpec {
+    std::string base;                 // "combo/combo"
+    std::vector<LabelRow> rows;
+};
+class OutlinedText;
 
 struct Chara3DConfig {
     float scale = 650.0f;
@@ -220,6 +251,13 @@ public:
 
     TexID get_enum(const std::string& name);
     std::vector<std::string> language_variants(const std::string& name) const;
+
+    // skin_config labels: base name -> spec, texture id -> base, and the built texts
+    std::unordered_map<std::string, LabelSpec> label_specs;
+    std::unordered_map<uint32_t, std::string> label_ids;
+    std::unordered_map<std::string, std::shared_ptr<OutlinedText>> label_cache;
+    bool draw_label(const std::string& base, uint32_t id, const DrawTextureParams& params);
+    void dump_labels(const fs::path& out_dir);
 
     bool has_texture(const std::string& name);
 

@@ -386,13 +386,14 @@ OutlinedText::OutlinedText(std::string text, int font_size,
                            bool is_vertical,
                            float outline_thickness,
                            float spacing,
-                           float v_advance)
+                           float v_advance,
+                           FontManager* fonts)
     : text(std::move(text)),
       font_size(static_cast<float>(font_size)),
       outline_thickness(static_cast<float>(outline_thickness * global_tex.screen_scale)),
       v_advance(v_advance)
 {
-    worker_font = font_manager.copy_font(this->text, font_size);
+    worker_font = (fonts ? *fonts : font_manager).copy_font(this->text, font_size);
 
     if (is_vertical) {
         float char_height    = ray::MeasureTextEx(worker_font, "A", font_size, spacing).y;
@@ -709,3 +710,31 @@ void OutlinedText::draw(const DrawTextureParams& params) {
 }
 
 FontManager font_manager;
+FontManager label_font_manager;
+
+void OutlinedText::tint_vertical_gradient(ray::Color top, ray::Color bottom) {
+    finish();
+    if (!texture.has_value()) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    unsigned char* px = (unsigned char*)img.data;
+    int y0 = -1, y1 = -1;
+    for (int y = 0; y < img.height; y++)
+        for (int x = 0; x < img.width; x++)
+            if (px[(y * img.width + x) * 4 + 3] > 8) { if (y0 < 0) y0 = y; y1 = y; break; }
+    if (y0 < 0) { ray::UnloadImage(img); return; }
+    for (int y = 0; y < img.height; y++) {
+        float t = (y1 > y0) ? (float)(y - y0) / (float)(y1 - y0) : 0.0f;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const float r = top.r + (bottom.r - top.r) * t, g = top.g + (bottom.g - top.g) * t, b = top.b + (bottom.b - top.b) * t;
+        for (int x = 0; x < img.width; x++) {
+            unsigned char* q = px + (y * img.width + x) * 4;
+            if (q[3] == 0) continue;
+            q[0] = (unsigned char)(q[0] * r / 255.0f); q[1] = (unsigned char)(q[1] * g / 255.0f); q[2] = (unsigned char)(q[2] * b / 255.0f);
+        }
+    }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
+    ray::UnloadImage(img);
+}

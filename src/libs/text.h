@@ -81,13 +81,18 @@ public:
                  bool is_vertical,
                  float outline_thickness = 5.0f,
                  float spacing = 2.0f,
-                 float v_advance = 1.0f);
+                 float v_advance = 1.0f,
+                 FontManager* fonts = nullptr);      // nullptr = the skin's main font
 
     ~OutlinedText();
 
     bool upload_pending();
 
     bool is_ready() const { return texture.has_value(); }
+    const ray::Texture& texture_ref() const { return *texture; }
+    // Recolour the rendered text top-to-bottom from `top` to `bottom` over its ink rows
+    // (meant for a fill-only text: outline 0, white). Forces the build to finish.
+    void tint_vertical_gradient(ray::Color top, ray::Color bottom);
 
     void finish();
 
@@ -95,3 +100,7 @@ public:
 };
 
 extern FontManager font_manager;
+// The UI/label face (Graphics/font_label.ttf and its per-language siblings): the cabinet
+// draws its 30/32pt captions from a rounded gothic and only headings from the main face.
+// Falls back to the main font file when the skin has none.
+extern FontManager label_font_manager;

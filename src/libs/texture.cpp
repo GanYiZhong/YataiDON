@@ -1,6 +1,8 @@
 #include "texture.h"
 #include "global_data.h"
+#include "text.h"
 #include "filesystem.h"
+#include <set>
 #include <spdlog/spdlog.h>
 #include <chrono>
 #include <thread>
@@ -37,6 +39,9 @@ void TextureWrapper::init(const fs::path& skin_path) {
     skin_config.clear();
     skin_config_by_name.clear();
     options.clear();
+    label_specs.clear();
+    label_ids.clear();
+    label_cache.clear();
     chara_3d_config = Chara3DConfig{};
 
     auto skin_config_file = read_json_file(graphics_path / "skin_config.json");
@@ -52,7 +57,66 @@ void TextureWrapper::init(const fs::path& skin_path) {
         screen_scale  = w / 1280.0f;
     }
 
-    auto load_entry = [this](const std::string& name, const Value& v, float scale) {
+    auto load_label = [this](const std::string& name, const Value& v, float scale) {
+        // "label:<subset>/<name>" applies wherever that texture is drawn; "label:<screen>:<subset>/<name>"
+        // only on that screen (game and result both have gauge/clear, at different sizes)
+        LabelSpec spec; std::string key = name.substr(6), screen;
+        if (auto colon = key.find(':'); colon != std::string::npos) { screen = key.substr(0, colon); key = key.substr(colon + 1); }
+        spec.base = key;
+        auto row_of = [&](const Value& r) {
+            LabelRow row;
+            if (r.HasMember("text") && r["text"].IsObject())
+                for (auto& t : r["text"].GetObject()) row.text[t.name.GetString()] = t.value.GetString();
+            row.font_size = static_cast<int>(json_member(r, "font_size", 0) * scale);
+            if (r.HasMember("outline"))  row.outline  = r["outline"].GetFloat();
+            if (r.HasMember("spacing"))  row.spacing  = r["spacing"].GetFloat();
+            row.x = (r.HasMember("x") ? r["x"].GetFloat() : 0) * scale;
+            row.y = (r.HasMember("y") ? r["y"].GetFloat() : 0) * scale;
+            if (r.HasMember("align") && r["align"].IsString()) row.align = r["align"].GetString();
+            if (r.HasMember("font") && r["font"].IsString())   row.font  = r["font"].GetString();
+            if (r.HasMember("scale_x")) row.scale_x = r["scale_x"].GetFloat();
+            if (r.HasMember("outline2")) row.outline2 = r["outline2"].GetFloat();
+            if (r.HasMember("fit") && r["fit"].IsBool()) row.fit = r["fit"].GetBool();
+            auto col = [&](const char* key, std::array<int, 4>& dst) {
+                if (r.HasMember(key) && r[key].IsArray() && r[key].Size() >= 3) {
+                    for (int i = 0; i < 4; i++) dst[i] = i < (int)r[key].Size() ? r[key][i].GetInt() : 255;
+                }
+            };
+            col("color", row.color); col("outline_color", row.outline_color); col("outline2_color", row.outline2_color);
+            if (r.HasMember("color2")) { col("color2", row.color2); row.gradient = true; }
+            return row;
+        };
+        if (v.HasMember("rows") && v["rows"].IsArray()) {
+            LabelRow defaults = row_of(v);
+            for (auto& r : v["rows"].GetArray()) {
+                LabelRow row = row_of(r);
+                if (row.font_size == 0) row.font_size = defaults.font_size;
+                if (!r.HasMember("outline")) row.outline = defaults.outline;
+                if (!r.HasMember("color")) row.color = defaults.color;
+                if (!r.HasMember("outline_color")) row.outline_color = defaults.outline_color;
+                if (!r.HasMember("align"))   row.align   = defaults.align;
+                if (!r.HasMember("font"))    row.font    = defaults.font;
+                if (!r.HasMember("spacing")) row.spacing = defaults.spacing;
+                if (!r.HasMember("x"))       row.x       = defaults.x;
+                if (!r.HasMember("scale_x")) row.scale_x = defaults.scale_x;
+                if (!r.HasMember("outline2")) { row.outline2 = defaults.outline2; row.outline2_color = defaults.outline2_color; }
+                if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
+                spec.rows.push_back(row);
+            }
+        } else {
+            spec.rows.push_back(row_of(v));
+        }
+        label_specs[screen.empty() ? spec.base : screen + ":" + spec.base] = spec;
+        for (const char* lang : {"ja", "en", "zh", "ko", "tw", "cn", "kr"}) {
+            auto it = tex_id_map.find(spec.base + "_" + lang);
+            if (it != tex_id_map.end()) label_ids[(uint32_t)it->second] = spec.base;
+        }
+        auto it = tex_id_map.find(spec.base);
+        if (it != tex_id_map.end()) label_ids[(uint32_t)it->second] = spec.base;
+    };
+
+    auto load_entry = [this, &load_label](const std::string& name, const Value& v, float scale) {
+        if (name.rfind("label:", 0) == 0) { load_label(name, v, scale); return; }
         float x = (v.HasMember("x") ? v["x"].GetFloat() : 0) * scale;
         float y = (v.HasMember("y") ? v["y"].GetFloat() : 0) * scale;
         int font_size = static_cast<int>(json_member(v, "font_size", 0) * scale);
@@ -119,6 +183,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
 }
 
 void TextureWrapper::unload_textures() {
+    label_cache.clear();
     textures.clear();
     loaded_subsets.clear();
     animations.clear();
@@ -643,6 +708,10 @@ bool TextureWrapper::has_texture(const std::string& name) {
 void TextureWrapper::draw_texture(uint32_t id, const DrawTextureParams& params) {
     auto it = textures.find(id);
     if (it == textures.end()) return;
+    if (!label_ids.empty()) {
+        auto lb = label_ids.find(id);
+        if (lb != label_ids.end() && draw_label(lb->second, id, params)) return;
+    }
 
     TextureObject* tex_obj = it->second.get();
 
@@ -714,3 +783,187 @@ void TextureWrapper::draw_texture(uint32_t id, const DrawTextureParams& params) 
 TextureWrapper tex;
 
 TextureWrapper global_tex;
+
+// ---------------------------------------------------------------------------------------
+// Labels: text drawn from skin_config in place of a language texture. The texture the id
+// names (whatever language variant get_enum resolved) supplies the rectangle; each row is
+// laid out from that rectangle's centre (or left/right edge) plus its own offsets, so a
+// skin author positions the text against the art the texture used to carry.
+static std::string label_text(const LabelRow& row, const std::string& lang) {
+    for (const std::string& l : {lang, std::string("ja"), std::string("en")}) {
+        auto t = row.text.find(l);
+        if (t != row.text.end() && !t->second.empty()) return t->second;
+    }
+    return row.text.empty() ? std::string() : row.text.begin()->second;
+}
+
+bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const DrawTextureParams& params) {
+    std::string screen = global_data.current_screen;
+    for (auto& ch : screen) ch = (char)tolower((unsigned char)ch);
+    auto sp = label_specs.find(screen + ":" + base);
+    if (sp == label_specs.end()) sp = label_specs.find(base);
+    auto it = textures.find(id);
+    if (sp == label_specs.end() || it == textures.end() || !global_data.config) return false;
+    TextureObject* tex_obj = it->second.get();
+    const std::string& lang = global_data.config->general.language;
+
+    const float width  = static_cast<float>(tex_obj->width);
+    const float height = static_cast<float>(tex_obj->height);
+    float dx, dy, dw, dh;
+    if (params.center) {
+        dw = tex_obj->x2[params.index] * params.scale + params.x2;
+        dh = tex_obj->y2[params.index] * params.scale + params.y2;
+        dx = tex_obj->x[params.index] + draw_offset_x + width * 0.5f - (width * params.scale) * 0.5f + params.x;
+        dy = tex_obj->y[params.index] + draw_offset_y + height * 0.5f - (height * params.scale) * 0.5f + params.y;
+    } else {
+        dx = tex_obj->x[params.index] + draw_offset_x + params.x;
+        dy = tex_obj->y[params.index] + draw_offset_y + params.y;
+        dw = tex_obj->x2[params.index] * params.scale + params.x2;
+        dh = tex_obj->y2[params.index] * params.scale + params.y2;
+    }
+    const float fade = (params.fade != 1.1f) ? params.fade : 1.0f;
+
+    for (size_t i = 0; i < sp->second.rows.size(); i++) {
+        const LabelRow& row = sp->second.rows[i];
+        if (row.font_size <= 0) continue;
+        const std::string key = sp->first + "|" + lang + "|" + std::to_string(i);
+        auto cached = label_cache.find(key);
+        if (cached == label_cache.end()) {
+            const std::string s = label_text(row, lang);
+            if (s.empty()) { label_cache[key] = nullptr; continue; }
+            ray::Color col{(uint8_t)row.color[0], (uint8_t)row.color[1], (uint8_t)row.color[2], (uint8_t)row.color[3]};
+            ray::Color oc{(uint8_t)row.outline_color[0], (uint8_t)row.outline_color[1], (uint8_t)row.outline_color[2], (uint8_t)row.outline_color[3]};
+            // OutlinedText multiplies the thickness by screen_scale itself; skin values are pre-scale
+            FontManager* fm = (row.font == "main") ? &font_manager : &label_font_manager;
+            cached = label_cache.emplace(key, std::make_shared<OutlinedText>(s, row.font_size, row.gradient ? oc : col, oc, false, row.outline, row.spacing, 1.0f, fm)).first;
+            if (row.gradient) {
+                ray::Color c2{(uint8_t)row.color2[0], (uint8_t)row.color2[1], (uint8_t)row.color2[2], (uint8_t)row.color2[3]};
+                auto fillt = std::make_shared<OutlinedText>(s, row.font_size, ray::WHITE, ray::WHITE, false, 0.0f, row.spacing, 1.0f, fm);
+                fillt->tint_vertical_gradient(col, c2);
+                label_cache[key + "|fill"] = fillt;
+                cached = label_cache.find(key);
+            }
+            if (row.outline2 > 0.0f) {
+                ray::Color o2{(uint8_t)row.outline2_color[0], (uint8_t)row.outline2_color[1], (uint8_t)row.outline2_color[2], (uint8_t)row.outline2_color[3]};
+                label_cache[key + "|rim"] = std::make_shared<OutlinedText>(s, row.font_size, o2, o2, false, row.outline + row.outline2, row.spacing, 1.0f, fm);
+                cached = label_cache.find(key);
+            }
+        }
+        OutlinedText* ot = cached->second.get();
+        if (!ot) continue;
+        ot->upload_pending();
+        float sx = row.scale_x;
+        if (row.fit && dw > 8.0f && ot->width * sx > dw - 4.0f) sx = (dw - 4.0f) / ot->width;
+        const float tw = ot->width * sx;
+        float x;
+        if (row.align == "left")       x = dx + row.x;
+        else if (row.align == "right") x = dx + dw - tw + row.x;
+        else                           x = dx + dw * 0.5f - tw * 0.5f + row.x;
+        const float y = dy + dh * 0.5f - ot->height * 0.5f + row.y;
+        if (auto rim = label_cache.find(key + "|rim"); rim != label_cache.end() && rim->second) {
+            OutlinedText* r2 = rim->second.get(); r2->upload_pending();
+            const float rw = r2->width * sx;
+            r2->draw({.x = roundf(x + (tw - rw) * 0.5f), .y = roundf(y + (ot->height - r2->height) * 0.5f), .x2 = rw - r2->width, .fade = fade});
+        }
+        ot->draw({.x = roundf(x), .y = roundf(y), .x2 = tw - ot->width, .fade = fade});
+        if (auto fl = label_cache.find(key + "|fill"); fl != label_cache.end() && fl->second) {
+            OutlinedText* f2 = fl->second.get(); f2->upload_pending();
+            const float fw = f2->width * sx;
+            f2->draw({.x = roundf(x + (tw - fw) * 0.5f), .y = roundf(y + (ot->height - f2->height) * 0.5f), .x2 = fw - f2->width, .fade = fade});
+        }
+    }
+    return true;
+}
+
+// YATAIDON_DUMP_LABELS=<dir>: render every label over a blank canvas the size of the
+// texture it replaces and write <dir>/<base>_<lang>.png, so the result can be diffed
+// against the baked art without playing to that screen.
+void TextureWrapper::dump_labels(const fs::path& out_dir) {
+    if (!global_data.config) return;
+    fs::create_directories(out_dir);
+    const std::string saved_lang = global_data.config->general.language;
+    for (auto& [spec_key, spec] : label_specs) {
+        const std::string& base = spec.base;
+        std::string only_screen;
+        if (auto colon = spec_key.find(':'); colon != std::string::npos) only_screen = spec_key.substr(0, colon);
+        // find the baked reference: Graphics/<screen>/<base>_<lang>.png (ja, then en)
+        fs::path ref;
+        for (const char* lang : {"ja", "en"}) {
+            for (const fs::path& root : {graphics_path, parent_graphics_path}) {
+                if (root.empty()) continue;
+                if (!fs::exists(root)) continue;
+                for (auto& screen : fs::directory_iterator(root)) {
+                    if (!screen.is_directory()) continue;
+                    if (!only_screen.empty() && screen.path().filename().string() != only_screen) continue;
+                    fs::path p = screen.path() / (base + "_" + lang + ".png");
+                    if (fs::exists(p)) { ref = p; break; }
+                }
+                if (!ref.empty()) break;
+            }
+            if (!ref.empty()) break;
+        }
+        if (ref.empty()) { spdlog::warn("dump_labels: no reference texture for {}", base); continue; }
+        ray::Image refimg = ray::LoadImage(ref.string().c_str());
+        const int W = refimg.width, Hh = refimg.height;
+        ray::UnloadImage(refimg);
+        std::set<std::string> langs;
+        for (auto& row : spec.rows) for (auto& [l, _] : row.text) langs.insert(l);
+        for (const std::string& lang : langs) {
+            ray::Image canvas = ray::GenImageColor(W, Hh, ray::BLANK);
+            for (size_t i = 0; i < spec.rows.size(); i++) {
+                const LabelRow& row = spec.rows[i];
+                const std::string s = label_text(row, lang);
+                if (s.empty() || row.font_size <= 0) continue;
+                ray::Color col{(uint8_t)row.color[0], (uint8_t)row.color[1], (uint8_t)row.color[2], (uint8_t)row.color[3]};
+                ray::Color oc{(uint8_t)row.outline_color[0], (uint8_t)row.outline_color[1], (uint8_t)row.outline_color[2], (uint8_t)row.outline_color[3]};
+                FontManager* fm = (row.font == "main") ? &font_manager : &label_font_manager;
+                OutlinedText ot(s, row.font_size, row.gradient ? oc : col, oc, false, row.outline, row.spacing, 1.0f, fm);
+                ot.finish();
+                if (!ot.is_ready()) continue;
+                ray::Image glyphs = ray::LoadImageFromTexture(ot.texture_ref());
+                float sx = row.scale_x;
+                if (row.fit && W > 8 && ot.width * sx > W - 4.0f) sx = (W - 4.0f) / ot.width;
+                if (sx != 1.0f) ray::ImageResize(&glyphs, (int)roundf(glyphs.width * sx), glyphs.height);
+                const float tw = ot.width * sx;
+                float x;
+                if (row.align == "left")       x = row.x;
+                else if (row.align == "right") x = W - tw + row.x;
+                else                           x = W * 0.5f - tw * 0.5f + row.x;
+                const float y = Hh * 0.5f - ot.height * 0.5f + row.y;
+                if (row.outline2 > 0.0f) {
+                    ray::Color o2{(uint8_t)row.outline2_color[0], (uint8_t)row.outline2_color[1], (uint8_t)row.outline2_color[2], (uint8_t)row.outline2_color[3]};
+                    OutlinedText r2(s, row.font_size, o2, o2, false, row.outline + row.outline2, row.spacing, 1.0f, fm);
+                    r2.finish();
+                    if (r2.is_ready()) {
+                        ray::Image rim = ray::LoadImageFromTexture(r2.texture_ref());
+                        if (sx != 1.0f) ray::ImageResize(&rim, (int)roundf(rim.width * sx), rim.height);
+                        ray::ImageDrawImagePro(&canvas, rim, {0, 0, (float)rim.width, (float)rim.height},
+                                               {roundf(x + (tw - r2.width * sx) * 0.5f), roundf(y + (ot.height - r2.height) * 0.5f), (float)rim.width, (float)rim.height}, {0, 0}, 0.0f, ray::WHITE);
+                        ray::UnloadImage(rim);
+                    }
+                }
+                ray::ImageDrawImagePro(&canvas, glyphs, {0, 0, (float)glyphs.width, (float)glyphs.height},
+                                       {roundf(x), roundf(y), (float)glyphs.width, (float)glyphs.height}, {0, 0}, 0.0f, ray::WHITE);
+                ray::UnloadImage(glyphs);
+                if (row.gradient) {
+                    ray::Color c2{(uint8_t)row.color2[0], (uint8_t)row.color2[1], (uint8_t)row.color2[2], (uint8_t)row.color2[3]};
+                    OutlinedText f2(s, row.font_size, ray::WHITE, ray::WHITE, false, 0.0f, row.spacing, 1.0f, fm);
+                    f2.tint_vertical_gradient(col, c2);
+                    if (f2.is_ready()) {
+                        ray::Image fill = ray::LoadImageFromTexture(f2.texture_ref());
+                        if (sx != 1.0f) ray::ImageResize(&fill, (int)roundf(fill.width * sx), fill.height);
+                        ray::ImageDrawImagePro(&canvas, fill, {0, 0, (float)fill.width, (float)fill.height},
+                                               {roundf(x + (tw - f2.width * sx) * 0.5f), roundf(y + (ot.height - f2.height) * 0.5f), (float)fill.width, (float)fill.height}, {0, 0}, 0.0f, ray::WHITE);
+                        ray::UnloadImage(fill);
+                    }
+                }
+            }
+            std::string fname = (only_screen.empty() ? "" : only_screen + "_") + base;
+            for (auto& ch : fname) if (ch == '/') ch = '_';
+            ray::ExportImage(canvas, (out_dir / (fname + "_" + lang + ".png")).string().c_str());
+            ray::UnloadImage(canvas);
+        }
+    }
+    global_data.config->general.language = saved_lang;
+    spdlog::info("dump_labels: wrote {} label sets to {}", label_specs.size(), out_dir.string());
+}
