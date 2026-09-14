@@ -79,6 +79,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (r.HasMember("outline2")) row.outline2 = r["outline2"].GetFloat();
             if (r.HasMember("fit") && r["fit"].IsBool()) row.fit = r["fit"].GetBool();
             if (r.HasMember("vertical") && r["vertical"].IsBool()) row.vertical = r["vertical"].GetBool();
+            if (r.HasMember("v_advance")) row.v_advance = r["v_advance"].GetFloat();
             if (r.HasMember("glow")) row.glow = r["glow"].GetFloat();
             if (r.HasMember("sharpen")) row.sharpen = r["sharpen"].GetFloat();
             if (r.HasMember("weight")) row.weight = r["weight"].GetFloat();
@@ -838,7 +839,7 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
     auto C = [](const std::array<int, 4>& a) { return ray::Color{(uint8_t)a[0], (uint8_t)a[1], (uint8_t)a[2], (uint8_t)a[3]}; };
     FontManager* fm = (row.font == "main") ? &font_manager : &label_font_manager;
     auto mk = [&](ray::Color fill, ray::Color oc, float thick) {
-        auto t = std::make_shared<OutlinedText>(s, row.font_size, fill, oc, row.vertical, thick, row.spacing, 1.0f, fm);
+        auto t = std::make_shared<OutlinedText>(s, row.font_size, fill, oc, row.vertical, thick, row.spacing, row.v_advance, fm);
         t->finish();
         return t;
     };
