@@ -1,6 +1,7 @@
 #include "text.h"
 #include <chrono>
 #include <vector>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
@@ -711,6 +712,71 @@ void OutlinedText::draw(const DrawTextureParams& params) {
 
 FontManager font_manager;
 FontManager label_font_manager;
+
+void OutlinedText::post_squeeze(float sx) {
+    finish();
+    if (!texture.has_value() || sx <= 0.0f || sx == 1.0f) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    const int nw = std::max(1, (int)roundf(img.width * sx));
+    ray::ImageResize(&img, nw, img.height);
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
+    width = (float)img.width;
+    ray::UnloadImage(img);
+}
+
+void OutlinedText::post_sharpen(float k) {
+    finish();
+    if (!texture.has_value() || k <= 1.0f) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    unsigned char* px = (unsigned char*)img.data;
+    for (int i = 0; i < img.width * img.height; i++) {
+        float a = (px[i * 4 + 3] - 128.0f) * k + 128.0f;
+        px[i * 4 + 3] = (unsigned char)(a < 0 ? 0 : a > 255 ? 255 : a);
+    }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
+    ray::UnloadImage(img);
+}
+
+void OutlinedText::post_blur(float radius) {
+    finish();
+    const int r = (int)std::ceil(radius);
+    if (!texture.has_value() || r <= 0) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    ray::ImageResizeCanvas(&img, img.width + 2 * r, img.height + 2 * r, r, r, ray::BLANK);
+    const int W = img.width, H = img.height;
+    unsigned char* px = (unsigned char*)img.data;
+    std::vector<float> a(W * H), tmp(W * H);
+    for (int i = 0; i < W * H; i++) a[i] = px[i * 4 + 3];
+    // two passes of a separable box blur ~ a soft, roughly gaussian falloff
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float s = 0; int n = 0;
+            for (int k = -r; k <= r; k++) { int xx = x + k; if (xx >= 0 && xx < W) { s += a[y * W + xx]; n++; } }
+            tmp[y * W + x] = s / n;
+        }
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float s = 0; int n = 0;
+            for (int k = -r; k <= r; k++) { int yy = y + k; if (yy >= 0 && yy < H) { s += tmp[yy * W + x]; n++; } }
+            a[y * W + x] = s / n;
+        }
+    }
+    // keep the layer's colour where it was, spread it under the new alpha
+    unsigned char cr = 0, cg = 0, cb = 0;
+    for (int i = 0; i < W * H; i++) if (px[i * 4 + 3] > 200) { cr = px[i * 4]; cg = px[i * 4 + 1]; cb = px[i * 4 + 2]; break; }
+    for (int i = 0; i < W * H; i++) { px[i * 4] = cr; px[i * 4 + 1] = cg; px[i * 4 + 2] = cb; px[i * 4 + 3] = (unsigned char)std::min(255.0f, a[i]); }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
+    width = (float)W; height = (float)H;
+    ray::UnloadImage(img);
+}
 
 void OutlinedText::tint_vertical_gradient(ray::Color top, ray::Color bottom) {
     finish();

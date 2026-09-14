@@ -81,7 +81,19 @@ struct LabelRow {
     std::string font  = "main";       // main (the skin's font.ttf) | label (Graphics/font_label*.ttf when the skin has one)
     float outline2 = 0.0f;            // an outer rim drawn behind the text (e.g. black outside a red outline), 0 = none
     std::array<int, 4> outline2_color{0, 0, 0, 255};
+    float glow = 0.0f;                // soft dark halo radius outside the rim (the cabinet's title plates), 0 = none
+    float glow_alpha = 0.6f;
+    std::array<int, 4> glow_color{0, 0, 0, 255};
+    // bevel: a lighter copy of the outline shifted up-left and a darker one shifted down-right,
+    // drawn under the body so they show along the outline's lit / shaded edges
+    float highlight = 0.0f;           // extra thickness of the light edge, 0 = none
+    std::array<int, 4> highlight_color{255, 170, 170, 255};
+    float highlight_dx = -1.5f, highlight_dy = -1.5f;
+    float shade = 0.0f;
+    std::array<int, 4> shade_color{150, 0, 0, 255};
+    float shade_dx = 1.5f, shade_dy = 1.5f;
     float scale_x = 1.0f;
+    float sharpen = 2.0f;             // edge alpha contrast after resampling (1 = off)
     bool  fit = true;                 // squeeze further when the text would overflow the texture's width             // horizontal squeeze/stretch of the drawn text (the baked art is often condensed)
 };
 struct LabelSpec {
@@ -89,6 +101,7 @@ struct LabelSpec {
     std::vector<LabelRow> rows;
 };
 class OutlinedText;
+struct LabelLayer { std::shared_ptr<OutlinedText> text; float alpha = 1.0f; float ox = 0.0f, oy = 0.0f; };
 
 struct Chara3DConfig {
     float scale = 650.0f;
@@ -255,7 +268,8 @@ public:
     // skin_config labels: base name -> spec, texture id -> base, and the built texts
     std::unordered_map<std::string, LabelSpec> label_specs;
     std::unordered_map<uint32_t, std::string> label_ids;
-    std::unordered_map<std::string, std::shared_ptr<OutlinedText>> label_cache;
+    std::unordered_map<std::string, std::vector<LabelLayer>> label_cache;   // key -> layers in draw order
+    std::vector<LabelLayer> build_label_layers(const LabelRow& row, const std::string& s, float box_w) const;
     bool draw_label(const std::string& base, uint32_t id, const DrawTextureParams& params);
     void dump_labels(const fs::path& out_dir);
 
