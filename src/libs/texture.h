@@ -123,6 +123,7 @@ struct LabelSpec {
     bool prefer_texture = false;      // when the skin does ship <base>_<language>.png, draw that instead
     std::string texture_lang;         // a plain-named texture whose baked text is this language keeps the art for it
     std::string base_texture;         // "<subset>/<name>": text-free art drawn under the rows (buttons, pills)
+    std::vector<std::vector<LabelRow>> frames;   // numbered-folder art: the rows of frame i (empty = rows for every frame)
 };
 class OutlinedText;
 struct LabelLayer { std::shared_ptr<OutlinedText> text; float alpha = 1.0f; float ox = 0.0f, oy = 0.0f; };

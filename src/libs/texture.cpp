@@ -117,27 +117,42 @@ void TextureWrapper::init(const fs::path& skin_path) {
         if (v.HasMember("prefer_texture") && v["prefer_texture"].IsBool()) spec.prefer_texture = v["prefer_texture"].GetBool();
         if (v.HasMember("texture_lang") && v["texture_lang"].IsString()) spec.texture_lang = v["texture_lang"].GetString();
         if (v.HasMember("base_texture") && v["base_texture"].IsString()) spec.base_texture = v["base_texture"].GetString();
-        if (v.HasMember("rows") && v["rows"].IsArray()) {
-            LabelRow defaults = row_of(v);
-            for (auto& r : v["rows"].GetArray()) {
-                LabelRow row = row_of(r);
-                if (row.font_size == 0) row.font_size = defaults.font_size;
-                if (!r.HasMember("outline")) row.outline = defaults.outline;
-                if (!r.HasMember("color")) row.color = defaults.color;
-                if (!r.HasMember("outline_color")) row.outline_color = defaults.outline_color;
-                if (!r.HasMember("align"))   row.align   = defaults.align;
-                if (!r.HasMember("valign"))  row.valign  = defaults.valign;
-                if (!r.HasMember("font"))    row.font    = defaults.font;
-                if (!r.HasMember("spacing")) row.spacing = defaults.spacing;
-                if (!r.HasMember("x"))       row.x       = defaults.x;
-                if (!r.HasMember("scale_x")) row.scale_x = defaults.scale_x;
-                if (!r.HasMember("outline2")) { row.outline2 = defaults.outline2; row.outline2_color = defaults.outline2_color; }
-                if (!r.HasMember("sharpen")) row.sharpen = defaults.sharpen;
-                if (!r.HasMember("weight"))  row.weight  = defaults.weight;
-                if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; row.glow_dx = defaults.glow_dx; row.glow_dy = defaults.glow_dy; }
-                if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
-                spec.rows.push_back(row);
+        auto inherit = [&](LabelRow& row, const Value& r, const LabelRow& defaults) {
+            if (row.font_size == 0) row.font_size = defaults.font_size;
+            if (!r.HasMember("outline")) row.outline = defaults.outline;
+            if (!r.HasMember("color")) row.color = defaults.color;
+            if (!r.HasMember("outline_color")) row.outline_color = defaults.outline_color;
+            if (!r.HasMember("align"))   row.align   = defaults.align;
+            if (!r.HasMember("valign"))  row.valign  = defaults.valign;
+            if (!r.HasMember("font"))    row.font    = defaults.font;
+            if (!r.HasMember("spacing")) row.spacing = defaults.spacing;
+            if (!r.HasMember("x"))       row.x       = defaults.x;
+            if (!r.HasMember("y"))       row.y       = defaults.y;
+            if (!r.HasMember("max_width")) row.max_width = defaults.max_width;
+            if (!r.HasMember("vertical")) { row.vertical = defaults.vertical; row.v_advance = defaults.v_advance; }
+            if (!r.HasMember("scale_x")) row.scale_x = defaults.scale_x;
+            if (!r.HasMember("outline2")) { row.outline2 = defaults.outline2; row.outline2_color = defaults.outline2_color; }
+            if (!r.HasMember("sharpen")) row.sharpen = defaults.sharpen;
+            if (!r.HasMember("weight"))  row.weight  = defaults.weight;
+            if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; row.glow_dx = defaults.glow_dx; row.glow_dy = defaults.glow_dy; }
+            if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
+        };
+        auto rows_of = [&](const Value& node, const LabelRow& defaults) {
+            std::vector<LabelRow> out;
+            if (node.HasMember("rows") && node["rows"].IsArray()) {
+                for (auto& r : node["rows"].GetArray()) { LabelRow row = row_of(r); inherit(row, r, defaults); out.push_back(row); }
+            } else {
+                LabelRow row = row_of(node); inherit(row, node, defaults); out.push_back(row);
             }
+            return out;
+        };
+        if (v.HasMember("frames") && v["frames"].IsArray()) {
+            // one entry per frame of a numbered-folder texture; each inherits the top-level fields
+            LabelRow defaults = row_of(v);
+            for (auto& f : v["frames"].GetArray()) spec.frames.push_back(rows_of(f, defaults));
+            spec.rows = spec.frames.empty() ? std::vector<LabelRow>{defaults} : spec.frames.front();
+        } else if (v.HasMember("rows") && v["rows"].IsArray()) {
+            spec.rows = rows_of(v, row_of(v));
         } else {
             spec.rows.push_back(row_of(v));
         }
@@ -936,10 +951,15 @@ bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const Draw
     const float kx = width > 0 ? dw / width : 1.0f, ky = height > 0 ? dh / height : 1.0f;
     if (kx <= 0.001f || ky <= 0.001f) return true;
 
-    for (size_t i = 0; i < sp->second.rows.size(); i++) {
-        const LabelRow row = sp->second.rows[i].for_lang(lang);
+    const std::vector<LabelRow>* rows = &sp->second.rows;
+    if (!sp->second.frames.empty()) {
+        if (params.frame < 0 || params.frame >= (int)sp->second.frames.size()) return false;   // no text for this frame: the art
+        rows = &sp->second.frames[params.frame];
+    }
+    for (size_t i = 0; i < rows->size(); i++) {
+        const LabelRow row = (*rows)[i].for_lang(lang);
         if (row.font_size <= 0) continue;
-        const std::string key = sp->first + "|" + lang + "|" + std::to_string(i);
+        const std::string key = sp->first + "|" + lang + "|" + std::to_string(params.frame) + "|" + std::to_string(i);
         auto cached = label_cache.find(key);
         if (cached == label_cache.end()) {
             const std::string s = label_text(row, lang);
@@ -966,7 +986,12 @@ bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const Draw
 void TextureWrapper::dump_labels(const fs::path& out_dir) {
     if (!global_data.config) return;
     fs::create_directories(out_dir);
-    for (auto& [spec_key, spec] : label_specs) {
+    for (auto& [spec_key, spec0] : label_specs) {
+      const int nframes = spec0.frames.empty() ? 1 : (int)spec0.frames.size();
+      for (int fi = 0; fi < nframes; fi++) {
+        LabelSpec spec = spec0;
+        if (!spec0.frames.empty()) spec.rows = spec0.frames[fi];
+        const std::string frame_suffix = spec0.frames.empty() ? "" : "/" + std::to_string(fi);
         const std::string& base = spec.base;
         std::string only_screen;
         if (auto colon = spec_key.find(':'); colon != std::string::npos) only_screen = spec_key.substr(0, colon);
@@ -978,7 +1003,7 @@ void TextureWrapper::dump_labels(const fs::path& out_dir) {
                 for (auto& screen : fs::directory_iterator(root)) {
                     if (!screen.is_directory()) continue;
                     if (!only_screen.empty() && screen.path().filename().string() != only_screen) continue;
-                    fs::path p = screen.path() / (base + ".png");
+                    fs::path p = screen.path() / (base + frame_suffix + ".png");
                     if (fs::exists(p)) { ref = p; break; }
                 }
                 if (!ref.empty()) break;
@@ -991,7 +1016,7 @@ void TextureWrapper::dump_labels(const fs::path& out_dir) {
                 for (auto& screen : fs::directory_iterator(root)) {
                     if (!screen.is_directory()) continue;
                     if (!only_screen.empty() && screen.path().filename().string() != only_screen) continue;
-                    fs::path p = screen.path() / (base + "_" + lang + ".png");
+                    fs::path p = screen.path() / (base + "_" + lang + frame_suffix + ".png");
                     if (fs::exists(p)) { ref = p; break; }
                 }
                 if (!ref.empty()) break;
@@ -1010,7 +1035,8 @@ void TextureWrapper::dump_labels(const fs::path& out_dir) {
                 if (root.empty() || !fs::exists(root)) continue;
                 for (auto& screen : fs::directory_iterator(root)) {
                     if (!screen.is_directory()) continue;
-                    fs::path p = screen.path() / (spec.base_texture + ".png");
+                    fs::path p = screen.path() / (spec.base_texture + frame_suffix + ".png");
+                    if (!fs::exists(p)) p = screen.path() / (spec.base_texture + ".png");
                     if (fs::exists(p)) { base_png = p; break; }
                 }
                 if (!base_png.empty()) break;
@@ -1043,11 +1069,12 @@ void TextureWrapper::dump_labels(const fs::path& out_dir) {
                     ray::UnloadImage(im);
                 }
             }
-            std::string fname = (only_screen.empty() ? "" : only_screen + "_") + base;
+            std::string fname = (only_screen.empty() ? "" : only_screen + "_") + base + frame_suffix;
             for (auto& ch : fname) if (ch == '/') ch = '_';
             ray::ExportImage(canvas, (out_dir / (fname + "_" + lang + ".png")).string().c_str());
             ray::UnloadImage(canvas);
         }
+      }
     }
     spdlog::info("dump_labels: wrote {} label sets to {}", label_specs.size(), out_dir.string());
 }
