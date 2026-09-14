@@ -91,10 +91,23 @@ void TextureWrapper::init(const fs::path& skin_path) {
                     for (int i = 0; i < 4; i++) dst[i] = i < (int)r[key].Size() ? r[key][i].GetInt() : 255;
                 }
             };
+            for (auto& m : r.GetObject()) {   // <field>_<lang> overrides
+                std::string k = m.name.GetString();
+                for (const char* f : {"x", "y", "scale_x", "font_size", "align", "outline"}) {
+                    std::string pre = std::string(f) + "_";
+                    if (k.rfind(pre, 0) == 0 && k.size() > pre.size() && k != "scale_x") {
+                        std::string lang = k.substr(pre.size());
+                        if (lang == "x" || lang == "size" || lang == "color" || lang == "dx" || lang == "dy") continue;   // scale_x, font_size, outline_color ...
+                        std::string val = m.value.IsString() ? m.value.GetString() : std::to_string(m.value.GetDouble() * ((f[0] == 'x' || f[0] == 'y' || std::string(f) == "font_size") ? scale : 1.0));
+                        row.overrides[lang][f] = val;
+                    }
+                }
+            }
             col("color", row.color); col("outline_color", row.outline_color); col("outline2_color", row.outline2_color); col("glow_color", row.glow_color); col("highlight_color", row.highlight_color); col("shade_color", row.shade_color);
             if (r.HasMember("color2")) { col("color2", row.color2); row.gradient = true; }
             return row;
         };
+        if (v.HasMember("prefer_texture") && v["prefer_texture"].IsBool()) spec.prefer_texture = v["prefer_texture"].GetBool();
         if (v.HasMember("rows") && v["rows"].IsArray()) {
             LabelRow defaults = row_of(v);
             for (auto& r : v["rows"].GetArray()) {
@@ -868,6 +881,10 @@ bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const Draw
     if (sp == label_specs.end() || it == textures.end() || !global_data.config) return false;
     TextureObject* tex_obj = it->second.get();
     const std::string& lang = global_data.config->general.language;
+    if (sp->second.prefer_texture) {
+        auto own = tex_id_map.find(base + "_" + lang);
+        if (own != tex_id_map.end() && textures.count((uint32_t)own->second)) return false;   // the skin's own art for this language
+    }
 
     const float width  = static_cast<float>(tex_obj->width);
     const float height = static_cast<float>(tex_obj->height);
@@ -886,7 +903,7 @@ bool TextureWrapper::draw_label(const std::string& base, uint32_t id, const Draw
     const float fade = (params.fade != 1.1f) ? params.fade : 1.0f;
 
     for (size_t i = 0; i < sp->second.rows.size(); i++) {
-        const LabelRow& row = sp->second.rows[i];
+        const LabelRow row = sp->second.rows[i].for_lang(lang);
         if (row.font_size <= 0) continue;
         const std::string key = sp->first + "|" + lang + "|" + std::to_string(i);
         auto cached = label_cache.find(key);
@@ -939,15 +956,19 @@ void TextureWrapper::dump_labels(const fs::path& out_dir) {
         for (auto& row : spec.rows) for (auto& [l, _] : row.text) langs.insert(l);
         for (const std::string& lang : langs) {
             ray::Image canvas = ray::GenImageColor(W, Hh, ray::BLANK);
-            for (const LabelRow& row : spec.rows) {
+            for (const LabelRow& row0 : spec.rows) {
+                const LabelRow row = row0.for_lang(lang);
                 const std::string s = label_text(row, lang);
                 if (s.empty() || row.font_size <= 0) continue;
                 auto layers = build_label_layers(row, s, (float)W);
                 const OutlinedText* body = label_body(layers, row);
                 if (!body) continue;
                 float x, y; label_row_origin(row, *body, 0, 0, (float)W, (float)Hh, x, y);
+                spdlog::info("dump_labels {} [{}]: body {}x{} at ({:.1f},{:.1f}) canvas {}x{} row.x {} scale_x {}",
+                             spec_key, lang, body->width, body->height, x, y, W, Hh, row.x, row.scale_x);
                 for (auto& l : layers) {
                     if (!l.text->is_ready()) continue;
+                    spdlog::info("    layer {}x{} ox {} oy {}", l.text->width, l.text->height, l.ox, l.oy);
                     ray::Image im = ray::LoadImageFromTexture(l.text->texture_ref());
                     ray::ImageDrawImagePro(&canvas, im, {0, 0, (float)im.width, (float)im.height},
                                            {roundf(x + (body->width - l.text->width) * 0.5f + l.ox), roundf(y + (body->height - l.text->height) * 0.5f + l.oy),

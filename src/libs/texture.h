@@ -93,12 +93,27 @@ struct LabelRow {
     std::array<int, 4> shade_color{150, 0, 0, 255};
     float shade_dx = 1.5f, shade_dy = 1.5f;
     float scale_x = 1.0f;
-    float sharpen = 2.0f;             // edge alpha contrast after resampling (1 = off)
+    float sharpen = 2.0f;
+    // per-language overrides: "x_ja", "font_size_en", "scale_x_zh", "align_ja" ... (the baked art is
+    // not laid out the same way in every language)
+    std::map<std::string, std::map<std::string, std::string>> overrides;
+    LabelRow for_lang(const std::string& lang) const {
+        LabelRow r = *this;
+        auto it = overrides.find(lang);
+        if (it == overrides.end()) return r;
+        for (auto& [k, v] : it->second) {
+            if (k == "x") r.x = std::stof(v); else if (k == "y") r.y = std::stof(v);
+            else if (k == "scale_x") r.scale_x = std::stof(v); else if (k == "font_size") r.font_size = std::stoi(v);
+            else if (k == "align") r.align = v; else if (k == "outline") r.outline = std::stof(v);
+        }
+        return r;
+    }             // edge alpha contrast after resampling (1 = off)
     bool  fit = true;                 // squeeze further when the text would overflow the texture's width             // horizontal squeeze/stretch of the drawn text (the baked art is often condensed)
 };
 struct LabelSpec {
     std::string base;                 // "combo/combo"
     std::vector<LabelRow> rows;
+    bool prefer_texture = false;      // when the skin does ship <base>_<language>.png, draw that instead
 };
 class OutlinedText;
 struct LabelLayer { std::shared_ptr<OutlinedText> text; float alpha = 1.0f; float ox = 0.0f, oy = 0.0f; };
