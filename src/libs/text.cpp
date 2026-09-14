@@ -799,8 +799,12 @@ void OutlinedText::post_blur(float radius) {
 }
 
 void OutlinedText::tint_vertical_gradient(ray::Color top, ray::Color bottom) {
+    tint_vertical_stops({{0.0f, top}, {1.0f, bottom}});
+}
+
+void OutlinedText::tint_vertical_stops(const std::vector<std::pair<float, ray::Color>>& stops) {
     finish();
-    if (!texture.has_value()) return;
+    if (!texture.has_value() || stops.empty()) return;
     ray::Image img = ray::LoadImageFromTexture(*texture);
     ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
     unsigned char* px = (unsigned char*)img.data;
@@ -812,15 +816,18 @@ void OutlinedText::tint_vertical_gradient(ray::Color top, ray::Color bottom) {
     for (int y = 0; y < img.height; y++) {
         float t = (y1 > y0) ? (float)(y - y0) / (float)(y1 - y0) : 0.0f;
         t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const float r = top.r + (bottom.r - top.r) * t, g = top.g + (bottom.g - top.g) * t, b = top.b + (bottom.b - top.b) * t;
+        ray::Color a = stops.front().second, b = stops.back().second; float ta = 0.0f, tb = 1.0f;
+        for (size_t i = 0; i + 1 < stops.size(); i++)
+            if (t >= stops[i].first && t <= stops[i + 1].first) { a = stops[i].second; b = stops[i + 1].second; ta = stops[i].first; tb = stops[i + 1].first; break; }
+        const float u = (tb > ta) ? (t - ta) / (tb - ta) : 0.0f;
+        const float r = a.r + (b.r - a.r) * u, g = a.g + (b.g - a.g) * u, bl = a.b + (b.b - a.b) * u;
         for (int x = 0; x < img.width; x++) {
             unsigned char* q = px + (y * img.width + x) * 4;
             if (q[3] == 0) continue;
-            q[0] = (unsigned char)(q[0] * r / 255.0f); q[1] = (unsigned char)(q[1] * g / 255.0f); q[2] = (unsigned char)(q[2] * b / 255.0f);
+            q[0] = (unsigned char)(q[0] * r / 255.0f); q[1] = (unsigned char)(q[1] * g / 255.0f); q[2] = (unsigned char)(q[2] * bl / 255.0f);
         }
     }
     ray::UnloadTexture(*texture);
     texture = ray::LoadTextureFromImage(img);
-    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
     ray::UnloadImage(img);
 }

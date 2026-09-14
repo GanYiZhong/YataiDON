@@ -94,6 +94,10 @@ struct LabelRow {
     float shade = 0.0f;
     std::array<int, 4> shade_color{150, 0, 0, 255};
     float shade_dx = 1.5f, shade_dy = 1.5f;
+    std::vector<std::pair<float, std::array<int, 4>>> stops;   // "gradient_stops": [[0,[r,g,b,a]],[0.5,[...]],[1,[...]]] - overrides color/color2
+    float extrude = 0.0f;             // 3D extrusion: this many 1 px copies of the outlined body stepped by extrude_dx/dy, drawn under it
+    std::array<int, 4> extrude_color{0, 0, 0, 255};
+    float extrude_dx = 1.0f, extrude_dy = 1.0f;
     float scale_x = 1.0f;
     bool  vertical = false;           // tate-gaki (the diff_select pills)
     float v_advance = 1.0f;           // vertical pitch between glyphs, in glyph heights

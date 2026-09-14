@@ -93,6 +93,7 @@ public:
     // Recolour the rendered text top-to-bottom from `top` to `bottom` over its ink rows
     // (meant for a fill-only text: outline 0, white). Forces the build to finish.
     void tint_vertical_gradient(ray::Color top, ray::Color bottom);
+    void tint_vertical_stops(const std::vector<std::pair<float, ray::Color>>& stops);   // multi-stop vertical gradient (gloss bands)
     // Resample the rendered text to `sx` of its width (bicubic) so it can be drawn 1:1.
     void post_squeeze(float sx);
     // Soften the rendered text: box-blur the alpha by `radius` px (canvas grows to fit).

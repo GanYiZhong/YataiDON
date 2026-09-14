@@ -3,6 +3,8 @@
 #include "text.h"
 #include "filesystem.h"
 #include <set>
+#include <cmath>
+#include <algorithm>
 #include <spdlog/spdlog.h>
 #include <chrono>
 #include <thread>
@@ -112,6 +114,17 @@ void TextureWrapper::init(const fs::path& skin_path) {
             }
             col("color", row.color); col("outline_color", row.outline_color); col("outline2_color", row.outline2_color); col("glow_color", row.glow_color); col("highlight_color", row.highlight_color); col("shade_color", row.shade_color);
             if (r.HasMember("color2")) { col("color2", row.color2); row.gradient = true; }
+            if (r.HasMember("gradient_stops") && r["gradient_stops"].IsArray()) {
+                for (auto& st : r["gradient_stops"].GetArray()) {
+                    if (!st.IsArray() || st.Size() < 2 || !st[1].IsArray()) continue;
+                    std::array<int, 4> cc{255, 255, 255, 255};
+                    for (SizeType i = 0; i < st[1].Size() && i < 4; i++) cc[i] = (int)json_number(st[1][i]);
+                    row.stops.push_back({(float)json_number(st[0]), cc});
+                }
+                if (!row.stops.empty()) row.gradient = true;
+            }
+            row.extrude = (float)json_member(r, "extrude", 0.0); col("extrude_color", row.extrude_color);
+            row.extrude_dx = (float)json_member(r, "extrude_dx", 1.0); row.extrude_dy = (float)json_member(r, "extrude_dy", 1.0);
             return row;
         };
         if (v.HasMember("prefer_texture") && v["prefer_texture"].IsBool()) spec.prefer_texture = v["prefer_texture"].GetBool();
@@ -136,6 +149,8 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (!r.HasMember("weight"))  row.weight  = defaults.weight;
             if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; row.glow_dx = defaults.glow_dx; row.glow_dy = defaults.glow_dy; }
             if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
+            if (!r.HasMember("gradient_stops")) row.stops = defaults.stops;
+            if (!r.HasMember("extrude")) { row.extrude = defaults.extrude; row.extrude_color = defaults.extrude_color; row.extrude_dx = defaults.extrude_dx; row.extrude_dy = defaults.extrude_dy; }
         };
         auto rows_of = [&](const Value& node, const LabelRow& defaults) {
             std::vector<LabelRow> out;
@@ -869,19 +884,30 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
     if (row.outline2 > 0.0f) layers.push_back({mk(C(row.outline2_color), C(row.outline2_color), row.outline + row.outline2), 1.0f});
     if (row.shade > 0.0f)     layers.push_back({mk(C(row.shade_color), C(row.shade_color), row.outline + row.shade), 1.0f, row.shade_dx, row.shade_dy});
     if (row.highlight > 0.0f) layers.push_back({mk(C(row.highlight_color), C(row.highlight_color), row.outline + row.highlight), 1.0f, row.highlight_dx, row.highlight_dy});
+    for (int i = (int)row.extrude; i >= 1; i--)   // farthest copy first, so nearer ones cover it
+        layers.push_back({mk(C(row.extrude_color), C(row.extrude_color), row.outline), 1.0f, row.extrude_dx * i, row.extrude_dy * i});
     const bool own_fill = row.gradient || row.weight != 0.0f;
     auto body = mk(own_fill ? oc : col, oc, row.outline);
     layers.push_back({body, 1.0f});
     if (own_fill) {
         auto f = mk(ray::WHITE, ray::WHITE, 0.0f);
-        if (row.gradient) f->tint_vertical_gradient(col, C(row.color2));
+        if (!row.stops.empty()) {
+            std::vector<std::pair<float, ray::Color>> st;
+            for (auto& [p, cc] : row.stops) st.push_back({p, C(cc)});
+            f->tint_vertical_stops(st);
+        } else if (row.gradient) f->tint_vertical_gradient(col, C(row.color2));
         else              f->tint_vertical_gradient(col, col);
         if (row.weight != 0.0f) f->post_weight(row.weight);
         layers.push_back({f, 1.0f});
     }
     float sx = row.scale_x;
     if (row.max_width > 0.0f && box_w > row.max_width) box_w = row.max_width + 4.0f;
-    if (row.fit && box_w > 8.0f && body->width * sx > box_w - 4.0f) sx = (box_w - 4.0f) / body->width;
+    if (row.fit && box_w > 8.0f && body->width * sx > box_w - 4.0f && row.font_size > 8) {
+        // too wide for its plate: render again at a smaller size (uniform), never flatten the glyphs
+        LabelRow smaller = row;
+        smaller.font_size = std::max(8, (int)std::floor(row.font_size * (box_w - 4.0f) / (body->width * sx)));
+        if (smaller.font_size < row.font_size) return build_label_layers(smaller, s, box_w);
+    }
     if (sx != 1.0f) for (auto& l : layers) l.text->post_squeeze(sx);
     if (row.sharpen > 1.0f)
         for (size_t i = (row.glow > 0.0f ? 1 : 0); i < layers.size(); i++) layers[i].text->post_sharpen(row.sharpen);   // the glow stays soft
