@@ -78,6 +78,7 @@ struct LabelRow {
     bool gradient = false;            // color (top) -> color2 (bottom)
     std::array<int, 4> color2{255, 255, 255, 255};
     std::string align = "center";     // center | left | right (x is measured from that edge)
+    std::string valign = "center";    // center | top | bottom (y is measured from that edge)
     std::string font  = "main";       // main (the skin's font.ttf) | label (Graphics/font_label*.ttf when the skin has one)
     float outline2 = 0.0f;            // an outer rim drawn behind the text (e.g. black outside a red outline), 0 = none
     std::array<int, 4> outline2_color{0, 0, 0, 255};
@@ -94,6 +95,7 @@ struct LabelRow {
     std::array<int, 4> shade_color{150, 0, 0, 255};
     float shade_dx = 1.5f, shade_dy = 1.5f;
     float scale_x = 1.0f;
+    bool  vertical = false;           // tate-gaki (the diff_select pills)
     float sharpen = 2.0f;
     float weight = 0.0f;              // stroke weight of the fill, in px (thin < 0 < thick); drawn as its own layer
     // per-language overrides: "x_ja", "font_size_en", "scale_x_zh", "align_ja" ... (the baked art is
@@ -117,6 +119,8 @@ struct LabelSpec {
     std::string base;                 // "combo/combo"
     std::vector<LabelRow> rows;
     bool prefer_texture = false;      // when the skin does ship <base>_<language>.png, draw that instead
+    std::string texture_lang;         // a plain-named texture whose baked text is this language keeps the art for it
+    std::string base_texture;         // "<subset>/<name>": text-free art drawn under the rows (buttons, pills)
 };
 class OutlinedText;
 struct LabelLayer { std::shared_ptr<OutlinedText> text; float alpha = 1.0f; float ox = 0.0f, oy = 0.0f; };
