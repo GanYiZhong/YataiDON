@@ -84,6 +84,7 @@ struct LabelRow {
     float glow = 0.0f;                // soft dark halo radius outside the rim (the cabinet's title plates), 0 = none
     float glow_alpha = 0.6f;
     std::array<int, 4> glow_color{0, 0, 0, 255};
+    float glow_dx = 0.0f, glow_dy = 0.0f;   // shift of the glow: a drop shadow when non-zero
     // bevel: a lighter copy of the outline shifted up-left and a darker one shifted down-right,
     // drawn under the body so they show along the outline's lit / shaded edges
     float highlight = 0.0f;           // extra thickness of the light edge, 0 = none
@@ -94,6 +95,7 @@ struct LabelRow {
     float shade_dx = 1.5f, shade_dy = 1.5f;
     float scale_x = 1.0f;
     float sharpen = 2.0f;
+    float weight = 0.0f;              // stroke weight of the fill, in px (thin < 0 < thick); drawn as its own layer
     // per-language overrides: "x_ja", "font_size_en", "scale_x_zh", "align_ja" ... (the baked art is
     // not laid out the same way in every language)
     std::map<std::string, std::map<std::string, std::string>> overrides;
@@ -105,6 +107,7 @@ struct LabelRow {
             if (k == "x") r.x = std::stof(v); else if (k == "y") r.y = std::stof(v);
             else if (k == "scale_x") r.scale_x = std::stof(v); else if (k == "font_size") r.font_size = std::stoi(v);
             else if (k == "align") r.align = v; else if (k == "outline") r.outline = std::stof(v);
+            else if (k == "weight") r.weight = std::stof(v);
         }
         return r;
     }             // edge alpha contrast after resampling (1 = off)

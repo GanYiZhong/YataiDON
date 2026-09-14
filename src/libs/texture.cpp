@@ -87,6 +87,8 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (r.HasMember("shade_dx")) row.shade_dx = r["shade_dx"].GetFloat();
             if (r.HasMember("shade_dy")) row.shade_dy = r["shade_dy"].GetFloat();
             if (r.HasMember("glow_alpha")) row.glow_alpha = r["glow_alpha"].GetFloat();
+            if (r.HasMember("glow_dx")) row.glow_dx = r["glow_dx"].GetFloat();
+            if (r.HasMember("glow_dy")) row.glow_dy = r["glow_dy"].GetFloat();
             auto col = [&](const char* key, std::array<int, 4>& dst) {
                 if (r.HasMember(key) && r[key].IsArray() && r[key].Size() >= 3) {
                     for (int i = 0; i < 4; i++) dst[i] = i < (int)r[key].Size() ? r[key][i].GetInt() : 255;
@@ -125,7 +127,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
                 if (!r.HasMember("outline2")) { row.outline2 = defaults.outline2; row.outline2_color = defaults.outline2_color; }
                 if (!r.HasMember("sharpen")) row.sharpen = defaults.sharpen;
                 if (!r.HasMember("weight"))  row.weight  = defaults.weight;
-                if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; }
+                if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; row.glow_dx = defaults.glow_dx; row.glow_dy = defaults.glow_dy; }
                 if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
                 spec.rows.push_back(row);
             }
@@ -840,7 +842,7 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
     if (row.glow > 0.0f) {
         auto g = mk(C(row.glow_color), C(row.glow_color), row.outline + row.outline2 + row.glow * 0.5f);
         g->post_blur(row.glow);
-        layers.push_back({g, row.glow_alpha});
+        layers.push_back({g, row.glow_alpha, row.glow_dx, row.glow_dy});
     }
     if (row.outline2 > 0.0f) layers.push_back({mk(C(row.outline2_color), C(row.outline2_color), row.outline + row.outline2), 1.0f});
     if (row.shade > 0.0f)     layers.push_back({mk(C(row.shade_color), C(row.shade_color), row.outline + row.shade), 1.0f, row.shade_dx, row.shade_dy});

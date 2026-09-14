@@ -743,6 +743,26 @@ void OutlinedText::post_sharpen(float k) {
     ray::UnloadImage(img);
 }
 
+void OutlinedText::post_weight(float px) {
+    finish();
+    if (!texture.has_value() || px == 0.0f) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    unsigned char* p = (unsigned char*)img.data;
+    // a 1 px anti-aliased edge spans ~255 alpha levels: shift the midpoint by px*255 and re-steepen
+    const float shift = px * 255.0f;
+    for (int i = 0; i < img.width * img.height; i++) {
+        float a = p[i * 4 + 3];
+        if (a == 0) continue;               // never paint the empty canvas
+        a = a + shift;
+        p[i * 4 + 3] = (unsigned char)(a < 0 ? 0 : a > 255 ? 255 : a);
+    }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::SetTextureFilter(*texture, ray::TEXTURE_FILTER_BILINEAR);
+    ray::UnloadImage(img);
+}
+
 void OutlinedText::post_blur(float radius) {
     finish();
     const int r = (int)std::ceil(radius);
