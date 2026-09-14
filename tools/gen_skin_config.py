@@ -20,7 +20,9 @@ def generate(json_path: str, output_path: str) -> None:
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
-    keys = list(data.keys())
+    # label:<subset>/<name> rows are read by the texture layer straight from the JSON;
+    # they are not identifiers and get no enum member
+    keys = [k for k in data.keys() if not k.startswith("label:")]
     option_keys = list(data.get("screen", {}).get("options", {}).keys())
 
     lines = [
