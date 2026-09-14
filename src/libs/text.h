@@ -99,6 +99,8 @@ public:
     void post_blur(float radius);
     // Steepen the alpha ramp at the edges (k > 1 = crisper, like the cabinet's baked art).
     void post_sharpen(float k);
+    // Thicken (>0) or thin (<0) the strokes by shifting the alpha threshold: `px` in pixels, |px| <= ~0.8.
+    void post_weight(float px);
 
     void finish();
 
