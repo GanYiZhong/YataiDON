@@ -80,6 +80,7 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (r.HasMember("fit") && r["fit"].IsBool()) row.fit = r["fit"].GetBool();
             if (r.HasMember("vertical") && r["vertical"].IsBool()) row.vertical = r["vertical"].GetBool();
             if (r.HasMember("v_advance")) row.v_advance = r["v_advance"].GetFloat();
+            if (r.HasMember("max_width")) row.max_width = r["max_width"].GetFloat() * scale;
             if (r.HasMember("glow")) row.glow = r["glow"].GetFloat();
             if (r.HasMember("sharpen")) row.sharpen = r["sharpen"].GetFloat();
             if (r.HasMember("weight")) row.weight = r["weight"].GetFloat();
@@ -864,6 +865,7 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
         layers.push_back({f, 1.0f});
     }
     float sx = row.scale_x;
+    if (row.max_width > 0.0f && box_w > row.max_width) box_w = row.max_width + 4.0f;
     if (row.fit && box_w > 8.0f && body->width * sx > box_w - 4.0f) sx = (box_w - 4.0f) / body->width;
     if (sx != 1.0f) for (auto& l : layers) l.text->post_squeeze(sx);
     if (row.sharpen > 1.0f)

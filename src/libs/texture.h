@@ -97,6 +97,7 @@ struct LabelRow {
     float scale_x = 1.0f;
     bool  vertical = false;           // tate-gaki (the diff_select pills)
     float v_advance = 1.0f;           // vertical pitch between glyphs, in glyph heights
+    float max_width = 0.0f;           // squeeze the row into this many px (the plate's interior), 0 = the texture width
     float sharpen = 2.0f;
     float weight = 0.0f;              // stroke weight of the fill, in px (thin < 0 < thick); drawn as its own layer
     // per-language overrides: "x_ja", "font_size_en", "scale_x_zh", "align_ja" ... (the baked art is
