@@ -603,7 +603,7 @@ void TextureWrapper::clear_screen(const ray::Color& color) {
     ray::ClearBackground(color);
 }
 // Language-suffixed textures (`combo/combo_<lang>`): a skin rarely ships every language, so
-// a name ending in the current language falls back to the `_en` and then the `_ja` variant
+// a name ending in the current language falls back to the `_ja` and then the `_en` variant
 // instead of the warning placeholder. Names without the suffix are returned unchanged.
 std::vector<std::string> TextureWrapper::language_variants(const std::string& name) const {
     std::vector<std::string> out{name};
@@ -612,7 +612,7 @@ std::vector<std::string> TextureWrapper::language_variants(const std::string& na
     const std::string suffix = "_" + lang;
     if (name.size() <= suffix.size() || name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) return out;
     const std::string base = name.substr(0, name.size() - suffix.size());
-    for (const char* fb : {"en", "ja"})
+    for (const char* fb : {"ja", "en"})   // the cabinet's own order: untranslated rows draw from the Japanese set
         if (lang != fb) out.push_back(base + "_" + fb);
     return out;
 }
