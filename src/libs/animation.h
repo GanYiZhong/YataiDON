@@ -6,12 +6,12 @@
 #include <unordered_map>
 #include <set>
 
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
 #include "../platform/ios.h"
 #endif
 
 inline double get_current_ms() {
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
     return ios_game_time_ms();
 #else
     using namespace std::chrono;

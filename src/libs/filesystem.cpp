@@ -9,7 +9,7 @@
 #include <spdlog/spdlog.h>
 #include <unistd.h>
 
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
     #include "../platform/ios.h"
 #endif
 
@@ -21,7 +21,7 @@
 #endif
 
 void set_working_directory_to_executable() {
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
     ios_prepare_filesystem();
 #elif defined(__ANDROID__)
     std::filesystem::path exe_dir("/sdcard/YataiDON");
