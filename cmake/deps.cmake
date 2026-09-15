@@ -1,13 +1,12 @@
 # Sqlite3
-if(NOT WIN32 AND NOT ANDROID AND NOT EMSCRIPTEN)
-#if(NOT ANDROID AND NOT EMSCRIPTEN)
+if(NOT WIN32 AND NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
     pkg_check_modules(SQLITE3 QUIET sqlite3)
   endif()
 endif()
 
-if(ANDROID OR EMSCRIPTEN)
+if(ANDROID OR IOS OR EMSCRIPTEN)
   set(SDL_SHARED OFF CACHE BOOL "" FORCE)
   set(SDL_STATIC ON CACHE BOOL "" FORCE)
   set(SDL_TEST   OFF CACHE BOOL "" FORCE)
@@ -18,6 +17,9 @@ if(ANDROID OR EMSCRIPTEN)
     GIT_SHALLOW    TRUE
   )
   FetchContent_MakeAvailable(SDL3)
+  if(IOS)
+    include(${CMAKE_CURRENT_LIST_DIR}/ios_audio.cmake)
+  endif()
 else()
   find_package(SDL3 QUIET CONFIG REQUIRED)
   if(SDL3_FOUND)
@@ -64,7 +66,7 @@ set(SUPPORT_MODULE_RAUDIO OFF CACHE BOOL "" FORCE)
 set(SUPPORT_CUSTOM_FRAME_CONTROL ON CACHE BOOL "" FORCE)
 set(SUPPORT_FILEFORMAT_JPG ON CACHE BOOL "" FORCE)
 set(SUPPORT_SCREEN_CAPTURE OFF CACHE BOOL "" FORCE)
-if(ANDROID OR EMSCRIPTEN)
+if(ANDROID OR IOS OR EMSCRIPTEN)
   set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
 endif()
 message(STATUS "Fetching raylib...")
@@ -78,6 +80,10 @@ FetchContent_Declare(
 )
 FetchContent_GetProperties(raylib)
 FetchContent_MakeAvailable(raylib)
+if(IOS)
+  target_include_directories(raylib PUBLIC "${CMAKE_SOURCE_DIR}/ios/compat")
+  target_link_libraries(raylib PUBLIC "-framework OpenGLES")
+endif()
 
 # RapidJSON
 set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
@@ -122,6 +128,9 @@ FetchContent_Declare(
     PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=CMakeLists.txt -DOLD_VERSION=3.30 -P ${CMAKE_CURRENT_LIST_DIR}/patch_min_cmake_version.cmake
 )
 FetchContent_MakeAvailable(lua)
+if(IOS)
+  target_compile_definitions(liblua PRIVATE LUA_USE_IOS)
+endif()
 
 # Sol2
 message(STATUS "Fetching sol2...")
@@ -135,7 +144,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sol2)
 
-if(NOT ANDROID AND NOT EMSCRIPTEN)
+if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   set(ZLIB_USE_STATIC_LIBS ON)
   if(WIN32)
     set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE OFF CACHE BOOL "" FORCE)
@@ -153,7 +162,7 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
 endif()
 
 # libsndfile
-if(ANDROID OR EMSCRIPTEN OR WIN32)
+if(ANDROID OR IOS OR EMSCRIPTEN OR WIN32)
   message(STATUS "Fetching libogg + libvorbis for ${CMAKE_SYSTEM_NAME} (needed by libsndfile)")
   FetchContent_Declare(
       ogg
@@ -260,7 +269,7 @@ else()
 endif()
 
 # libsamplerate
-if(ANDROID OR EMSCRIPTEN)
+if(ANDROID OR IOS OR EMSCRIPTEN)
   message(STATUS "Fetching libsamplerate from source (${CMAKE_SYSTEM_NAME})")
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   set(LIBSAMPLERATE_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -335,6 +344,22 @@ elseif(EMSCRIPTEN)
     set_target_properties(FFmpeg::${_lib} PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/src/libs")
   endforeach()
+elseif(IOS)
+  set(IOS_FFMPEG_PREFIX "" CACHE PATH "iOS FFmpeg prefix from tools/build_ffmpeg_ios.sh")
+  foreach(_lib avformat avcodec avutil swscale swresample)
+    set(_libfile "${IOS_FFMPEG_PREFIX}/lib/lib${_lib}.a")
+    if(NOT EXISTS "${_libfile}")
+      message(FATAL_ERROR "Missing ${_libfile}. Run tools/build_ffmpeg_ios.sh for the target SDK and set IOS_FFMPEG_PREFIX.")
+    endif()
+    add_library(FFmpeg::${_lib} STATIC IMPORTED)
+    set_target_properties(FFmpeg::${_lib} PROPERTIES
+      IMPORTED_LOCATION "${_libfile}"
+      INTERFACE_INCLUDE_DIRECTORIES "${IOS_FFMPEG_PREFIX}/include")
+  endforeach()
+  set_property(TARGET FFmpeg::avformat APPEND PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::avcodec FFmpeg::avutil z bz2 iconv)
+  set_property(TARGET FFmpeg::avcodec APPEND PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::swresample FFmpeg::avutil)
+  set_property(TARGET FFmpeg::swresample APPEND PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::avutil)
+  set_property(TARGET FFmpeg::swscale APPEND PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::avutil)
 elseif(ANDROID)
   # FFmpeg must be cross-compiled for Android separately.
   # Set ANDROID_FFMPEG_PREFIX to a directory containing:
@@ -406,6 +431,27 @@ if(ANDROID AND NOT EMSCRIPTEN)
 endif()
 
 if(NETWORK_ENABLED)
+  if(IOS)
+    # Build CPR's pinned curl for the selected iOS SDK. Secure Transport uses
+    # Apple's system trust store; do not discover host OpenSSL or CA file paths.
+    set(CPR_USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
+    set(CPR_ENABLE_SSL ON CACHE BOOL "" FORCE)
+    set(CPR_FORCE_DARWINSSL_BACKEND ON CACHE BOOL "" FORCE)
+    set(CPR_FORCE_OPENSSL_BACKEND OFF CACHE BOOL "" FORCE)
+    set(CPR_FORCE_WINSSL_BACKEND OFF CACHE BOOL "" FORCE)
+    set(CPR_FORCE_MBEDTLS_BACKEND OFF CACHE BOOL "" FORCE)
+    set(CPR_SKIP_CA_BUNDLE_SEARCH ON CACHE BOOL "" FORCE)
+    set(CURL_CA_BUNDLE "none" CACHE STRING "" FORCE)
+    set(CURL_CA_PATH "none" CACHE STRING "" FORCE)
+    set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+    set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
+    set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
+    set(CURL_ZLIB OFF CACHE BOOL "" FORCE)
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  endif()
   if(WIN32)
     set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
     set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
@@ -434,8 +480,8 @@ endif()
 # RtAudio
 if(EMSCRIPTEN)
   add_library(rtaudio INTERFACE IMPORTED)
-elseif(ANDROID)
-  # Android uses AAudio directly -- RtAudio not needed
+elseif(ANDROID OR IOS)
+  # Mobile platforms use SDL audio; desktop RtAudio is not needed.
   add_library(rtaudio INTERFACE IMPORTED)
 else()
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)

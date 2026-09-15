@@ -458,10 +458,113 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
+  build-ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-15
+    env:
+      CONFIGURATION: Release
+      IOS_DEPLOYMENT_TARGET: "16.3"
+      IOS_BUNDLE_IDENTIFIER: com.yataidon.app
+      # build_ios.sh disables signing when no development team is supplied.
+      IOS_DEVELOPMENT_TEAM: ""
+
+    steps:
+      - name: Configure Git credentials
+        env:
+          GITEA_USER: ${{ secrets.GITEA_USER }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          git config --global credential.helper ""
+          git config --global url."https://${GITEA_USER}:${GITEA_TOKEN}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Get submodule hash
+        id: submod
+        run: |
+          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache submodule
+        id: cache-submod
+        uses: actions/cache@v4
+        with:
+          path: |
+            Skins/PyTaikoGreen
+            Skins/YataiDONRed
+            Skins/YataiDONNijiiro
+          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
+
+      - name: Fetch submodule
+        if: steps.cache-submod.outputs.cache-hit != 'true'
+        run: git submodule update --init --recursive
+
+      - name: Install build tools
+        run: |
+          if ! command -v cmake >/dev/null; then
+            brew install cmake
+          fi
+          cmake --version
+          python3 --version
+
+      - name: Inspect iOS toolchain
+        id: toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          echo "xcode=$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache FFmpeg for iOS arm64
+        uses: actions/cache@v4
+        with:
+          path: .ios-ffmpeg/iphoneos-arm64
+          key: ios-ffmpeg-${{ runner.os }}-${{ runner.arch }}-iphoneos-arm64-${{ env.IOS_DEPLOYMENT_TARGET }}-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('tools/build_ffmpeg_ios.sh') }}
+
+      - name: Build unsigned iOS app
+        env:
+          NETWORK_URL: ${{ secrets.NETWORK_URL }}
+          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
+        run: |
+          ./build_ios.sh device \
+            -DNETWORK_URL="$NETWORK_URL" \
+            -DNETWORK_AUTH_KEY="$NETWORK_AUTH_KEY"
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="$GITHUB_WORKSPACE/build-ios-device/bin/Release/YataiDON.app"
+          test -f "$APP_PATH/Info.plist"
+          test -x "$APP_PATH/YataiDON"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP_PATH/Info.plist")" = "iPhoneOS"
+          xcrun lipo -verify_arch arm64 "$APP_PATH/YataiDON"
+
+          IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/yataidon-ipa.XXXXXX")"
+          trap 'rm -rf "$IPA_STAGE"' EXIT
+          mkdir -p "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release"
+          ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/YataiDON.app"
+          ditto -c -k --norsrc --keepParent "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release/YataiDON-iOS-unsigned.ipa"
+          (
+            cd "$GITHUB_WORKSPACE/release"
+            shasum -a 256 YataiDON-iOS-unsigned.ipa > checksums-ios.sha256
+          )
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: YataiDON-iOS
+          path: |
+            release/YataiDON-iOS-unsigned.ipa
+            release/checksums-ios.sha256
+          compression-level: 0
+          if-no-files-found: error
+
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows, build-macos, build-android]
+    needs: [build-linux, build-windows, build-macos, build-android, build-ios]
     if: always()
 
     steps:
@@ -471,11 +574,13 @@ jobs:
           echo "Windows build: ${{ needs.build-windows.result }}"
           echo "macOS build: ${{ needs.build-macos.result }}"
           echo "Android build: ${{ needs.build-android.result }}"
+          echo "iOS build: ${{ needs.build-ios.result }}"
 
           if [[ "${{ needs.build-linux.result }}" != "success" ]] || \
              [[ "${{ needs.build-windows.result }}" != "success" ]] || \
              [[ "${{ needs.build-macos.result }}" != "success" ]] || \
-             [[ "${{ needs.build-android.result }}" != "success" ]]; then
+             [[ "${{ needs.build-android.result }}" != "success" ]] || \
+             [[ "${{ needs.build-ios.result }}" != "success" ]]; then
             echo "One or more builds failed!"
             exit 1
           fi
@@ -483,7 +588,7 @@ jobs:
           echo "All builds completed successfully!"
 
   release:
-    needs: [build-linux, build-windows, build-macos, build-android]
+    needs: [build-linux, build-windows, build-macos, build-android, build-ios]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     steps:
@@ -511,6 +616,12 @@ jobs:
           name: YataiDON-Android
           path: android-out/
 
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: YataiDON-iOS
+          path: ios-out/
+
       - name: Package release assets
         run: |
           # Full zips for manual download
@@ -518,11 +629,13 @@ jobs:
           (cd windows && zip -r ../YataiDON-Windows.zip .)
           (cd macos   && zip -r ../YataiDON-macOS.zip .)
           cp android-out/app-release.apk YataiDON-Android.apk
+          cp ios-out/YataiDON-iOS-unsigned.ipa YataiDON-iOS-unsigned.ipa
 
           # Metadata files
           cp linux/checksums-linux.sha256     ./checksums-linux.sha256
           cp windows/checksums-windows.sha256 ./checksums-windows.sha256
           cp macos/checksums-macos.sha256     ./checksums-macos.sha256
+          cp ios-out/checksums-ios.sha256     ./checksums-ios.sha256
 
           # Linux update package: binary + updater + shader + lib
           UPDATE_LINUX="YataiDON update.sh shader/"
@@ -549,12 +662,14 @@ jobs:
             YataiDON-Windows.zip
             YataiDON-macOS.zip
             YataiDON-Android.apk
+            YataiDON-iOS-unsigned.ipa
             update-linux.tar.gz
             update-windows.tar.gz
             update-macos.tar.gz
             checksums-linux.sha256
             checksums-windows.sha256
             checksums-macos.sha256
+            checksums-ios.sha256
           name: "YataiDON [Latest Release]"
           tag_name: "latest"
           make_latest: true
