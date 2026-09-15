@@ -10,7 +10,7 @@ A TJA player and Taiko simulator written in C++ using the [raylib](https://www.r
 
 ## Features
 
-- Cross-platform compatibility (Windows, Linux, macOS, Android, iOS source port)
+- Cross-platform compatibility (Windows, Linux, macOS, Android, iOS)
 - Controller Support
 - Low latency audio via ASIO or WDM-KS
 - Recursive and Dynamic Song Select Menu
@@ -69,7 +69,7 @@ Download the latest release for your operating system from the [releases page](h
 - [Windows (MSYS2/MinGW64)](<https://github.com/Yonokid/YataiDON/wiki/Windows-(MSYS2-MingW64)>)
 - [Windows (MSVC)](<https://github.com/Yonokid/YataiDON/wiki/Windows-(MSVC)>) *(page pending)*
 - [Android](https://github.com/Yonokid/YataiDON/wiki/Android)
-- [iOS (Xcode, iPhone/iPad and Simulator)](ios/README.md)
+- [iOS](ios/README.md)
 
 ## Controls
 
