@@ -1,4 +1,5 @@
 #include "text.h"
+#include "han_fold_table.h"
 #include <chrono>
 #include <vector>
 #include <cmath>
@@ -62,9 +63,39 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
     ray::GlyphInfo* g = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
                                           cps.data(), (int)cps.size(), ray::FONT_DEFAULT, &count);
     if (!g) return;
-    for (int i = 0; i < count; i++) entry.cache.push_back(g[i]);   // take ownership of the glyph images
+    std::unordered_set<int> got;
+    for (int i = 0; i < count; i++) { entry.cache.push_back(g[i]); got.insert(g[i].value); }   // take ownership of the glyph images
     RL_FREE(g);                                                    // array only; images now live in `cache`
     entry.atlas_dirty = true;
+
+    // LoadFontData silently drops codepoints the font has no glyph for, and raylib then
+    // draws '?' in their place. Simplified / traditional Chinese text hits this constantly
+    // on a Japanese font (戏, 开, 乐 ...), so a missing character borrows the glyph of its
+    // shinjitai form (戲→戯, 开→開) and is stored under its own codepoint.
+    std::vector<int> missing, alts;
+    for (int cp : cps) {
+        if (got.count(cp)) continue;
+        int alt = (int)han_fold_codepoint((uint32_t)cp);
+        if (alt != cp) { missing.push_back(cp); alts.push_back(alt); }
+    }
+    if (missing.empty()) return;
+    int alt_count = 0;
+    ray::GlyphInfo* ag = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
+                                           alts.data(), (int)alts.size(), ray::FONT_DEFAULT, &alt_count);
+    if (!ag) return;
+    for (int i = 0; i < alt_count; i++) {
+        bool used = false;
+        for (size_t k = 0; k < alts.size(); k++) {
+            if (alts[k] != ag[i].value) continue;
+            ray::GlyphInfo gi = ag[i];
+            gi.value = missing[k];
+            if (used) gi.image = ray::ImageCopy(ag[i].image);   // two originals folding to one form
+            entry.cache.push_back(gi);
+            used = true;
+        }
+        if (!used) ray::UnloadImage(ag[i].image);
+    }
+    RL_FREE(ag);
 }
 
 // Pack the cached glyphs into a fresh atlas texture. Glyph images stay in `cache`
