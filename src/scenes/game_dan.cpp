@@ -41,6 +41,15 @@ void DanGameScreen::on_screen_start() {
     allnet_indicator  = AllNetIcon();
 }
 
+// The drumroll condition icon is `exam_roll` in newer skins and `exam_drumroll` in older
+// ones; use whichever the active skin carries.
+TexID exam_icon_id(TexID preferred, const char* folder) {
+    if (tex.textures.find((uint32_t)preferred) != tex.textures.end()) return preferred;
+    const std::string alt = std::string(folder) + "/exam_drumroll";
+    if (tex.has_texture(alt)) return tex.get_enum(alt);
+    return preferred;
+}
+
 void DanGameScreen::init_dan() {
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
 
@@ -650,6 +659,57 @@ void DanGameScreen::draw_exam_row(const DanExamInfo& info, const Exam& exam, int
     const SkinInfo* vm = tex.skin_entry("dan_value_counter_margin");
     float value_margin = vm ? vm->x : border_margin;
 
+    auto have_tex = [&](TexID id) { return tex.textures.find((uint32_t)id) != tex.textures.end(); };
+    if (!have_tex(DAN_INFO::EXAM_BORDER_COUNTER)) {
+        // Classic HUD (PyTaikoGreen and other skins made before the Nijiiro rework): the
+        // row as it was drawn then - background, overlay 1, one bar picked by progress
+        // (exam_red / exam_gold / exam_max), icon shifted left of the border digits, the
+        // border digits and 以上/未満 mark, overlay 2, the live value on value_counter index 1.
+        const float score_margin = tex.skin_config[SC::DAN_SCORE_BOX_MARGIN].x;
+        tex.draw_texture(DAN_INFO::EXAM_BG,        {.y = y});
+        tex.draw_texture(DAN_INFO::EXAM_OVERLAY_1, {.y = y});
+        static const std::unordered_map<std::string, TexID> classic_bars = {
+            {"exam_red",  DAN_INFO::EXAM_RED},
+            {"exam_gold", DAN_INFO::EXAM_GOLD},
+            {"exam_max",  DAN_INFO::EXAM_MAX},
+        };
+        auto bar_it = classic_bars.find(info.bar_texture);
+        if (exam_failed[index])
+            tex.draw_texture(DAN_INFO::EXAM_FAIL, {.y = y, .x2 = info.bar_width});
+        else if (bar_it != classic_bars.end())
+            tex.draw_texture(bar_it->second, {.y = y, .x2 = info.bar_width});
+        static const std::unordered_map<std::string, TexID> classic_icons = {
+            {"gauge",        DAN_INFO::EXAM_GAUGE},
+            {"combo",        DAN_INFO::EXAM_COMBO},
+            {"hit",          DAN_INFO::EXAM_HIT},
+            {"judgebad",     DAN_INFO::EXAM_JUDGEBAD},
+            {"judgegood",    DAN_INFO::EXAM_JUDGEGOOD},
+            {"judgeperfect", DAN_INFO::EXAM_JUDGEPERFECT},
+            {"score",        DAN_INFO::EXAM_SCORE},
+            {"renda",        DAN_INFO::EXAM_ROLL},
+        };
+        const std::string red_str = std::to_string(info.red_value);
+        const float type_x = -(float)red_str.size() * 20.0f * tex.screen_scale;
+        auto ic = classic_icons.find(info.exam_type);
+        if (ic != classic_icons.end())
+            tex.draw_texture(exam_icon_id(ic->second, "dan_info"), {.x = type_x, .y = y});
+        const float gauge_shift = (info.exam_type == "gauge") ? -score_margin : 0.0f;
+        draw_digit_counter(red_str, score_margin, DAN_INFO::VALUE_COUNTER, 0, y, gauge_shift);
+        if (info.exam_range == "less")      tex.draw_texture(DAN_INFO::EXAM_LESS, {.y = y});
+        else if (info.exam_range == "more") tex.draw_texture(DAN_INFO::EXAM_MORE, {.y = y});
+        tex.draw_texture(DAN_INFO::EXAM_OVERLAY_2, {.y = y});
+        if (exam_failed[index]) {
+            tex.draw_texture(DAN_INFO::EXAM_FAILED, {.y = y});
+        } else {
+            draw_digit_counter(std::to_string(info.counter_value), score_margin, DAN_INFO::VALUE_COUNTER, 1, y);
+            if (info.exam_type == "gauge") {
+                tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 0});
+                tex.draw_texture(DAN_INFO::EXAM_PERCENT, {.y = y, .index = 1});
+            }
+        }
+        return;
+    }
+
     tex.draw_texture(DAN_INFO::EXAM_BG, {.y = y});
     tex.draw_texture(DAN_INFO::EXAM_BADGE,
                      {.frame = info.gothrough ? 0 : 1 + std::min(song_index, 2), .y = y});
@@ -720,7 +780,7 @@ void DanGameScreen::draw_exam_row(const DanExamInfo& info, const Exam& exam, int
     };
     auto icon_it = exam_ids.find(info.exam_type);
     if (icon_it != exam_ids.end())
-        tex.draw_texture(icon_it->second, {.y = y});
+        tex.draw_texture(exam_icon_id(icon_it->second, "dan_info"), {.y = y});
 
     const SkinInfo* bt = tex.skin_entry("dan_game_exam_border_text");
     OutlinedText* cap = nullptr;
@@ -803,6 +863,13 @@ void DanGameScreen::draw_dan_info() {
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
 
     tex.draw_texture(DAN_INFO::TOTAL_NOTES, {});
+    // Skins built around the classic HUD (no exam_border_counter art, no Lua dan panel)
+    // still get the remaining-notes counter from the engine.
+    if (tex.textures.find((uint32_t)DAN_INFO::EXAM_BORDER_COUNTER) == tex.textures.end() &&
+        tex.textures.find((uint32_t)DAN_INFO::TOTAL_NOTES_COUNTER) != tex.textures.end()) {
+        draw_digit_counter(std::to_string(cache.remaining_notes), tex.skin_config[SC::DAN_TOTAL_NOTES_MARGIN].x,
+                           DAN_INFO::TOTAL_NOTES_COUNTER, 0, 0);
+    }
 
     float offset_y = dan_exam_info().y;
     const auto& exams = sd.selected_dan_exam;

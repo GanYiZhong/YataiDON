@@ -1,4 +1,5 @@
 #include "box_dan.h"
+TexID exam_icon_id(TexID preferred, const char* folder);
 #include "../../../libs/song_parser.h"
 #include "../../../libs/scores.h"
 #include <algorithm>
@@ -301,10 +302,11 @@ void DanBox::draw_exam_grid() {
                 const int frame = exam.gothrough ? 0 : (k + 1);
                 draw_abs("yellow_box/exam_seg_label",
                          BX + seg_x + seg_dx * k, BY + seg_y, f, frame);
-                if (!draw_value_text(exam, seg_bt,
+                const Exam seg_exam = exam.for_song(k);   // per-song borders: this song's pair
+                if (!draw_value_text(seg_exam, seg_bt,
                                      BX + (seg_bt ? seg_bt->x : 0.0f) + seg_dx * k,
                                      BY + (seg_bt ? seg_bt->y : 0.0f)))
-                    draw_value(exam, BX + val_x + seg_dx * k, BY + val_y);
+                    draw_value(seg_exam, BX + val_x + seg_dx * k, BY + val_y);
             }
         }
         if (!left) right_row++;
@@ -329,8 +331,14 @@ void DanBox::draw_exam_box() {
     float offset_y = tex.skin_config[SC::DAN_EXAM_INFO].y;
     float margin   = tex.skin_config[SC::EXAM_COUNTER_MARGIN].x;
 
-    for (int i = 0; i < (int)exams.size(); i++) {
-        const Exam& exam = exams[i];
+    // Four or more conditions do not fit the board: drop the soul-gauge row (it is the
+    // one condition every course carries and the gauge itself shows it in game).
+    std::vector<const Exam*> shown;
+    for (const Exam& e : exams)
+        if (!(exams.size() >= 4 && e.type == "gauge")) shown.push_back(&e);
+    if ((int)shown.size() > 3) shown.resize(3);
+    for (int i = 0; i < (int)shown.size(); i++) {
+        const Exam& exam = *shown[i];
         float y = i * offset_y;
         tex.draw_texture(YELLOW_BOX::JUDGE_BOX, {.y=y, .fade=f});
 
@@ -347,7 +355,7 @@ void DanBox::draw_exam_box() {
         };
         auto icon_it = exam_icons.find(exam.type);
         if (icon_it != exam_icons.end())
-            tex.draw_texture(icon_it->second, {.y=y, .fade=f});
+            tex.draw_texture(exam_icon_id(icon_it->second, "yellow_box"), {.y=y, .fade=f});
 
         float x_offset = 0;
         if (exam.type == "gauge") {
