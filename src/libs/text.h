@@ -94,6 +94,8 @@ public:
     // (meant for a fill-only text: outline 0, white). Forces the build to finish.
     void tint_vertical_gradient(ray::Color top, ray::Color bottom);
     void tint_vertical_stops(const std::vector<std::pair<float, ray::Color>>& stops);   // multi-stop vertical gradient (gloss bands)
+    void tint_stroke_stops(const std::vector<std::pair<float, ray::Color>>& stops);     // the same gradient, but per stroke: t runs from each stroke's own top edge to its bottom edge
+    void post_emboss(float radius, float strength, float lx, float ly);                 // shade the fill by its edge slope: lit towards (lx,ly), dark on the far side
     // Resample the rendered text to `sx` of its width (bicubic) so it can be drawn 1:1.
     void post_squeeze(float sx);
     // Soften the rendered text: box-blur the alpha by `radius` px (canvas grows to fit).

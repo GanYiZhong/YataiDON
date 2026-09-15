@@ -831,3 +831,75 @@ void OutlinedText::tint_vertical_stops(const std::vector<std::pair<float, ray::C
     texture = ray::LoadTextureFromImage(img);
     ray::UnloadImage(img);
 }
+
+static ray::Color stops_at(const std::vector<std::pair<float, ray::Color>>& stops, float t) {
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    ray::Color a = stops.front().second, b = stops.back().second; float ta = 0.0f, tb = 1.0f;
+    for (size_t i = 0; i + 1 < stops.size(); i++)
+        if (t >= stops[i].first && t <= stops[i + 1].first) { a = stops[i].second; b = stops[i + 1].second; ta = stops[i].first; tb = stops[i + 1].first; break; }
+    const float u = (tb > ta) ? (t - ta) / (tb - ta) : 0.0f;
+    return ray::Color{(uint8_t)(a.r + (b.r - a.r) * u), (uint8_t)(a.g + (b.g - a.g) * u), (uint8_t)(a.b + (b.b - a.b) * u), 255};
+}
+
+void OutlinedText::tint_stroke_stops(const std::vector<std::pair<float, ray::Color>>& stops) {
+    finish();
+    if (!texture.has_value() || stops.empty()) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    unsigned char* px = (unsigned char*)img.data;
+    const int W = img.width, Hh = img.height;
+    // for every column, walk each vertical run of inked pixels: t = position inside the run
+    for (int x = 0; x < W; x++) {
+        int y = 0;
+        while (y < Hh) {
+            if (px[(y * W + x) * 4 + 3] <= 8) { y++; continue; }
+            int y0 = y; while (y < Hh && px[(y * W + x) * 4 + 3] > 8) y++;
+            const int y1 = y - 1;
+            for (int yy = y0; yy <= y1; yy++) {
+                const float t = (y1 > y0) ? (float)(yy - y0) / (float)(y1 - y0) : 0.5f;
+                const ray::Color cc = stops_at(stops, t);
+                unsigned char* q = px + (yy * W + x) * 4;
+                q[0] = (unsigned char)(q[0] * cc.r / 255.0f); q[1] = (unsigned char)(q[1] * cc.g / 255.0f); q[2] = (unsigned char)(q[2] * cc.b / 255.0f);
+            }
+        }
+    }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::UnloadImage(img);
+}
+
+void OutlinedText::post_emboss(float radius, float strength, float lx, float ly) {
+    finish();
+    const int r = (int)std::ceil(radius);
+    if (!texture.has_value() || r <= 0 || strength == 0.0f) return;
+    ray::Image img = ray::LoadImageFromTexture(*texture);
+    ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    unsigned char* px = (unsigned char*)img.data;
+    const int W = img.width, Hh = img.height;
+    // height field = blurred alpha (a box blur of radius r); slope of it = surface normal of a rounded stroke
+    std::vector<float> a(W * Hh), tmp(W * Hh), hf(W * Hh);
+    for (int i = 0; i < W * Hh; i++) a[i] = px[i * 4 + 3] / 255.0f;
+    for (int y = 0; y < Hh; y++) for (int x = 0; x < W; x++) {
+        float s = 0; int n = 0;
+        for (int k = -r; k <= r; k++) { int xx = x + k; if (xx >= 0 && xx < W) { s += a[y * W + xx]; n++; } }
+        tmp[y * W + x] = s / n;
+    }
+    for (int y = 0; y < Hh; y++) for (int x = 0; x < W; x++) {
+        float s = 0; int n = 0;
+        for (int k = -r; k <= r; k++) { int yy = y + k; if (yy >= 0 && yy < Hh) { s += tmp[yy * W + x]; n++; } }
+        hf[y * W + x] = s / n;
+    }
+    const float ln = std::sqrt(lx * lx + ly * ly); if (ln > 0) { lx /= ln; ly /= ln; }
+    for (int y = 1; y + 1 < Hh; y++) for (int x = 1; x + 1 < W; x++) {
+        unsigned char* q = px + (y * W + x) * 4;
+        if (q[3] == 0) continue;
+        const float gx = (hf[y * W + x + 1] - hf[y * W + x - 1]) * 0.5f, gy = (hf[(y + 1) * W + x] - hf[(y - 1) * W + x]) * 0.5f;
+        // the height rises towards the stroke's centre; the side facing the light is where the slope points against the light
+        const float lit = -(gx * lx + gy * ly) * (float)r * 2.0f;
+        const float f = 1.0f + strength * (lit < -1 ? -1 : lit > 1 ? 1 : lit);
+        for (int ch = 0; ch < 3; ch++) { float v = q[ch] * f; q[ch] = (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v); }
+    }
+    ray::UnloadTexture(*texture);
+    texture = ray::LoadTextureFromImage(img);
+    ray::UnloadImage(img);
+}

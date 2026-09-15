@@ -123,6 +123,9 @@ void TextureWrapper::init(const fs::path& skin_path) {
                 }
                 if (!row.stops.empty()) row.gradient = true;
             }
+            if (r.HasMember("gradient_mode") && r["gradient_mode"].IsString()) row.stroke_gradient = std::string(r["gradient_mode"].GetString()) == "stroke";
+            row.emboss = (float)json_member(r, "emboss", 0.0); row.emboss_strength = (float)json_member(r, "emboss_strength", 0.5);
+            row.emboss_dx = (float)json_member(r, "emboss_dx", -0.4); row.emboss_dy = (float)json_member(r, "emboss_dy", -1.0);
             row.extrude = (float)json_member(r, "extrude", 0.0); col("extrude_color", row.extrude_color);
             row.extrude_dx = (float)json_member(r, "extrude_dx", 1.0); row.extrude_dy = (float)json_member(r, "extrude_dy", 1.0);
             return row;
@@ -150,6 +153,8 @@ void TextureWrapper::init(const fs::path& skin_path) {
             if (!r.HasMember("glow")) { row.glow = defaults.glow; row.glow_alpha = defaults.glow_alpha; row.glow_color = defaults.glow_color; row.glow_dx = defaults.glow_dx; row.glow_dy = defaults.glow_dy; }
             if (!r.HasMember("color2") && defaults.gradient) { row.gradient = true; row.color2 = defaults.color2; }
             if (!r.HasMember("gradient_stops")) row.stops = defaults.stops;
+            if (!r.HasMember("gradient_mode")) row.stroke_gradient = defaults.stroke_gradient;
+            if (!r.HasMember("emboss")) { row.emboss = defaults.emboss; row.emboss_strength = defaults.emboss_strength; row.emboss_dx = defaults.emboss_dx; row.emboss_dy = defaults.emboss_dy; }
             if (!r.HasMember("extrude")) { row.extrude = defaults.extrude; row.extrude_color = defaults.extrude_color; row.extrude_dx = defaults.extrude_dx; row.extrude_dy = defaults.extrude_dy; }
         };
         auto rows_of = [&](const Value& node, const LabelRow& defaults) {
@@ -886,18 +891,18 @@ std::vector<LabelLayer> TextureWrapper::build_label_layers(const LabelRow& row, 
     if (row.highlight > 0.0f) layers.push_back({mk(C(row.highlight_color), C(row.highlight_color), row.outline + row.highlight), 1.0f, row.highlight_dx, row.highlight_dy});
     for (int i = (int)row.extrude; i >= 1; i--)   // farthest copy first, so nearer ones cover it
         layers.push_back({mk(C(row.extrude_color), C(row.extrude_color), row.outline), 1.0f, row.extrude_dx * i, row.extrude_dy * i});
-    const bool own_fill = row.gradient || row.weight != 0.0f;
+    const bool own_fill = row.gradient || row.weight != 0.0f || row.emboss > 0.0f;
     auto body = mk(own_fill ? oc : col, oc, row.outline);
     layers.push_back({body, 1.0f});
     if (own_fill) {
         auto f = mk(ray::WHITE, ray::WHITE, 0.0f);
-        if (!row.stops.empty()) {
-            std::vector<std::pair<float, ray::Color>> st;
-            for (auto& [p, cc] : row.stops) st.push_back({p, C(cc)});
-            f->tint_vertical_stops(st);
-        } else if (row.gradient) f->tint_vertical_gradient(col, C(row.color2));
-        else              f->tint_vertical_gradient(col, col);
-        if (row.weight != 0.0f) f->post_weight(row.weight);
+        std::vector<std::pair<float, ray::Color>> st;
+        if (!row.stops.empty()) for (auto& [p, cc] : row.stops) st.push_back({p, C(cc)});
+        else if (row.gradient) st = {{0.0f, col}, {1.0f, C(row.color2)}};
+        else st = {{0.0f, col}, {1.0f, col}};
+        if (row.weight != 0.0f) f->post_weight(row.weight);   // shape first, then colour it
+        if (row.stroke_gradient) f->tint_stroke_stops(st); else f->tint_vertical_stops(st);
+        if (row.emboss > 0.0f) f->post_emboss(row.emboss, row.emboss_strength, row.emboss_dx, row.emboss_dy);
         layers.push_back({f, 1.0f});
     }
     float sx = row.scale_x;
@@ -927,7 +932,7 @@ static void label_row_origin(const LabelRow& row, const OutlinedText& body, floa
 static const OutlinedText* label_body(const std::vector<LabelLayer>& layers, const LabelRow& row) {
     // body is the last layer unless a gradient fill follows it
     if (layers.empty()) return nullptr;
-    const bool own_fill = row.gradient || row.weight != 0.0f;
+    const bool own_fill = row.gradient || row.weight != 0.0f || row.emboss > 0.0f;
     return layers[own_fill ? layers.size() - 2 : layers.size() - 1].text.get();
 }
 
