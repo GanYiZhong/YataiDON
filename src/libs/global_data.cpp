@@ -1,4 +1,5 @@
 #include "global_data.h"
+#include <unordered_map>
 #include "filesystem.h"
 #include "texture.h"
 #include "script.h"
@@ -21,7 +22,19 @@ void load_skin() {
     global_tex.init(root_skin_path / "Graphics");
     global_tex.load_screen_textures("global");
     script_manager.init(root_skin_path / "Scripts");
-    fs::path font_path = resolve_skin_path("Graphics/font.ttf");
+    // A skin may ship one font per interface language (Graphics/font_<lang>.ttf, e.g.
+    // font_zh.ttf drawn from the Simplified Chinese glyph set) and fall back to font.ttf.
+    // The settings screen reloads the skin, so a language change picks up the right file.
+    // Looked up by the interface language code first, then by the cabinet family name
+    // that language draws from (zh -> cn, ko -> kr, ja -> jp), then font.ttf.
+    static const std::unordered_map<std::string, std::string> font_family = {
+        {"zh", "cn"}, {"ko", "kr"}, {"ja", "jp"}, {"zh_tw", "tw"}, {"zh-tw", "tw"}, {"zh_cn", "cn"}, {"zh-cn", "cn"},
+    };
+    const std::string& lang = global_data.config->general.language;
+    fs::path font_path = resolve_skin_path("Graphics/font_" + lang + ".ttf");
+    if (!fs::exists(font_path) && font_family.count(lang))
+        font_path = resolve_skin_path("Graphics/font_" + font_family.at(lang) + ".ttf");
+    if (!fs::exists(font_path)) font_path = resolve_skin_path("Graphics/font.ttf");
     font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
 }
