@@ -276,7 +276,7 @@ static int char_to_raylib_key(unsigned char c) {
 }
 
 static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
     if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND) {
         touch_id_to_vkey.clear();
         clear_input_buffers();
@@ -325,7 +325,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             int sh = ray::GetScreenHeight();
             ray::Vector2 pos = { event->tfinger.x * sw, event->tfinger.y * sh };
             int vkey = touch_quadrant_vkey(pos, sw, sh);
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
             // The two top-center controls remain clear of landscape notches.
             bool navigation = event->tfinger.y >= 0.025f && event->tfinger.y <= 0.125f;
             if (navigation && event->tfinger.x >= 0.36f && event->tfinger.x <= 0.49f)
@@ -504,7 +504,7 @@ void shutdown_sdl_joysticks() {
 }
 
 void android_set_keyboard_visible(bool visible) {
-#if defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS)
+#if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
     int count = 0;
     SDL_Window** windows = SDL_GetWindows(&count);
     if (!windows || count == 0) return;

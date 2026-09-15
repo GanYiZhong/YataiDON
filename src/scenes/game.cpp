@@ -204,7 +204,7 @@ std::optional<Screens> GameScreen::global_keys() {
     }
 
     if (
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
         check_key_pressed(global_data.config->keys.pause_key)
 #else
         ray::IsKeyPressed(global_data.config->keys.pause_key)

@@ -107,7 +107,7 @@ std::optional<Screens> Game2PScreen::update() {
         return on_screen_end(Screens::SONG_SELECT_2P);
     }
     if (
-#ifdef PLATFORM_IOS
+#ifdef YATAIDON_PLATFORM_IOS
         check_key_pressed(global_data.config->keys.pause_key)
 #else
         ray::IsKeyPressed(global_data.config->keys.pause_key)

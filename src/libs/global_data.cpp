@@ -17,7 +17,7 @@ void load_skin() {
     // UIKit owns the iOS window size. SDL cannot resize it to the skin canvas,
     // but raylib's SetWindowSize would still overwrite its logical dimensions.
     // Keep those dimensions intact and let compute_camera2d scale the skin.
-#ifndef PLATFORM_IOS
+#ifndef YATAIDON_PLATFORM_IOS
     const bool was_fullscreen = ray::IsWindowFullscreen();
     if (was_fullscreen) ray::ToggleFullscreen();
     ray::SetWindowSize(tex.screen_width, tex.screen_height);

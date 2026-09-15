@@ -219,7 +219,7 @@ void StrOptionBox::update(double current_time) {
             input_string.pop_back();
             rebuild_text();
         } else if (ray::IsKeyPressed(ray::KEY_ENTER)
-#if defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS)
+#if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
                    || is_l_don_pressed() || is_r_don_pressed()
 #endif
         ) {
