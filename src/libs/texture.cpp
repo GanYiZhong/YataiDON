@@ -1,4 +1,5 @@
 #include "texture.h"
+#include "global_data.h"
 #include "filesystem.h"
 #include <spdlog/spdlog.h>
 #include <chrono>
@@ -601,19 +602,42 @@ void TextureWrapper::load_screen_textures(const std::string& screen_name) {
 void TextureWrapper::clear_screen(const ray::Color& color) {
     ray::ClearBackground(color);
 }
+// Language-suffixed textures (`combo/combo_<lang>`): a skin rarely ships every language, so
+// a name ending in the current language falls back to the `_ja` and then the `_en` variant
+// instead of the warning placeholder. Names without the suffix are returned unchanged.
+std::vector<std::string> TextureWrapper::language_variants(const std::string& name) const {
+    std::vector<std::string> out{name};
+    if (!global_data.config) return out;
+    const std::string& lang = global_data.config->general.language;
+    const std::string suffix = "_" + lang;
+    if (name.size() <= suffix.size() || name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) return out;
+    const std::string base = name.substr(0, name.size() - suffix.size());
+    for (const char* fb : {"ja", "en"})   // the cabinet's own order: untranslated rows draw from the Japanese set
+        if (lang != fb) out.push_back(base + "_" + fb);
+    return out;
+}
+
 TexID TextureWrapper::get_enum(const std::string& name) {
-    try {
-        return tex_id_map.at(name);
-    } catch (const std::out_of_range& e) {
-        spdlog::warn("Texture not found: {}", name);
-        return TexID::KIDOU__WARNING;
+    const auto variants = language_variants(name);
+    // first variant that is known and loaded, else the first that is known at all
+    for (const auto& v : variants) {
+        auto it = tex_id_map.find(v);
+        if (it != tex_id_map.end() && textures.find(static_cast<uint32_t>(it->second)) != textures.end()) return it->second;
     }
+    for (const auto& v : variants) {
+        auto it = tex_id_map.find(v);
+        if (it != tex_id_map.end()) return it->second;
+    }
+    spdlog::warn("Texture not found: {}", name);
+    return TexID::KIDOU__WARNING;
 }
 
 bool TextureWrapper::has_texture(const std::string& name) {
-    auto it = tex_id_map.find(name);
-    return it != tex_id_map.end() &&
-           textures.find(static_cast<uint32_t>(it->second)) != textures.end();
+    for (const auto& v : language_variants(name)) {
+        auto it = tex_id_map.find(v);
+        if (it != tex_id_map.end() && textures.find(static_cast<uint32_t>(it->second)) != textures.end()) return true;
+    }
+    return false;
 }
 
 void TextureWrapper::draw_texture(uint32_t id, const DrawTextureParams& params) {
