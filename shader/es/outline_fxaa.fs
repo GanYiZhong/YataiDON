@@ -50,29 +50,7 @@ void main() {
     vec4 aa = (lB < lMin || lB > lMax) ? A : B;
     aa.a = m.a;
 
-    // Outline fill: solid pixels pass the anti-aliased color through;
-    // background pixels within outlineThickness of the silhouette get the
-    // dark halo, exactly as the old two-pass version did on raw alpha.
-    if (aa.a > 0.001) {
-        fragColor = vec4(aa.rgb, 1.0);
-        return;
-    }
-
-    vec2 kern = inv * outlineThickness;
-    float accum = 0.0;
-    accum += texture(texture0, uv + vec2(-1.0,  0.0) * kern).a;
-    accum += texture(texture0, uv + vec2( 1.0,  0.0) * kern).a;
-    accum += texture(texture0, uv + vec2( 0.0, -1.0) * kern).a;
-    accum += texture(texture0, uv + vec2( 0.0,  1.0) * kern).a;
-    accum += texture(texture0, uv + vec2(-1.0, -1.0) * kern).a;
-    accum += texture(texture0, uv + vec2( 1.0, -1.0) * kern).a;
-    accum += texture(texture0, uv + vec2(-1.0,  1.0) * kern).a;
-    accum += texture(texture0, uv + vec2( 1.0,  1.0) * kern).a;
-
-    if (accum <= 0.0) {
-        discard;
-    }
-
-    float alpha = clamp(accum / 2.0, 0.0, 1.0);
-    fragColor = vec4(0.05, 0.05, 0.05, alpha);
+    // The character carries its own black line now; the post pass only anti-aliases.
+    if (aa.a <= 0.001) discard;
+    fragColor = vec4(aa.rgb, 1.0);
 }

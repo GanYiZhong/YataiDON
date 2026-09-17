@@ -117,6 +117,8 @@ private:
     ray::Shader face_shader;
     ray::Shader cutout_shader;
     ray::Shader outline_shader;
+    int outline_param_loc = -1;
+    int outline_size_loc = -1;
 
     ray::Shader outline_fxaa_shader;
     int outline_fxaa_size_loc = -1;
