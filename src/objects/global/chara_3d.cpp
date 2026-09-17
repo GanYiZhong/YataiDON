@@ -577,10 +577,10 @@ void Chara3D::draw_outline(float x, float y) {
         // Black line, drawn after the model: screen-space push along the view normal, a small
         // depth push back, facing test in the shader. No culling: the shader keeps only the
         // camera-facing side, so inside-out parts do not become black shells.
-        // 2.5 px at 720p, scaled with the output; the depth push (clip z) keeps the line behind
-        // the surface it belongs to even on receding slopes, where a 2 px shift changes depth.
+        // 2.5 px at 720p, scaled with the output; the depth push keeps the line behind the
+        // surface it belongs to even on receding slopes, where a 2 px shift changes depth.
         const float thickness_px = 2.5f * (float)ray::GetRenderHeight() / 720.0f;
-        float param[4] = {thickness_px, 0.012f, 0.0f, 0.0f};
+        float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push, in model units
         float size[2]  = {(float)ray::GetRenderWidth(), (float)ray::GetRenderHeight()};
         if (outline_param_loc < 0) outline_param_loc = ray::GetShaderLocation(outline_shader, "outlineParam");
         if (outline_size_loc < 0)  outline_size_loc  = ray::GetShaderLocation(outline_shader, "screenSize");
