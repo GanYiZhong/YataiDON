@@ -4,29 +4,52 @@
 #include "../../libs/global_data.h"
 #include "../../libs/scores.h"
 #include "../../libs/filesystem.h"
+#include <algorithm>
 #include <fstream>
 #include <rapidjson/document.h>
 namespace ray {
 #include <raymath.h>
 }
-extern "C" { void rlSetCullFace(int mode); }
+extern "C" { void rlSetCullFace(int mode); void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); }
 static constexpr int RL_CULL_FACE_FRONT = 0;
 static constexpr int RL_CULL_FACE_BACK  = 1;
 
-static void draw_model_face_last(ray::Model& model, int face_material_index, ray::Vector3 position, float scale) {
+static void draw_model_face_last(ray::Model& model, int face_material_index, const std::vector<int>& blend_materials,
+                                 const std::vector<int>& twosided_materials, ray::Vector3 position, float scale) {
     ray::Matrix matTransform = ray::MatrixMultiply(ray::MatrixScale(scale, scale, scale),
                                                      ray::MatrixTranslate(position.x, position.y, position.z));
     ray::Matrix transform = ray::MatrixMultiply(model.transform, matTransform);
+    auto is_blend = [&](int mat) { return std::find(blend_materials.begin(), blend_materials.end(), mat) != blend_materials.end(); };
+    // _CULLNONE materials are drawn two-sided, as the name asks.
+    auto draw = [&](int i) {
+        const int mat = model.meshMaterial[i];
+        const bool two_sided = std::find(twosided_materials.begin(), twosided_materials.end(), mat) != twosided_materials.end();
+        if (two_sided) rlDisableBackfaceCulling();
+        ray::DrawMesh(model.meshes[i], model.materials[mat], transform);
+        if (two_sided) rlEnableBackfaceCulling();
+    };
 
+    // 1. opaque and alpha-tested meshes
     for (int i = 0; i < model.meshCount; i++) {
-        if (model.meshMaterial[i] == face_material_index) continue;
-        ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
+        const int mat = model.meshMaterial[i];
+        if (mat == face_material_index || is_blend(mat)) continue;
+        draw(i);
     }
+    // 2. the face plane
     if (face_material_index != -1) {
         for (int i = 0; i < model.meshCount; i++) {
             if (model.meshMaterial[i] == face_material_index)
                 ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
         }
+    }
+    // 3. alpha-blended sheets (_A_AB / glTF BLEND: front hair, plates, glints) last. Drawn
+    //    before the face, their fully transparent texels still wrote depth and occluded the face
+    //    plane and the drum head behind them, so the face came out as the black hull. They keep
+    //    writing depth among themselves, as before, so a plate in front of a hair sheet stays on top.
+    for (int i = 0; i < model.meshCount; i++) {
+        const int mat = model.meshMaterial[i];
+        if (mat != face_material_index && is_blend(mat))
+            draw(i);
     }
 }
 
@@ -80,7 +103,8 @@ static std::string name_lower(const char* s) {
 
 static std::unordered_map<std::string, int> parse_glb_material_indices(
         const std::string& path, std::vector<int>& recolor_out, int& face_out,
-        std::vector<int>& additive_out, std::vector<int>& force_opaque_out) {
+        std::vector<int>& additive_out, std::vector<int>& cutout_out, std::vector<int>& blend_out,
+        std::vector<int>& twosided_out) {
     std::unordered_map<std::string, int> result;
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return result;
@@ -130,7 +154,16 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
                 additive_out.push_back(raylib_idx);
             else if (nl.find("_color_s_cus_") != std::string::npos &&
                      nl.find("_a_ab") == std::string::npos)
-                force_opaque_out.push_back(raylib_idx);
+                cutout_out.push_back(raylib_idx);   // _AT_ZERO_ / _AT_ONE_: alpha-tested, never blended
+            const bool cutout = nl.find("_color_s_cus_") != std::string::npos && nl.find("_a_ab") == std::string::npos;
+            const bool gltf_blend = materials[i].HasMember("alphaMode") && materials[i]["alphaMode"].IsString() &&
+                                    std::string(materials[i]["alphaMode"].GetString()) == "BLEND";
+            // alpha-blended: _A_AB by name, or any other glTF BLEND material that is not an
+            // alpha-tested one (e.g. a plain "lambert" glint sheet) -- drawn after the face
+            if (nl.find("_a_ab") != std::string::npos || (gltf_blend && !cutout))
+                blend_out.push_back(raylib_idx);
+            if (nl.find("cullnone") != std::string::npos)
+                twosided_out.push_back(raylib_idx);
         }
     }
     return result;
@@ -165,15 +198,27 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
         ray::UpdateMeshBuffer(mesh, 3, mesh.colors, mesh.vertexCount * 4, 0);
     }
 
-    std::vector<int> recolor_indices, additive_indices, force_opaque_indices;
+    std::vector<int> recolor_indices, additive_indices, cutout_indices, blend_indices, twosided_indices;
     int face_material_index = -1;
-    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, force_opaque_indices);
+    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices, blend_indices, twosided_indices);
 
-    if (normalize_face_scale && face_material_index != -1) {
+    if (face_material_index != -1) {
+        // head/body parts always get the standard 0.137 plate; a costume keeps its own plate
+        // (some are deliberately small) but never a larger one -- cos 30 (鏡もち) and cos 9
+        // ship a 0.18 plate that overflows the drum head.
         constexpr float COS_FACE_PLANE_SIZE = 0.137f;
-        for (int m = 0; m < model.meshCount; m++)
-            if (model.meshMaterial[m] == face_material_index)
-                normalize_face_mesh_size(model.meshes[m], COS_FACE_PLANE_SIZE);
+        for (int m = 0; m < model.meshCount; m++) {
+            if (model.meshMaterial[m] != face_material_index) continue;
+            auto& mesh = model.meshes[m];
+            float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+            for (int v = 0; v < mesh.vertexCount; v++) {
+                minx = std::min(minx, mesh.vertices[v * 3]); maxx = std::max(maxx, mesh.vertices[v * 3]);
+                miny = std::min(miny, mesh.vertices[v * 3 + 1]); maxy = std::max(maxy, mesh.vertices[v * 3 + 1]);
+            }
+            const float size = std::max(maxx - minx, maxy - miny);
+            if (normalize_face_scale || size > COS_FACE_PLANE_SIZE * 1.02f)
+                normalize_face_mesh_size(mesh, COS_FACE_PLANE_SIZE);
+        }
     }
 #if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
     if (face_material_index != -1 && face_shader.id != 0)
@@ -182,20 +227,17 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     additive_indices.erase(
         std::remove(additive_indices.begin(), additive_indices.end(), face_material_index),
         additive_indices.end());
+    blend_indices.erase(
+        std::remove(blend_indices.begin(), blend_indices.end(), face_material_index),
+        blend_indices.end());
     for (int idx : additive_indices)
         model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE].color = {255, 255, 255, 255};
-    for (int idx : force_opaque_indices) {
-        auto& map = model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE];
-        if (map.texture.id != 0) {
-            ray::Image img = ray::LoadImageFromTexture(map.texture);
-            ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-            unsigned char* px = (unsigned char*)img.data;
-            for (int p = 0; p < img.width * img.height; p++) px[p * 4 + 3] = 255;
-            ray::UnloadTexture(map.texture);
-            map.texture = ray::LoadTextureFromImage(img);
-            ray::UnloadImage(img);
-        }
-    }
+    // Alpha-tested materials: the textures are binary alpha with black RGB under the
+    // transparent texels (fins, tentacles, hair tips). Forcing alpha to 255 painted all of
+    // that solid black; blending them would need back-to-front sorting. An alpha test gives
+    // the cabinet's cutout look with plain depth writes.
+    if (cutout_shader.id != 0)
+        for (int idx : cutout_indices) model.materials[idx].shader = cutout_shader;
 
     ray::Model glb_model = ray::LoadModel(anim_path.string().c_str());
     int anim_count = 0;
@@ -207,15 +249,17 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     part_material_indices.push_back(std::move(material_indices));
     part_recolor_indices.push_back(std::move(recolor_indices));
     part_additive_indices.push_back(std::move(additive_indices));
-    part_force_opaque_indices.push_back(std::move(force_opaque_indices));
+    part_cutout_indices.push_back(std::move(cutout_indices));
+    part_blend_indices.push_back(std::move(blend_indices));
+    part_twosided_indices.push_back(std::move(twosided_indices));
     part_face_material_index.push_back(face_material_index);
     part_anims.push_back(anims);
     part_anim_count.push_back(anim_count);
 }
 
 static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_size_loc, int& outline_fxaa_thickness_loc,
-                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& outline_shader,
-                          bool& use_render_textures) {
+                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& cutout_shader,
+                          ray::Shader& outline_shader, bool& use_render_textures) {
     outline_fxaa_shader = load_shader("shader/pass.vs", "shader/outline_fxaa.fs");
     outline_fxaa_size_loc = ray::GetShaderLocation(outline_fxaa_shader, "texSize");
     outline_fxaa_thickness_loc = ray::GetShaderLocation(outline_fxaa_shader, "outlineThickness");
@@ -224,6 +268,7 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
     null_shader    = load_shader(nullptr, "shader/null.fs");
     face_shader    = load_shader(nullptr, "shader/face.fs");
+    cutout_shader  = load_shader(nullptr, "shader/cutout.fs");
     outline_shader = load_shader("shader/outline.vs", "shader/outline.fs");
     int thickness_loc = ray::GetShaderLocation(outline_shader, "outlineThickness");
     float thickness = 0.0035f;
@@ -235,7 +280,7 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
 Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -263,7 +308,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
 
 Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -298,6 +343,7 @@ Chara3D::~Chara3D() {
     }
     ray::UnloadShader(null_shader);
     ray::UnloadShader(face_shader);
+    ray::UnloadShader(cutout_shader);
     ray::UnloadShader(outline_fxaa_shader);
     if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
     ray::UnloadShader(outline_shader);
@@ -522,7 +568,13 @@ void Chara3D::draw_outline(float x, float y) {
         for (int i = 0; i < parts[p].materialCount; i++) {
             saved[p][i] = parts[p].materials[i].shader;
             bool is_face = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0);
-            parts[p].materials[i].shader = is_face ? null_shader : outline_shader;
+            // additive glows (_AA_ADD) and alpha-blended sheets (_A_AB) have no silhouette to
+            // outline; a hull under them is a black box seen through the transparent texels
+            bool is_soft = null_shader.id != 0 &&
+                (std::find(part_additive_indices[p].begin(), part_additive_indices[p].end(), i) != part_additive_indices[p].end() ||
+                 std::find(part_blend_indices[p].begin(), part_blend_indices[p].end(), i) != part_blend_indices[p].end() ||
+                 std::find(part_twosided_indices[p].begin(), part_twosided_indices[p].end(), i) != part_twosided_indices[p].end());
+            parts[p].materials[i].shader = (is_face || is_soft) ? null_shader : outline_shader;
         }
     }
 
@@ -558,7 +610,7 @@ void Chara3D::draw_3d(float x, float y) {
         parts[p].transform = rot;
     }
     for (size_t p = 0; p < parts.size(); p++)
-        draw_model_face_last(parts[p], part_face_material_index[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
+        draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], part_twosided_indices[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
     for (size_t p = 0; p < parts.size(); p++)
         parts[p].transform = saved[p];
 }
