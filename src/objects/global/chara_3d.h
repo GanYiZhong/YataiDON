@@ -72,7 +72,8 @@ private:
     std::vector<std::vector<int>> part_recolor_indices;
     std::vector<std::vector<int>> part_additive_indices;
     std::vector<std::vector<int>> part_cutout_indices;      // alpha-tested (_AT_ZERO_ / _AT_ONE_) materials
-    std::vector<std::vector<int>> part_blend_indices;       // alpha-blended (_A_AB) materials: drawn last, no depth write
+    std::vector<std::vector<int>> part_twosided_indices;    // _CULLNONE materials: drawn without back-face culling, no hull
+    std::vector<std::vector<int>> part_blend_indices;       // alpha-blended (_A_AB / glTF BLEND) materials: drawn after the face
     std::vector<int> part_face_material_index;
     std::vector<ray::ModelAnimation*> part_anims;
     std::vector<int> part_anim_count;
