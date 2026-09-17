@@ -10,25 +10,40 @@
 namespace ray {
 #include <raymath.h>
 }
-extern "C" { void rlSetCullFace(int mode); }
+extern "C" { void rlSetCullFace(int mode); void rlEnableDepthMask(void); void rlDisableDepthMask(void); }
 static constexpr int RL_CULL_FACE_FRONT = 0;
 static constexpr int RL_CULL_FACE_BACK  = 1;
 
-static void draw_model_face_last(ray::Model& model, int face_material_index, ray::Vector3 position, float scale) {
+static void draw_model_face_last(ray::Model& model, int face_material_index, const std::vector<int>& blend_materials,
+                                 ray::Vector3 position, float scale) {
     ray::Matrix matTransform = ray::MatrixMultiply(ray::MatrixScale(scale, scale, scale),
                                                      ray::MatrixTranslate(position.x, position.y, position.z));
     ray::Matrix transform = ray::MatrixMultiply(model.transform, matTransform);
+    auto is_blend = [&](int mat) { return std::find(blend_materials.begin(), blend_materials.end(), mat) != blend_materials.end(); };
 
+    // 1. opaque and alpha-tested meshes
     for (int i = 0; i < model.meshCount; i++) {
-        if (model.meshMaterial[i] == face_material_index) continue;
-        ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
+        const int mat = model.meshMaterial[i];
+        if (mat == face_material_index || is_blend(mat)) continue;
+        ray::DrawMesh(model.meshes[i], model.materials[mat], transform);
     }
+    // 2. the face plane
     if (face_material_index != -1) {
         for (int i = 0; i < model.meshCount; i++) {
             if (model.meshMaterial[i] == face_material_index)
                 ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
         }
     }
+    // 3. alpha-blended sheets (_A_AB: front hair, veils, glows) last and without depth writes.
+    //    Drawn earlier with the depth mask on, their fully transparent texels still occluded the
+    //    face plane and the drum head behind them, and the face came out as the black hull.
+    rlDisableDepthMask();
+    for (int i = 0; i < model.meshCount; i++) {
+        const int mat = model.meshMaterial[i];
+        if (mat != face_material_index && is_blend(mat))
+            ray::DrawMesh(model.meshes[i], model.materials[mat], transform);
+    }
+    rlEnableDepthMask();
 }
 
 static ray::Matrix rotation_xyz(float ax, float ay, float az) {
@@ -81,7 +96,7 @@ static std::string name_lower(const char* s) {
 
 static std::unordered_map<std::string, int> parse_glb_material_indices(
         const std::string& path, std::vector<int>& recolor_out, int& face_out,
-        std::vector<int>& additive_out, std::vector<int>& cutout_out) {
+        std::vector<int>& additive_out, std::vector<int>& cutout_out, std::vector<int>& blend_out) {
     std::unordered_map<std::string, int> result;
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return result;
@@ -132,6 +147,8 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
             else if (nl.find("_color_s_cus_") != std::string::npos &&
                      nl.find("_a_ab") == std::string::npos)
                 cutout_out.push_back(raylib_idx);   // _AT_ZERO_ / _AT_ONE_: alpha-tested, never blended
+            if (nl.find("_a_ab") != std::string::npos)
+                blend_out.push_back(raylib_idx);    // alpha-blended: drawn after the face, no depth write
         }
     }
     return result;
@@ -166,9 +183,9 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
         ray::UpdateMeshBuffer(mesh, 3, mesh.colors, mesh.vertexCount * 4, 0);
     }
 
-    std::vector<int> recolor_indices, additive_indices, cutout_indices;
+    std::vector<int> recolor_indices, additive_indices, cutout_indices, blend_indices;
     int face_material_index = -1;
-    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices);
+    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices, blend_indices);
 
     if (normalize_face_scale && face_material_index != -1) {
         constexpr float COS_FACE_PLANE_SIZE = 0.137f;
@@ -183,6 +200,9 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     additive_indices.erase(
         std::remove(additive_indices.begin(), additive_indices.end(), face_material_index),
         additive_indices.end());
+    blend_indices.erase(
+        std::remove(blend_indices.begin(), blend_indices.end(), face_material_index),
+        blend_indices.end());
     for (int idx : additive_indices)
         model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE].color = {255, 255, 255, 255};
     // Alpha-tested materials: the textures are binary alpha with black RGB under the
@@ -203,6 +223,7 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     part_recolor_indices.push_back(std::move(recolor_indices));
     part_additive_indices.push_back(std::move(additive_indices));
     part_cutout_indices.push_back(std::move(cutout_indices));
+    part_blend_indices.push_back(std::move(blend_indices));
     part_face_material_index.push_back(face_material_index);
     part_anims.push_back(anims);
     part_anim_count.push_back(anim_count);
@@ -519,10 +540,12 @@ void Chara3D::draw_outline(float x, float y) {
         for (int i = 0; i < parts[p].materialCount; i++) {
             saved[p][i] = parts[p].materials[i].shader;
             bool is_face = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0);
-            // additive glows (_AA_ADD) have no silhouette to outline; a hull under them is a black box
-            bool is_additive = null_shader.id != 0 &&
-                std::find(part_additive_indices[p].begin(), part_additive_indices[p].end(), i) != part_additive_indices[p].end();
-            parts[p].materials[i].shader = (is_face || is_additive) ? null_shader : outline_shader;
+            // additive glows (_AA_ADD) and alpha-blended sheets (_A_AB) have no silhouette to
+            // outline; a hull under them is a black box seen through the transparent texels
+            bool is_soft = null_shader.id != 0 &&
+                (std::find(part_additive_indices[p].begin(), part_additive_indices[p].end(), i) != part_additive_indices[p].end() ||
+                 std::find(part_blend_indices[p].begin(), part_blend_indices[p].end(), i) != part_blend_indices[p].end());
+            parts[p].materials[i].shader = (is_face || is_soft) ? null_shader : outline_shader;
         }
     }
 
@@ -558,7 +581,7 @@ void Chara3D::draw_3d(float x, float y) {
         parts[p].transform = rot;
     }
     for (size_t p = 0; p < parts.size(); p++)
-        draw_model_face_last(parts[p], part_face_material_index[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
+        draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
     for (size_t p = 0; p < parts.size(); p++)
         parts[p].transform = saved[p];
 }
