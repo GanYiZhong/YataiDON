@@ -4,6 +4,7 @@
 #include "../../libs/global_data.h"
 #include "../../libs/scores.h"
 #include "../../libs/filesystem.h"
+#include <algorithm>
 #include <fstream>
 #include <rapidjson/document.h>
 namespace ray {
@@ -80,7 +81,7 @@ static std::string name_lower(const char* s) {
 
 static std::unordered_map<std::string, int> parse_glb_material_indices(
         const std::string& path, std::vector<int>& recolor_out, int& face_out,
-        std::vector<int>& additive_out, std::vector<int>& force_opaque_out) {
+        std::vector<int>& additive_out, std::vector<int>& cutout_out) {
     std::unordered_map<std::string, int> result;
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return result;
@@ -130,7 +131,7 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
                 additive_out.push_back(raylib_idx);
             else if (nl.find("_color_s_cus_") != std::string::npos &&
                      nl.find("_a_ab") == std::string::npos)
-                force_opaque_out.push_back(raylib_idx);
+                cutout_out.push_back(raylib_idx);   // _AT_ZERO_ / _AT_ONE_: alpha-tested, never blended
         }
     }
     return result;
@@ -165,9 +166,9 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
         ray::UpdateMeshBuffer(mesh, 3, mesh.colors, mesh.vertexCount * 4, 0);
     }
 
-    std::vector<int> recolor_indices, additive_indices, force_opaque_indices;
+    std::vector<int> recolor_indices, additive_indices, cutout_indices;
     int face_material_index = -1;
-    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, force_opaque_indices);
+    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices);
 
     if (normalize_face_scale && face_material_index != -1) {
         constexpr float COS_FACE_PLANE_SIZE = 0.137f;
@@ -184,18 +185,12 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
         additive_indices.end());
     for (int idx : additive_indices)
         model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE].color = {255, 255, 255, 255};
-    for (int idx : force_opaque_indices) {
-        auto& map = model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE];
-        if (map.texture.id != 0) {
-            ray::Image img = ray::LoadImageFromTexture(map.texture);
-            ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-            unsigned char* px = (unsigned char*)img.data;
-            for (int p = 0; p < img.width * img.height; p++) px[p * 4 + 3] = 255;
-            ray::UnloadTexture(map.texture);
-            map.texture = ray::LoadTextureFromImage(img);
-            ray::UnloadImage(img);
-        }
-    }
+    // Alpha-tested materials: the textures are binary alpha with black RGB under the
+    // transparent texels (fins, tentacles, hair tips). Forcing alpha to 255 painted all of
+    // that solid black; blending them would need back-to-front sorting. An alpha test gives
+    // the cabinet's cutout look with plain depth writes.
+    if (cutout_shader.id != 0)
+        for (int idx : cutout_indices) model.materials[idx].shader = cutout_shader;
 
     ray::Model glb_model = ray::LoadModel(anim_path.string().c_str());
     int anim_count = 0;
@@ -207,15 +202,15 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     part_material_indices.push_back(std::move(material_indices));
     part_recolor_indices.push_back(std::move(recolor_indices));
     part_additive_indices.push_back(std::move(additive_indices));
-    part_force_opaque_indices.push_back(std::move(force_opaque_indices));
+    part_cutout_indices.push_back(std::move(cutout_indices));
     part_face_material_index.push_back(face_material_index);
     part_anims.push_back(anims);
     part_anim_count.push_back(anim_count);
 }
 
 static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_size_loc, int& outline_fxaa_thickness_loc,
-                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& outline_shader,
-                          bool& use_render_textures) {
+                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& cutout_shader,
+                          ray::Shader& outline_shader, bool& use_render_textures) {
     outline_fxaa_shader = load_shader("shader/pass.vs", "shader/outline_fxaa.fs");
     outline_fxaa_size_loc = ray::GetShaderLocation(outline_fxaa_shader, "texSize");
     outline_fxaa_thickness_loc = ray::GetShaderLocation(outline_fxaa_shader, "outlineThickness");
@@ -224,6 +219,7 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
     null_shader    = load_shader(nullptr, "shader/null.fs");
     face_shader    = load_shader(nullptr, "shader/face.fs");
+    cutout_shader  = load_shader(nullptr, "shader/cutout.fs");
     outline_shader = load_shader("shader/outline.vs", "shader/outline.fs");
     int thickness_loc = ray::GetShaderLocation(outline_shader, "outlineThickness");
     float thickness = 0.0035f;
@@ -235,7 +231,7 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
 Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -263,7 +259,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
 
 Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -298,6 +294,7 @@ Chara3D::~Chara3D() {
     }
     ray::UnloadShader(null_shader);
     ray::UnloadShader(face_shader);
+    ray::UnloadShader(cutout_shader);
     ray::UnloadShader(outline_fxaa_shader);
     if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
     ray::UnloadShader(outline_shader);
@@ -522,7 +519,10 @@ void Chara3D::draw_outline(float x, float y) {
         for (int i = 0; i < parts[p].materialCount; i++) {
             saved[p][i] = parts[p].materials[i].shader;
             bool is_face = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0);
-            parts[p].materials[i].shader = is_face ? null_shader : outline_shader;
+            // additive glows (_AA_ADD) have no silhouette to outline; a hull under them is a black box
+            bool is_additive = null_shader.id != 0 &&
+                std::find(part_additive_indices[p].begin(), part_additive_indices[p].end(), i) != part_additive_indices[p].end();
+            parts[p].materials[i].shader = (is_face || is_additive) ? null_shader : outline_shader;
         }
     }
 

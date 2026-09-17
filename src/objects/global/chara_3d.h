@@ -71,7 +71,7 @@ private:
     std::vector<std::unordered_map<std::string, int>> part_material_indices;
     std::vector<std::vector<int>> part_recolor_indices;
     std::vector<std::vector<int>> part_additive_indices;
-    std::vector<std::vector<int>> part_force_opaque_indices;
+    std::vector<std::vector<int>> part_cutout_indices;      // alpha-tested (_AT_ZERO_ / _AT_ONE_) materials
     std::vector<int> part_face_material_index;
     std::vector<ray::ModelAnimation*> part_anims;
     std::vector<int> part_anim_count;
@@ -113,6 +113,7 @@ private:
 
     ray::Shader null_shader;
     ray::Shader face_shader;
+    ray::Shader cutout_shader;
     ray::Shader outline_shader;
 
     ray::Shader outline_fxaa_shader;
