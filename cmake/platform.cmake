@@ -27,11 +27,13 @@ if(WIN32)
   elseif(TARGET SDL3::SDL3)
     target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
   endif()
-  target_link_options(${PROJECT_NAME} PRIVATE
-        -static
-        -static-libgcc
-        -static-libstdc++
-    )
+  if(MINGW)
+    target_link_options(${PROJECT_NAME} PRIVATE
+          -static
+          -static-libgcc
+          -static-libstdc++
+      )
+  endif()
   set_target_properties(${PROJECT_NAME} PROPERTIES
         LINK_FLAGS "-Wl,--allow-multiple-definition"
     )

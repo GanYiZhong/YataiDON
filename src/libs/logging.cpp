@@ -11,6 +11,7 @@
 #endif
 #include <csignal>
 #include <exception>
+#include <vector>
 #if !defined(__ANDROID__) && !defined(YATAIDON_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
 #include <cpptrace/cpptrace.hpp>
 #endif
@@ -104,6 +105,13 @@ void signal_handler(int signal) {
 }
 
 #ifndef _WIN32
+// NOTE: spdlog::critical()/log_stacktrace() below are not async-signal-safe
+// (heap allocation, mutexes, ostringstream); a crash inside malloc or while
+// the logger's mutex is held can deadlock or re-fault here instead of
+// producing a trace. A fully signal-safe handler needs cpptrace's raw
+// write()-based trace API instead -- left as-is for now since that's a
+// larger rework than this pass covers. SA_ONSTACK below at least keeps
+// stack-overflow crashes from silently vanishing.
 static void crash_signal_handler(int sig) {
     const char* name = "Unknown signal";
     switch (sig) {
@@ -117,6 +125,32 @@ static void crash_signal_handler(int sig) {
     std::_Exit(1);
 }
 #endif
+
+static void install_crash_handlers() {
+    std::set_terminate(handle_exception);
+    std::signal(SIGINT, signal_handler);
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(crash_exception_filter);
+#else
+    // Run the crash handler on its own stack so a stack-overflow SIGSEGV
+    // (where the normal stack is exhausted) still gets caught.
+    static std::vector<char> altstack(SIGSTKSZ);
+    stack_t ss{};
+    ss.ss_sp = altstack.data();
+    ss.ss_size = altstack.size();
+    ss.ss_flags = 0;
+    sigaltstack(&ss, nullptr);
+
+    struct sigaction sa{};
+    sa.sa_handler = crash_signal_handler;
+    sa.sa_flags = SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, nullptr);
+    sigaction(SIGABRT, &sa, nullptr);
+    sigaction(SIGFPE,  &sa, nullptr);
+    sigaction(SIGILL,  &sa, nullptr);
+#endif
+}
 
 void setup_logging(const std::string& log_level_str) {
     try {
@@ -155,19 +189,16 @@ void setup_logging(const std::string& log_level_str) {
         // stop mid-line.
         spdlog::flush_every(std::chrono::seconds(1));
 
-        std::set_terminate(handle_exception);
-        std::signal(SIGINT, signal_handler);
+        install_crash_handlers();
 
-#ifdef _WIN32
-        SetUnhandledExceptionFilter(crash_exception_filter);
-#else
-        std::signal(SIGSEGV, crash_signal_handler);
-        std::signal(SIGABRT, crash_signal_handler);
-        std::signal(SIGFPE,  crash_signal_handler);
-        std::signal(SIGILL,  crash_signal_handler);
-#endif
+    } catch (const std::exception& ex) {
+        std::cerr << "Log initialization failed: " << ex.what() << " -- falling back to console-only logging" << std::endl;
 
-    } catch (const spdlog::spdlog_ex& ex) {
-        std::cerr << "Log initialization failed: " << ex.what() << std::endl;
+        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        console_sink->set_pattern("[%^%l%$] %n: %v");
+        auto logger = std::make_shared<spdlog::logger>("console", console_sink);
+        spdlog::set_default_logger(logger);
+
+        install_crash_handlers();
     }
 }

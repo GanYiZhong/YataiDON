@@ -25,7 +25,7 @@ set(TEXTURE_IDS_GEN_H "${CMAKE_BINARY_DIR}/generated/texture_ids_generated.h")
 set(YATAIDON_EXTRA_SKIN_DIRS "" CACHE STRING
     "Extra skin Graphics directories to include in the generated TexID enum")
 
-file(GLOB SKIN_GRAPHICS_DIRS LIST_DIRECTORIES true "${YATAIDON_SKINS_DIR}/*/Graphics")
+file(GLOB SKIN_GRAPHICS_DIRS CONFIGURE_DEPENDS LIST_DIRECTORIES true "${YATAIDON_SKINS_DIR}/*/Graphics")
 set(ALL_SKIN_GRAPHICS_DIRS "")
 foreach(dir IN LISTS SKIN_GRAPHICS_DIRS YATAIDON_EXTRA_SKIN_DIRS)
     if(IS_DIRECTORY "${dir}")
@@ -36,7 +36,7 @@ list(REMOVE_DUPLICATES ALL_SKIN_GRAPHICS_DIRS)
 
 set(TEXTURE_JSON_FILES "")
 foreach(dir IN LISTS ALL_SKIN_GRAPHICS_DIRS)
-    file(GLOB_RECURSE _tex_jsons "${dir}/*/*/texture.json")
+    file(GLOB_RECURSE _tex_jsons CONFIGURE_DEPENDS "${dir}/*/texture.json")
     list(APPEND TEXTURE_JSON_FILES ${_tex_jsons})
 endforeach()
 

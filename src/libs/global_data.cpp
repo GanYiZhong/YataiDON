@@ -5,10 +5,15 @@
 #include "script.h"
 #include "text.h"
 #include "audio.h"
+#include <spdlog/spdlog.h>
 
 GlobalData global_data;
 
 void load_skin() {
+    if (!global_data.config) {
+        spdlog::error("load_skin() called before config was initialized");
+        return;
+    }
     ensure_skin_extracted(global_data.config->paths.skin.string());
     fs::path root_skin_path = fs::path("Skins") / global_data.config->paths.skin;
     set_skin_graphics_path(root_skin_path / "Graphics");

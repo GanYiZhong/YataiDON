@@ -60,7 +60,9 @@ static bool ffmpeg_decode_float(const char* path,
     const AVCodec* codec = avcodec_find_decoder(par->codec_id);
     if (!codec) { avformat_close_input(&fmt); return false; }
     AVCodecContext* dec = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(dec, par);
+    if (avcodec_parameters_to_context(dec, par) < 0) {
+        avcodec_free_context(&dec); avformat_close_input(&fmt); return false;
+    }
     if (avcodec_open2(dec, codec, nullptr) < 0) {
         avcodec_free_context(&dec); avformat_close_input(&fmt); return false;
     }
@@ -68,9 +70,13 @@ static bool ffmpeg_decode_float(const char* path,
     SwrContext* swr = nullptr;
     AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
     int out_ch = 2;
-    swr_alloc_set_opts2(&swr, &out_layout, AV_SAMPLE_FMT_FLT, dec->sample_rate,
-                        &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0, nullptr);
-    swr_init(swr);
+    if (swr_alloc_set_opts2(&swr, &out_layout, AV_SAMPLE_FMT_FLT, dec->sample_rate,
+                        &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0, nullptr) < 0 || !swr) {
+        swr_free(&swr); avcodec_free_context(&dec); avformat_close_input(&fmt); return false;
+    }
+    if (swr_init(swr) < 0) {
+        swr_free(&swr); avcodec_free_context(&dec); avformat_close_input(&fmt); return false;
+    }
 
     std::vector<float> pcm;
     AVPacket* pkt = av_packet_alloc();
@@ -202,7 +208,7 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
         while (frames_to_process > 0 && still_playing) {
             unsigned long src_frame = (unsigned long)frame_f;
             if (src_frame >= snd.frame_count) {
-                if (snd.loop) { frame_f = 0.0; continue; }
+                if (snd.loop && snd.frame_count > 0) { frame_f = 0.0; continue; }
                 else { still_playing = false; break; }
             }
 
@@ -260,6 +266,12 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
                             if (mus.resampler) {
                                 src_reset(mus.resampler);
                             }
+                            if (frames_read == 0) {
+                                // Empty/broken stream even after seeking to the start -- stop
+                                // instead of spinning the driver thread forever.
+                                aref_playing.store(false, std::memory_order_release);
+                                break;
+                            }
                         } else {
                             aref_playing.store(false, std::memory_order_release);
                             break;
@@ -297,7 +309,7 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
                     sf_count_t to_fill = std::min((sf_count_t)mus.buffer_size, frames_left);
 
                     if (to_fill == 0) {
-                        if (mus.loop) {
+                        if (mus.loop && mus.pcm_total_frames > 0) {
                             aref_frame.store(0ULL, std::memory_order_relaxed);
                             frame_pos = 0;
                             to_fill = std::min((sf_count_t)mus.buffer_size, mus.pcm_total_frames);
@@ -841,9 +853,14 @@ std::string AudioEngine::load_sound(const fs::path& file_path, const std::string
 #endif
         }
 
-        unsigned int total_frames = file_info.frames;
-        unsigned int channels = file_info.channels;
-        float* data = new float[total_frames * channels];
+        const sf_count_t total_frames_sf = file_info.frames;
+        const unsigned int channels = static_cast<unsigned int>(file_info.channels);
+        if (total_frames_sf <= 0 || channels == 0) {
+            sf_close(file);
+            return "";
+        }
+        unsigned int total_frames = static_cast<unsigned int>(total_frames_sf);
+        float* data = new float[static_cast<size_t>(total_frames_sf) * channels];
 
         sf_count_t frames_read = sf_readf_float(file, data, total_frames);
         sf_close(file);
@@ -1106,7 +1123,8 @@ void AudioEngine::set_sound_pitch(const std::string& name, float pitch) {
     std::shared_lock<std::shared_mutex> guard(rw_lock);
     auto it = sounds.find(name);
     if (it != sounds.end()) {
-        std::atomic_ref<float>(it->second.pitch).store(pitch, std::memory_order_relaxed);
+        if (!std::isfinite(pitch)) pitch = 1.0f;
+        std::atomic_ref<float>(it->second.pitch).store(std::clamp(pitch, 0.01f, 16.0f), std::memory_order_relaxed);
     } else {
         spdlog::warn("Sound {} not found", name);
     }
@@ -1185,6 +1203,7 @@ std::string AudioEngine::load_music_stream_prepared(PreparedPCM&& pcm, const std
     mus.pitch              = 1.0f;
     mus.resampler          = nullptr;
     mus.resample_buffer    = nullptr;
+    unload_music_stream(name);
     {
         std::unique_lock<std::shared_mutex> guard(rw_lock);
         music_streams[name] = mus;
@@ -1264,6 +1283,7 @@ std::string AudioEngine::load_music_stream(const fs::path& file_path, const std:
             mus.pitch = 1.0f;
             mus.resampler = nullptr;
             mus.resample_buffer = nullptr;
+            unload_music_stream(name);
             {
                 std::unique_lock<std::shared_mutex> guard(rw_lock);
                 music_streams[name] = mus;
@@ -1315,6 +1335,7 @@ std::string AudioEngine::load_music_stream(const fs::path& file_path, const std:
             mus.resample_buffer = nullptr;
         }
 
+        unload_music_stream(name);
         {
             std::unique_lock<std::shared_mutex> guard(rw_lock);
             music_streams[name] = mus;

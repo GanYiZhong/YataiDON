@@ -153,11 +153,24 @@ static int getKeyCode(const std::string& key) {
     throw std::runtime_error("Invalid key: " + key);
 }
 
+static int getKeyCodeOrDefault(const std::string& v, const char* def) {
+    try {
+        return getKeyCode(v);
+    } catch (const std::runtime_error& e) {
+        spdlog::warn("{} -- using {}", e.what(), def);
+        return getKeyCode(def);
+    }
+}
+
 static std::vector<int> parseKeyArray(const toml::array& arr) {
     std::vector<int> result;
     for (const auto& elem : arr) {
         if (elem.is_string()) {
-            result.push_back(getKeyCode(elem.as_string()->get()));
+            try {
+                result.push_back(getKeyCode(elem.as_string()->get()));
+            } catch (const std::runtime_error& e) {
+                spdlog::warn("Skipping invalid key binding: {}", e.what());
+            }
         }
     }
     return result;
@@ -193,6 +206,17 @@ Config get_config() {
         config_file = toml::parse_file(config_path.string());
     } catch (const toml::parse_error& err) {
         spdlog::error("Failed to parse {}: {} -- using defaults", config_path.string(), err.what());
+        // Back up the unparsable file before defaults get written over it by
+        // the next save_config(), so the user's real settings aren't lost.
+        std::error_code ec;
+        fs::path backup_path = config_path;
+        backup_path += ".bak";
+        fs::copy_file(config_path, backup_path, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            spdlog::error("Failed to back up {}: {}", config_path.string(), ec.message());
+        } else {
+            spdlog::warn("Backed up unparsable config to {}", backup_path.string());
+        }
     }
 
     Config config{};
@@ -228,12 +252,12 @@ Config get_config() {
     config.paths.skin = fs::path(config_file["paths"]["skin"].value_or("PyTaikoGreen"));
 
     // Parse keys (converting from strings to key codes)
-    config.keys.exit_key = getKeyCode(config_file["keys"]["exit_key"].value_or("escape"));
-    config.keys.fullscreen_key = getKeyCode(config_file["keys"]["fullscreen_key"].value_or("f11"));
-    config.keys.borderless_key = getKeyCode(config_file["keys"]["borderless_key"].value_or("f10"));
-    config.keys.pause_key = getKeyCode(config_file["keys"]["pause_key"].value_or("p"));
-    config.keys.back_key = getKeyCode(config_file["keys"]["back_key"].value_or("escape"));
-    config.keys.restart_key = getKeyCode(config_file["keys"]["restart_key"].value_or("r"));
+    config.keys.exit_key = getKeyCodeOrDefault(config_file["keys"]["exit_key"].value_or("escape"), "escape");
+    config.keys.fullscreen_key = getKeyCodeOrDefault(config_file["keys"]["fullscreen_key"].value_or("f11"), "f11");
+    config.keys.borderless_key = getKeyCodeOrDefault(config_file["keys"]["borderless_key"].value_or("f10"), "f10");
+    config.keys.pause_key = getKeyCodeOrDefault(config_file["keys"]["pause_key"].value_or("p"), "p");
+    config.keys.back_key = getKeyCodeOrDefault(config_file["keys"]["back_key"].value_or("escape"), "escape");
+    config.keys.restart_key = getKeyCodeOrDefault(config_file["keys"]["restart_key"].value_or("r"), "r");
 
     // Parse keys_1p
     if (auto left_kat = config_file["keys_1p"]["left_kat"].as_array()) {
@@ -313,6 +337,15 @@ Config get_config() {
     return config;
 }
 
+static std::string getKeyStringSafe(int key_code) {
+    try {
+        return getKeyString(key_code);
+    } catch (const std::runtime_error& e) {
+        spdlog::warn("{} -- saving numeric key code {}", e.what(), key_code);
+        return std::to_string(key_code);
+    }
+}
+
 void save_config(const Config& config) {
     fs::path config_path = fs::exists("dev-config.toml") ?
                             fs::path("dev-config.toml") :
@@ -332,6 +365,7 @@ void save_config(const Config& config) {
         {"log_level", config.general.log_level},
         {"practice_mode_bar_delay", config.general.practice_mode_bar_delay},
         {"score_method", config.general.score_method},
+        {"display_bpm", config.general.display_bpm},
         {"song_limit", config.general.song_limit},
         {"webcam_number", config.general.webcam_number},
         {"player_1_id", config.general.player_1_id},
@@ -358,20 +392,20 @@ void save_config(const Config& config) {
 
     // Keys
     config_table.insert("keys", toml::table{
-        {"exit_key", getKeyString(config.keys.exit_key)},
-        {"fullscreen_key", getKeyString(config.keys.fullscreen_key)},
-        {"borderless_key", getKeyString(config.keys.borderless_key)},
-        {"pause_key", getKeyString(config.keys.pause_key)},
-        {"back_key", getKeyString(config.keys.back_key)},
-        {"restart_key", getKeyString(config.keys.restart_key)}
+        {"exit_key", getKeyStringSafe(config.keys.exit_key)},
+        {"fullscreen_key", getKeyStringSafe(config.keys.fullscreen_key)},
+        {"borderless_key", getKeyStringSafe(config.keys.borderless_key)},
+        {"pause_key", getKeyStringSafe(config.keys.pause_key)},
+        {"back_key", getKeyStringSafe(config.keys.back_key)},
+        {"restart_key", getKeyStringSafe(config.keys.restart_key)}
     });
 
     // Keys 1P
     toml::array left_kat_1p, left_don_1p, right_don_1p, right_kat_1p;
-    for (int key : config.keys_1p.left_kat) left_kat_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.left_don) left_don_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.right_don) right_don_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.right_kat) right_kat_1p.push_back(getKeyString(key));
+    for (int key : config.keys_1p.left_kat) left_kat_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.left_don) left_don_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.right_don) right_don_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.right_kat) right_kat_1p.push_back(getKeyStringSafe(key));
 
     config_table.insert("keys_1p", toml::table{
         {"left_kat", left_kat_1p},
@@ -382,10 +416,10 @@ void save_config(const Config& config) {
 
     // Keys 2P
     toml::array left_kat_2p, left_don_2p, right_don_2p, right_kat_2p;
-    for (int key : config.keys_2p.left_kat) left_kat_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.left_don) left_don_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.right_don) right_don_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.right_kat) right_kat_2p.push_back(getKeyString(key));
+    for (int key : config.keys_2p.left_kat) left_kat_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.left_don) left_don_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.right_don) right_don_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.right_kat) right_kat_2p.push_back(getKeyStringSafe(key));
 
     config_table.insert("keys_2p", toml::table{
         {"left_kat", left_kat_2p},

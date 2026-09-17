@@ -314,7 +314,15 @@ static void run_frame() {
     ray::BeginMode2D(L.camera);
     ray::BeginBlendMode(ray::BLEND_CUSTOM_SEPARATE);
 
-    Screen* screen = L.screens[L.current_screen].get();
+    auto screen_it = L.screens.find(L.current_screen);
+    Screen* screen = (screen_it != L.screens.end()) ? screen_it->second.get() : nullptr;
+    if (!screen) {
+        spdlog::error("Active screen {} is not available", L.current_screen);
+        ray::EndBlendMode();
+        ray::EndMode2D();
+        ray::EndDrawing();
+        return;
+    }
 
     network.update(g_frame_ms);
     std::optional<Screens> next_screen = screen->update();
@@ -351,6 +359,7 @@ static void run_frame() {
         // Settings reloads global_tex and destroys its animations. Resolve the
         // current animation each frame instead of retaining a pointer across reloads.
         auto* touch_drum_resize = static_cast<TextureResizeAnimation*>(global_tex.get_animation(66));
+        if (touch_drum_resize) {
         if (!touch_drum_resize->isStarted()) touch_drum_resize->start();
         if (touch_drum_pressed.exchange(false, std::memory_order_relaxed))
             touch_drum_resize->restart();
@@ -361,6 +370,7 @@ static void run_frame() {
         if (drum_it != global_tex.textures.end())
             y_fix = drum_it->second->height * 0.5f * (1.0f - scale);
         global_tex.draw_texture(OVERLAY::TOUCH_DRUM, {.scale=scale, .center=true, .y=y_fix, .fade=0.5f});
+        }
     }
 
     if (global_data.config->general.fps_counter) {
@@ -533,7 +543,9 @@ int main(int argc, char* argv[]) {
 
     L.current_screen     = initial_screen;
     global_data.current_screen = screens_to_string(initial_screen);
-    L.target_duration    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps));
+    L.target_duration    = (target_fps > 0.0)
+        ? std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps))
+        : std::chrono::steady_clock::duration::zero();
 
     populate_screens(L.screens);
 

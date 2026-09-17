@@ -11,12 +11,25 @@
 if(NOT DEFINED PATCH_FILE)
     message(FATAL_ERROR "apply_git_patch.cmake needs -DPATCH_FILE=")
 endif()
-execute_process(COMMAND git apply --reverse --check "${PATCH_FILE}"
+if(NOT EXISTS "${PATCH_FILE}")
+    message(FATAL_ERROR "apply_git_patch.cmake: PATCH_FILE does not exist: ${PATCH_FILE}")
+endif()
+find_program(GIT_EXECUTABLE NAMES git git.cmd)
+if(NOT GIT_EXECUTABLE)
+    message(FATAL_ERROR "apply_git_patch.cmake: git not found, cannot apply ${PATCH_FILE}")
+endif()
+if(NOT DEFINED SOURCE_DIR)
+    set(SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}")   # cwd of the cmake -P invocation
+endif()
+execute_process(COMMAND "${GIT_EXECUTABLE}" apply --reverse --check "${PATCH_FILE}"
+                WORKING_DIRECTORY "${SOURCE_DIR}"
                 RESULT_VARIABLE _reversed OUTPUT_QUIET ERROR_QUIET)
 if(_reversed EQUAL 0)
     return()   # already applied
 endif()
-execute_process(COMMAND git apply "${PATCH_FILE}" RESULT_VARIABLE _res ERROR_VARIABLE _err)
+execute_process(COMMAND "${GIT_EXECUTABLE}" apply "${PATCH_FILE}"
+                WORKING_DIRECTORY "${SOURCE_DIR}"
+                RESULT_VARIABLE _res OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 if(NOT _res EQUAL 0)
-    message(WARNING "git apply ${PATCH_FILE} failed (ignored): ${_err}")
+    message(WARNING "git apply ${PATCH_FILE} failed (ignored, result=${_res}): ${_out}${_err}")
 endif()

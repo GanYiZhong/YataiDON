@@ -6,6 +6,7 @@
 #endif
 #include <algorithm>
 #include <fstream>
+#include <unordered_set>
 #include <spdlog/spdlog.h>
 #include <unistd.h>
 
@@ -84,7 +85,12 @@ void extract_osz(const fs::path& osz_path) {
         if (!mz_zip_reader_file_stat(&zip, i, &stat)) continue;
         if (mz_zip_reader_is_file_a_directory(&zip, i)) continue;
 
-        fs::path out_file = out_dir / stat.m_filename;
+        fs::path out_file = (out_dir / stat.m_filename).lexically_normal();
+        const fs::path rel = out_file.lexically_relative(out_dir);
+        if (rel.empty() || rel.native().rfind("..", 0) == 0) {
+            spdlog::warn("extract_osz: skipping unsafe entry {}", stat.m_filename);
+            continue;
+        }
         fs::create_directories(out_file.parent_path(), ec);
 
         if (!mz_zip_reader_extract_to_file(&zip, i, out_file.string().c_str(), 0))
@@ -135,7 +141,12 @@ void ensure_skin_extracted(const std::string& skin_name) {
             name = name.substr(common_prefix.size());
         if (name.empty()) continue;
 
-        fs::path out_file = skin_dir / name;
+        fs::path out_file = (skin_dir / name).lexically_normal();
+        const fs::path rel = out_file.lexically_relative(skin_dir);
+        if (rel.empty() || rel.native().rfind("..", 0) == 0) {
+            spdlog::warn("ensure_skin_extracted: skipping unsafe entry {}", stat.m_filename);
+            continue;
+        }
         fs::create_directories(out_file.parent_path(), ec);
 
         if (!mz_zip_reader_extract_to_file(&zip, i, out_file.string().c_str(), 0))
@@ -163,10 +174,30 @@ std::vector<std::string> list_available_skins() {
 
 static void collect_charts_from(const fs::path& path, std::vector<fs::path>& songs,
                                  std::vector<fs::path>* osz_out) {
+    // A symlinked directory that points back at one of its own ancestors would
+    // otherwise make the recursive iterator loop forever. Track the canonical
+    // path of every directory entered so a symlink resolving to one of them
+    // can be caught before we recurse into it again.
+    std::unordered_set<std::string> visited_dirs;
+    std::error_code canon_ec;
+    {
+        fs::path root_canonical = fs::canonical(path, canon_ec);
+        if (!canon_ec) visited_dirs.insert(root_canonical.string());
+    }
     auto it = fs::recursive_directory_iterator(
         path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink);
     for (; it != fs::end(it); ++it) {
         const auto& entry = *it;
+
+        if (entry.is_directory()) {
+            fs::path entry_canonical = fs::canonical(entry.path(), canon_ec);
+            if (!canon_ec) {
+                if (!visited_dirs.insert(entry_canonical.string()).second) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+            }
+        }
 
 #ifdef SUPPORT_FUMEN
         if (entry.is_directory() &&
@@ -286,8 +317,15 @@ std::vector<SongListEntry> read_song_list(const fs::path& path) {
 
 void write_song_list(const fs::path& path, const std::vector<SongListEntry>& entries) {
     std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        spdlog::error("write_song_list: failed to open {}", path.string());
+        return;
+    }
     for (const auto& e : entries)
         out << e.hash << "|" << e.title << "|" << e.subtitle << "\n";
+    out.flush();
+    if (!out)
+        spdlog::error("write_song_list: failed to write {}", path.string());
 }
 
 namespace {
@@ -300,7 +338,13 @@ fs::path skin_root(const fs::path& graphics_path) {
 }
 
 fs::path resolve_parent_graphics_path(const fs::path& graphics_path) {
-    auto skin_config_file = read_json_file(graphics_path / "skin_config.json");
+    rapidjson::Document skin_config_file;
+    try {
+        skin_config_file = read_json_file(graphics_path / "skin_config.json");
+    } catch (const std::exception& e) {
+        spdlog::warn("resolve_parent_graphics_path: {}", e.what());
+        return graphics_path;
+    }
     if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
         std::string parent = skin_config_file["screen"]["parent"].GetString();
         ensure_skin_extracted(parent);

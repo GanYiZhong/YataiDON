@@ -75,7 +75,7 @@ static std::unordered_map<SDL_FingerID, int> touch_id_to_vkey;
 std::atomic<bool> touch_drum_pressed{false};
 
 static std::array<bool, 349> previous_key_states{};
-static std::array<bool, 18>  previous_gamepad_states{};
+static std::array<std::array<bool, 18>, 4> previous_gamepad_states{};
 
 // Gamepad/joystick buttons and axes are folded into the key space at these
 // offsets (config stores the bare button number).
@@ -278,7 +278,10 @@ static int char_to_raylib_key(unsigned char c) {
 static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
 #ifdef YATAIDON_PLATFORM_IOS
     if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND) {
-        touch_id_to_vkey.clear();
+        {
+            std::lock_guard<std::mutex> lock(input_mutex);
+            touch_id_to_vkey.clear();
+        }
         clear_input_buffers();
         return true;
     }
@@ -320,6 +323,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
     if (event->type == SDL_EVENT_FINGER_DOWN) {
         if (!global_data.config->general.touch_input) return 1;
         SDL_FingerID id = event->tfinger.fingerID;
+        std::lock_guard<std::mutex> lock(input_mutex);
         if (!touch_id_to_vkey.count(id)) {
             int sw = ray::GetScreenWidth();
             int sh = ray::GetScreenHeight();
@@ -336,15 +340,14 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             touch_id_to_vkey[id] = vkey;
             touch_drum_pressed.store(true, std::memory_order_relaxed);
             last_input_ms.store(get_current_ms(), std::memory_order_relaxed);
-            std::lock_guard<std::mutex> lock(input_mutex);
             pressed_keys.insert(vkey);
         }
     } else if (event->type == SDL_EVENT_FINGER_UP ||
                event->type == SDL_EVENT_FINGER_CANCELED) {
         SDL_FingerID id = event->tfinger.fingerID;
+        std::lock_guard<std::mutex> lock(input_mutex);
         auto it = touch_id_to_vkey.find(id);
         if (it != touch_id_to_vkey.end()) {
-            std::lock_guard<std::mutex> lock(input_mutex);
             released_keys.insert(it->second);
             touch_id_to_vkey.erase(it);
         }
@@ -391,10 +394,10 @@ void poll_keyboard_once() {
         for (int btn = 1; btn <= 17; btn++) {
             int key = 10000 + btn;
             bool current_state  = ray::IsGamepadButtonDown(gamepad, btn);
-            bool previous_state = previous_gamepad_states[btn];
+            bool previous_state = previous_gamepad_states[gamepad][btn];
             if (current_state  && !previous_state) local_pressed.push_back(key);
             if (!current_state && previous_state)  local_released.push_back(key);
-            previous_gamepad_states[btn] = current_state;
+            previous_gamepad_states[gamepad][btn] = current_state;
         }
 
     }
@@ -496,6 +499,9 @@ void clear_input_buffers() {
     released_keys.clear();
 }
 
+// Caller must join input_polling_thread (which owns refresh_sdl_joysticks())
+// before calling this -- sdl_joysticks is unsynchronized, so concurrent
+// access here would race on the map and use-after-free a closed joystick.
 void shutdown_sdl_joysticks() {
     for (auto& [id, joy] : sdl_joysticks) {
         SDL_CloseJoystick(joy);

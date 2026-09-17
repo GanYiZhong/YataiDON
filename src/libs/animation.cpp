@@ -363,12 +363,18 @@ Value AnimationParser::resolveValue(const Value& ref_obj, std::set<int>& visited
     }
 
     int ref_id;
+    if (!ref_obj.HasMember("reference_id")) {
+        throw std::runtime_error("Reference requires 'reference_id' field");
+    }
     if (ref_obj["reference_id"].IsString()) {
-        ref_id = ref_obj["reference_id"].GetInt();
+        ref_id = std::stoi(ref_obj["reference_id"].GetString());
     } else if (ref_obj["reference_id"].IsInt()) {
         ref_id = ref_obj["reference_id"].GetInt();
     } else {
         throw std::runtime_error("reference_id must be string or int");
+    }
+    if (!ref_obj["property"].IsString()) {
+        throw std::runtime_error("Reference 'property' must be a string");
     }
     std::string ref_property = ref_obj["property"].GetString();
 
@@ -422,8 +428,8 @@ Value AnimationParser::resolveValue(const Value& ref_obj, std::set<int>& visited
 
 Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
     if (visited.find(anim_id) != visited.end()) {
-      throw runtime_error(&"Circular reference detected involving animation " [
-                          anim_id]);
+      throw runtime_error("Circular reference detected involving animation " +
+                          std::to_string(anim_id));
     }
 
     visited.insert(anim_id);
@@ -609,6 +615,12 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
         auto anim = createAnimation(absolute_anim);
         anim_dict[id] = std::move(anim);
     }
+
+    // temp_doc (and the pool allocator/Values it owns) is about to go out of
+    // scope; drop the now-dangling references instead of leaving them for a
+    // later parse_animations() call or destructor to touch.
+    raw_anims.clear();
+    allocator = nullptr;
 
     return anim_dict;
 }

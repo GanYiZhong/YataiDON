@@ -28,7 +28,9 @@ void md5(const uint8_t* data, size_t len, uint32_t out[4]) {
 
     size_t padded = ((len + 8) / 64 + 1) * 64 - 8;
     std::vector<uint8_t> msg(padded + 8, 0);
-    memcpy(msg.data(), data, len);
+    if (len > 0 && data != nullptr) {
+        memcpy(msg.data(), data, len);
+    }
     msg[len] = 0x80;
     uint64_t bits = (uint64_t)len * 8;
     for (int i = 0; i < 8; i++) msg[padded + i] = (uint8_t)(bits >> (i * 8));

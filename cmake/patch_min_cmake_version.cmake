@@ -11,8 +11,16 @@
 if(NOT DEFINED PATCH_FILE OR NOT DEFINED OLD_VERSION)
     message(FATAL_ERROR "patch_min_cmake_version.cmake needs -DPATCH_FILE= and -DOLD_VERSION=")
 endif()
+if(NOT DEFINED NEW_VERSION OR NEW_VERSION STREQUAL "")
+    set(NEW_VERSION "3.5")
+endif()
 file(READ "${PATCH_FILE}" _content)
-string(REPLACE "cmake_minimum_required(VERSION ${OLD_VERSION})"
-               "cmake_minimum_required(VERSION 3.5)"
-               _content "${_content}")
+set(_original "${_content}")
+string(REGEX REPLACE
+       "[Cc][Mm][Aa][Kk][Ee]_[Mm][Ii][Nn][Ii][Mm][Uu][Mm]_[Rr][Ee][Qq][Uu][Ii][Rr][Ee][Dd][ \t]*\\([ \t]*VERSION[ \t]+${OLD_VERSION}([ \t]*\\.\\.\\.[0-9.]+)?"
+       "cmake_minimum_required(VERSION ${NEW_VERSION}"
+       _content "${_content}")
+if(_content STREQUAL _original)
+    message(WARNING "patch_min_cmake_version: no 'cmake_minimum_required(VERSION ${OLD_VERSION})' found in '${PATCH_FILE}' - upstream may have changed")
+endif()
 file(WRITE "${PATCH_FILE}" "${_content}")
