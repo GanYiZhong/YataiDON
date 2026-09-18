@@ -23,10 +23,10 @@ FCAnimation::FCAnimation(bool is_2p, bool donderful)
     combo_voice = (donderful && audio.has_sound("donderful_combo_voice"))
                   ? "donderful_combo_voice" : "full_combo_voice";
 
-    bachio_fade_in = (FadeAnimation*)tex.get_animation(46);
-    bachio_texture_change = (TextureChangeAnimation*)tex.get_animation(47);
-    bachio_out = (TextureChangeAnimation*)tex.get_animation(55);
-    bachio_move_out = (MoveAnimation*)tex.get_animation(49);
+    bachio_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(46, true));
+    bachio_texture_change = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(47, true));
+    bachio_out = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(55));
+    bachio_move_out = dynamic_cast<MoveAnimation*>(tex.get_animation(49));
 
     bachio_fade_in->start();
     bachio_texture_change->start();
@@ -43,17 +43,17 @@ FCAnimation::FCAnimation(bool is_2p, bool donderful)
         clear_separate_stretch.push_back(stretch);
     }
 
-    clear_highlight_fade_in = (FadeAnimation*)tex.get_animation(56);
+    clear_highlight_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(56));
     clear_highlight_fade_in->start();
 
-    fc_highlight_up = (MoveAnimation*)tex.get_animation(57);
+    fc_highlight_up = dynamic_cast<MoveAnimation*>(tex.get_animation(57));
     fc_highlight_up->start();
 
-    fc_highlight_fade_out = (FadeAnimation*)tex.get_animation(58);
-    bachio_move_out_2 = (MoveAnimation*)tex.get_animation(59);
-    bachio_move_up = (MoveAnimation*)tex.get_animation(60);
-    fan_fade_in = (FadeAnimation*)tex.get_animation(61);
-    fan_texture_change = (TextureChangeAnimation*)tex.get_animation(62);
+    fc_highlight_fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(58));
+    bachio_move_out_2 = dynamic_cast<MoveAnimation*>(tex.get_animation(59));
+    bachio_move_up = dynamic_cast<MoveAnimation*>(tex.get_animation(60));
+    fan_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(61));
+    fan_texture_change = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(62));
 
     audio.play_sound(combo_sound, VolumePreset::SOUND);
 }
@@ -80,7 +80,7 @@ void FCAnimation::update(double current_ms) {
         audio.play_sound(combo_voice, VolumePreset::VOICE);
     }
 
-    if (clear_highlight_fade_in->attribute == 1.0f) {
+    if (clear_highlight_fade_in->is_finished) {
         if (!draw_clear_full && has_panel) panel_fade_in->start();
         draw_clear_full = true;
     }

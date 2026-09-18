@@ -158,7 +158,14 @@ Screens check_args(int argc, char* argv[]) {
         std::filesystem::path abs = std::filesystem::absolute(path, abs_ec);
         if (!abs_ec) path = abs;
     }
-    SongParser tja(path);
+    SongParser tja = [&]() -> SongParser {
+        try {
+            return SongParser(path);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: Failed to parse song file: " << e.what() << "\n";
+            exit_now(1);
+        }
+    }();
 
     int selected_difficulty;
     if (difficulty.has_value()) {
@@ -317,7 +324,18 @@ static void run_frame() {
     auto screen_it = L.screens.find(L.current_screen);
     Screen* screen = (screen_it != L.screens.end()) ? screen_it->second.get() : nullptr;
     if (!screen) {
-        spdlog::error("Active screen {} is not available", L.current_screen);
+        static Screens last_logged_screen = L.current_screen;
+        static double last_log_ms = -1e9;
+        if (L.current_screen != last_logged_screen || g_frame_ms - last_log_ms > 1000.0) {
+            spdlog::error("Active screen {} is not available, attempting recovery", L.current_screen);
+            last_logged_screen = L.current_screen;
+            last_log_ms = g_frame_ms;
+        }
+        populate_screens(L.screens);
+        screen_it = L.screens.find(L.current_screen);
+        screen = (screen_it != L.screens.end()) ? screen_it->second.get() : nullptr;
+    }
+    if (!screen) {
         ray::EndBlendMode();
         ray::EndMode2D();
         ray::EndDrawing();

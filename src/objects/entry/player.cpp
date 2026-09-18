@@ -133,22 +133,30 @@ void EntryPlayer::handle_input() {
         if (costume_menu->confirmed) {
             int player_id = get_player_id(player_num);
             if (auto pd = scores_manager.get_player_data(player_id)) {
-                if (costume_menu->get_pick_stage() == CostumePickStage::BODY) {
-                    pd->chara_head_index = costume_menu->get_picked_head_id();
-                    pd->chara_body_index = std::stoi(costume_menu->get_costume_name());
-                    pd->chara_is_costume = false;
-                } else {
-                    pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
-                    pd->chara_is_costume = true;
+                bool parsed = true;
+                try {
+                    if (costume_menu->get_pick_stage() == CostumePickStage::BODY) {
+                        pd->chara_head_index = costume_menu->get_picked_head_id();
+                        pd->chara_body_index = std::stoi(costume_menu->get_costume_name());
+                        pd->chara_is_costume = false;
+                    } else {
+                        pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
+                        pd->chara_is_costume = true;
+                    }
+                } catch (const std::exception& e) {
+                    spdlog::error("costume_save: invalid costume name '{}': {}", costume_menu->get_costume_name(), e.what());
+                    parsed = false;
                 }
-                scores_manager.save_player_data(*pd);
-                spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
-                    pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
+                if (parsed) {
+                    scores_manager.save_player_data(*pd);
+                    spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
+                        pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
 
-                const std::string& access_code = global_data.config->network.access_code;
-                if (pd->player_id == scores_manager.player_1 && !access_code.empty()) {
-                    network.update_costume(access_code, pd->chara_head_index, pd->chara_body_index,
-                                            pd->chara_cos_index, pd->chara_is_costume);
+                    const std::string& access_code = global_data.config->network.access_code;
+                    if (pd->player_id == scores_manager.player_1 && !access_code.empty()) {
+                        network.update_costume(access_code, pd->chara_head_index, pd->chara_body_index,
+                                                pd->chara_cos_index, pd->chara_is_costume);
+                    }
                 }
             }
             costume_menu.reset();

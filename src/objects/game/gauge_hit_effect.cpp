@@ -3,11 +3,11 @@
 
 GaugeHitEffect::GaugeHitEffect(NoteType note_type, bool is_big, bool is_2p)
             : note_type(note_type), is_big(is_big), is_2p(is_2p) {
-    texture_change = (TextureChangeAnimation*)tex.get_animation(2, true);
-    circle_fadein = (FadeAnimation*)tex.get_animation(31, true);
-    resize = (TextureResizeAnimation*)tex.get_animation(32, true);
-    fade_out = (FadeAnimation*)tex.get_animation(33, true);
-    rotation = (FadeAnimation*)tex.get_animation(34, true);
+    texture_change = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(2, true));
+    circle_fadein = dynamic_cast<FadeAnimation*>(tex.get_animation(31, true));
+    resize = dynamic_cast<TextureResizeAnimation*>(tex.get_animation(32, true));
+    fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(33, true));
+    rotation = dynamic_cast<FadeAnimation*>(tex.get_animation(34, true));
 
     texture_change->start();
     circle_fadein->start();
@@ -76,7 +76,7 @@ void GaugeHitEffect::draw(float y) {
                     .index=is_2p});
 
     //Note type texture
-    SkinInfo pos_data = tex.skin_config[SC::GAUGE_HIT_EFFECT_NOTE];
+    const SkinInfo& pos_data = tex.skin_config.at(SC::GAUGE_HIT_EFFECT_NOTE);
     tex.draw_texture(tex.get_enum("notes/" + (std::to_string((int)note_type))),
         {.x=pos_data.x, .y=y+pos_data.y + (pos_data.height * is_2p), .fade=fade_out->attribute});
 

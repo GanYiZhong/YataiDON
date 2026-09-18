@@ -17,7 +17,8 @@ void BottomCharacters::update(double current_ms, int state) {
 }
 
 bool BottomCharacters::is_finished() {
-    return call_r<bool>(fn_is_finished, "BottomCharacters:is_finished").value_or(false);
+    // No script / Lua error -> behave as finished so the result screen can progress.
+    return call_r<bool>(fn_is_finished, "BottomCharacters:is_finished").value_or(true);
 }
 
 void BottomCharacters::draw() {

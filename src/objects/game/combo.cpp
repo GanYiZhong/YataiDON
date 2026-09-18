@@ -2,10 +2,18 @@
 #include "../../libs/texture.h"
 #include "../../libs/global_data.h"
 #include <cmath>
+#include <stdexcept>
+
+namespace {
+    constexpr int COMBO_STRETCH_ANIM_ID = 5;
+}
 
 Combo::Combo(int combo, double current_ms)
     : combo(combo) {
-    stretch = (TextStretchAnimation*)tex.get_animation(5, true);
+    stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(COMBO_STRETCH_ANIM_ID, true));
+    if (stretch == nullptr) {
+        throw std::runtime_error("combo stretch animation missing or of unexpected type");
+    }
     color = {ray::Fade(ray::WHITE, 1), ray::Fade(ray::WHITE, 1), ray::Fade(ray::WHITE, 1)};
     glimmer_map[0] = 0;
     glimmer_map[1] = 0;
@@ -14,8 +22,8 @@ Combo::Combo(int combo, double current_ms)
     cycle_time = total_time * 2;
     start_times = {
                 current_ms,
-                current_ms + (2.0f / 3.0f) * cycle_time,
-                current_ms + (4.0f / 3.0f) * cycle_time
+                current_ms - (2.0f / 3.0f) * cycle_time,
+                current_ms - (4.0f / 3.0f) * cycle_time
     };
 }
 

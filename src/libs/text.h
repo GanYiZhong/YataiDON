@@ -18,7 +18,7 @@ private:
 
     std::vector<unsigned char> font_data;    // the .ttf bytes, read once
 
-    void rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps);   // font_mutex held
+    bool rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps);   // font_mutex held
     void rebuild_atlas(SizedFont& entry, int font_size);                                // font_mutex held
     void release_font(SizedFont& entry);                                                // font_mutex held
     void release_cache(SizedFont& entry);                                               // font_mutex held

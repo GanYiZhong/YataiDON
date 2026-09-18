@@ -1,11 +1,15 @@
 #include "balloon_counter.h"
 #include "../../libs/texture.h"
 #include <algorithm>
+#include <stdexcept>
 
 BalloonCounter::BalloonCounter(int count, bool is_2p)
  : balloon_count(0), balloon_total(count), is_popped(false), is_2p(is_2p) {
-     fade = (FadeAnimation*)tex.get_animation(7);
-     stretch = (TextStretchAnimation*)tex.get_animation(6);
+     fade = dynamic_cast<FadeAnimation*>(tex.get_animation(7, true));
+     stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(6, true));
+     if (!fade || !stretch) {
+         throw std::runtime_error("balloon counter animation missing or of unexpected type");
+     }
      fade->reset();
      stretch->reset();
 }
@@ -15,7 +19,7 @@ void BalloonCounter::update_count(int count) {
         balloon_count = count;
         fade->start();
         stretch->start();
-        if (balloon_count == balloon_total) {
+        if (balloon_total > 0 && balloon_count >= balloon_total) {
             is_popped = true;
         }
     }

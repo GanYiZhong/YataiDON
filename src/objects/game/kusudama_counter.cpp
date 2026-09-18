@@ -3,17 +3,17 @@
 
 KusudamaCounter::KusudamaCounter(int total)
     : balloon_total(total), balloon_count(0), is_popped(false) {
-    move_down = (MoveAnimation*)tex.get_animation(11);
-    move_up = (MoveAnimation*)tex.get_animation(12);
-    renda_move_up = (MoveAnimation*)tex.get_animation(13);
-    renda_move_down = (MoveAnimation*)tex.get_animation(18);
-    renda_fade_in = (FadeAnimation*)tex.get_animation(14);
-    renda_fade_out = (FadeAnimation*)tex.get_animation(20);
-    stretch = (TextStretchAnimation*)tex.get_animation(15);
-    breathing = (TextureResizeAnimation*)tex.get_animation(16);
-    renda_breathe = (MoveAnimation*)tex.get_animation(17);
-    open = (TextureChangeAnimation*)tex.get_animation(19);
-    fade_out = (FadeAnimation*)tex.get_animation(21);
+    move_down = dynamic_cast<MoveAnimation*>(tex.get_animation(11));
+    move_up = dynamic_cast<MoveAnimation*>(tex.get_animation(12));
+    renda_move_up = dynamic_cast<MoveAnimation*>(tex.get_animation(13));
+    renda_move_down = dynamic_cast<MoveAnimation*>(tex.get_animation(18));
+    renda_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(14));
+    renda_fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(20));
+    stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(15));
+    breathing = dynamic_cast<TextureResizeAnimation*>(tex.get_animation(16));
+    renda_breathe = dynamic_cast<MoveAnimation*>(tex.get_animation(17));
+    open = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(19));
+    fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(21));
 
     move_down->start();
     move_up->start();
@@ -52,7 +52,7 @@ void KusudamaCounter::update(double current_ms, int count) {
     breathing->update(current_ms);
     renda_breathe->update(current_ms);
     open->update(current_ms);
-    if (count != 0) update_count(count);
+    update_count(count);
 }
 
 void KusudamaCounter::draw() {

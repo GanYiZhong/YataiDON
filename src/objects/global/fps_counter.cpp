@@ -24,6 +24,7 @@ float FPSCounter::get_fps() {
         sum += frameTimes[i];
     }
     float avgFrameTime = sum / SAMPLE_SIZE;
+    if (!(avgFrameTime > 0.0f)) return 0.0f;
     return 1000.0f / avgFrameTime;
 }
 
@@ -33,7 +34,8 @@ void FPSCounter::draw() {
     float pos  = (float)size;
 
     ray::Color color;
-    ray::Font font = font_manager.get_font(std::to_string(curr_fps), size);
+    std::string fps_text = std::to_string(curr_fps) + " FPS";
+    ray::Font font = font_manager.get_font(fps_text, size);
 
     if (curr_fps < 30) color = ray::RED;
     else if (curr_fps < 60) color = ray::YELLOW;

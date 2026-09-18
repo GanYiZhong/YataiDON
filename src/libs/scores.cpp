@@ -6,7 +6,10 @@
 
 ScoresManager::ScoresManager(const fs::path& db_path) {
     if (sqlite3_open(db_path.string().c_str(), &db_fsd) != SQLITE_OK) {
-        throw std::runtime_error("Failed to open database: " + std::string(sqlite3_errmsg(db_fsd)));
+        std::string err = sqlite3_errmsg(db_fsd);
+        sqlite3_close(db_fsd);
+        db_fsd = nullptr;
+        throw std::runtime_error("Failed to open database: " + err);
     }
 
     int version = 0;
@@ -185,7 +188,13 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
     };
     std::unordered_map<NameKey, std::array<std::string, 5>, PairHash> name_to_hashes;
 
-    for (const auto& [path, hashes] : path_to_hashes) {
+    std::unordered_map<fs::path, std::array<std::string, 5>> path_to_hashes_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(maps_mutex);
+        path_to_hashes_snapshot = path_to_hashes;
+    }
+
+    for (const auto& [path, hashes] : path_to_hashes_snapshot) {
         try {
             SongParser parser(path);
             std::string en = parser.metadata.title.count("en") ? parser.metadata.title.at("en") : "";

@@ -5,7 +5,13 @@
 
 class WebCamera {
 public:
+    WebCamera() = default;
     ~WebCamera();
+
+    WebCamera(const WebCamera&) = delete;
+    WebCamera& operator=(const WebCamera&) = delete;
+    WebCamera(WebCamera&& other) noexcept;
+    WebCamera& operator=(WebCamera&& other) noexcept;
 
     bool open(int device_index = 0);
     void close();

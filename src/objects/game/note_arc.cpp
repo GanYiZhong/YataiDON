@@ -66,7 +66,8 @@ void NoteArc::update(double current_ms) {
 
     current_progress = elapsed_time / arc_duration;
 
-    int point_index = current_progress * arc_points;
+    if (arc_points_cache == nullptr || arc_points_cache->empty()) return;
+    const std::size_t point_index = static_cast<std::size_t>(current_progress * arc_points);
     if (point_index < arc_points_cache->size()) {
         x_i = (*arc_points_cache)[point_index].first;
         y_i = (*arc_points_cache)[point_index].second;
@@ -78,7 +79,8 @@ void NoteArc::update(double current_ms) {
 
 void NoteArc::draw(float y, ray::Shader mask_shader) {
     if (is_balloon) {
-        std::shared_ptr<TextureObject> rainbow = tex.textures[BALLOON::RAINBOW];
+        const std::shared_ptr<TextureObject>& rainbow = tex.textures[BALLOON::RAINBOW];
+        if (!rainbow) return;
         float rainbow_height;
         if (player_num == PlayerNum::P2) {
             rainbow_height = -rainbow->height;

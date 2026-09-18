@@ -282,6 +282,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             std::lock_guard<std::mutex> lock(input_mutex);
             touch_id_to_vkey.clear();
         }
+        touch_drum_pressed.store(false, std::memory_order_relaxed);
         clear_input_buffers();
         return true;
     }
@@ -351,6 +352,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             released_keys.insert(it->second);
             touch_id_to_vkey.erase(it);
         }
+        touch_drum_pressed.store(!touch_id_to_vkey.empty(), std::memory_order_relaxed);
     }
     return 1;
 }
@@ -366,8 +368,8 @@ void poll_touch_once() {
 // Used by the polling thread on desktop and called directly per-frame on web.
 void poll_keyboard_once() {
     if (global_data.input_locked) return;
-    static std::vector<int> local_pressed;
-    static std::vector<int> local_released;
+    thread_local std::vector<int> local_pressed;
+    thread_local std::vector<int> local_released;
     local_pressed.clear();
     local_released.clear();
 

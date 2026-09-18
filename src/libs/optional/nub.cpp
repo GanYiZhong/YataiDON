@@ -40,6 +40,7 @@ int mem_read(void* opaque, uint8_t* buf, int buf_size) {
 
 int64_t mem_seek(void* opaque, int64_t offset, int whence) {
     MemReader* r = static_cast<MemReader*>(opaque);
+    whence &= ~AVSEEK_FORCE;
     if (whence == AVSEEK_SIZE) return (int64_t)r->size;
     size_t base = whence == SEEK_CUR ? r->pos : whence == SEEK_END ? r->size : 0;
     int64_t target = (int64_t)base + offset;
@@ -135,7 +136,16 @@ bool decode_nub(const fs::path& path, gen4::DecodedAudio& out) {
     AVIOContext* avio = avio_alloc_context(avio_buf, 0x4000, 0, &reader,
                                            mem_read, nullptr, mem_seek);
     AVFormatContext* fmt = avformat_alloc_context();
-    if (!avio || !fmt) return false;
+    if (!avio_buf || !avio || !fmt) {
+        if (avio) {
+            av_freep(&avio->buffer);
+            avio_context_free(&avio);
+        } else {
+            av_freep(&avio_buf);
+        }
+        if (fmt) avformat_free_context(fmt);
+        return false;
+    }
     fmt->pb = avio;
 
     bool ok = false;

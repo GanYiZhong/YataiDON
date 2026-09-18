@@ -79,13 +79,14 @@ std::string getKeyString(int key_code) {
 
 static int getKeyCode(const std::string& key) {
     // Handle single alphanumeric characters
-    if (key.length() == 1 && std::isalnum(key[0])) {
-        return std::toupper(key[0]);
+    if (key.length() == 1 && std::isalnum(static_cast<unsigned char>(key[0]))) {
+        return std::toupper(static_cast<unsigned char>(key[0]));
     }
 
     // Convert to uppercase for comparison
     std::string upper_key = key;
-    std::transform(upper_key.begin(), upper_key.end(), upper_key.begin(), ::toupper);
+    std::transform(upper_key.begin(), upper_key.end(), upper_key.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 
     // Map strings to raylib key codes
     static const std::map<std::string, int> key_map = {
@@ -485,14 +486,17 @@ void save_config(const Config& config) {
     fs::path tmp_path = config_path;
     tmp_path += ".tmp";
     {
+        std::error_code rm_ec;
         std::ofstream ofs(tmp_path, std::ios::trunc);
         if (!ofs.is_open()) {
-            spdlog::error("Failed to save config.toml");
+            spdlog::error("Failed to open {} for writing", tmp_path.string());
             return;
         }
         ofs << config_table;
-        if (!ofs.good()) {
-            spdlog::error("Failed to write config.toml");
+        ofs.close();
+        if (!ofs) {
+            spdlog::error("Failed to write {}", tmp_path.string());
+            fs::remove(tmp_path, rm_ec);
             return;
         }
     }

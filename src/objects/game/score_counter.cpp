@@ -2,7 +2,10 @@
 #include "../../libs/texture.h"
 
 ScoreCounter::ScoreCounter(int score, bool is_2p) : score(score), is_2p(is_2p) {
-    stretch = (TextStretchAnimation*)tex.get_animation(4, true);
+    stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(4, true));
+    if (stretch == nullptr) {
+        throw std::runtime_error("Animation 4 is not a TextStretchAnimation");
+    }
 }
 
 void ScoreCounter::update_count(int score) {

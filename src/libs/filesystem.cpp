@@ -8,7 +8,10 @@
 #include <fstream>
 #include <unordered_set>
 #include <spdlog/spdlog.h>
-#include <unistd.h>
+#ifndef _WIN32
+    #include <unistd.h>
+    #include <climits>
+#endif
 
 #ifdef YATAIDON_PLATFORM_IOS
     #include "../platform/ios.h"
@@ -80,25 +83,33 @@ void extract_osz(const fs::path& osz_path) {
     }
 
     int num_files = (int)mz_zip_reader_get_num_files(&zip);
+    bool all_ok = true;
     for (int i = 0; i < num_files; i++) {
         mz_zip_archive_file_stat stat;
-        if (!mz_zip_reader_file_stat(&zip, i, &stat)) continue;
+        if (!mz_zip_reader_file_stat(&zip, i, &stat)) { all_ok = false; continue; }
         if (mz_zip_reader_is_file_a_directory(&zip, i)) continue;
 
         fs::path out_file = (out_dir / stat.m_filename).lexically_normal();
         const fs::path rel = out_file.lexically_relative(out_dir);
-        if (rel.empty() || rel.native().rfind("..", 0) == 0) {
+        if (rel.empty() || *rel.begin() == "..") {
             spdlog::warn("extract_osz: skipping unsafe entry {}", stat.m_filename);
+            all_ok = false;
             continue;
         }
         fs::create_directories(out_file.parent_path(), ec);
 
-        if (!mz_zip_reader_extract_to_file(&zip, i, out_file.string().c_str(), 0))
+        if (!mz_zip_reader_extract_to_file(&zip, i, out_file.string().c_str(), 0)) {
             spdlog::warn("extract_osz: failed to extract {} from {}", stat.m_filename, osz_path.string());
+            all_ok = false;
+        }
     }
 
     mz_zip_reader_end(&zip);
-    fs::remove(osz_path, ec);
+    if (all_ok) {
+        fs::remove(osz_path, ec);
+    } else {
+        spdlog::warn("extract_osz: keeping {} because extraction was incomplete", osz_path.string());
+    }
     spdlog::info("extract_osz: extracted {} to {}", osz_path.string(), out_dir.string());
 }
 
@@ -143,7 +154,7 @@ void ensure_skin_extracted(const std::string& skin_name) {
 
         fs::path out_file = (skin_dir / name).lexically_normal();
         const fs::path rel = out_file.lexically_relative(skin_dir);
-        if (rel.empty() || rel.native().rfind("..", 0) == 0) {
+        if (rel.empty() || *rel.begin() == "..") {
             spdlog::warn("ensure_skin_extracted: skipping unsafe entry {}", stat.m_filename);
             continue;
         }
@@ -345,7 +356,9 @@ fs::path resolve_parent_graphics_path(const fs::path& graphics_path) {
         spdlog::warn("resolve_parent_graphics_path: {}", e.what());
         return graphics_path;
     }
-    if (skin_config_file.HasMember("screen") && skin_config_file["screen"].HasMember("parent")) {
+    if (skin_config_file.IsObject() && skin_config_file.HasMember("screen") &&
+        skin_config_file["screen"].IsObject() && skin_config_file["screen"].HasMember("parent") &&
+        skin_config_file["screen"]["parent"].IsString()) {
         std::string parent = skin_config_file["screen"]["parent"].GetString();
         ensure_skin_extracted(parent);
         return fs::path("Skins") / parent / "Graphics";

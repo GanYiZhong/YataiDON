@@ -249,6 +249,7 @@ void FumenParser::build_notes(int diff) {
     double prev_bpm  = -1.0;
     bool   prev_gogo = false;
     int    idx       = 0;
+    bool   truncated = false;
 
     for (uint32_t m = 0; m < hdr.number_of_measures; m++) {
         FumenMeasureData mdata{};
@@ -301,12 +302,12 @@ void FumenParser::build_notes(int diff) {
 
             for (uint16_t n = 0; n < note_count; n++) {
                 FumenNoteBase nb{};
-                if (!take(&nb, sizeof(FumenNoteBase))) break;
+                if (!take(&nb, sizeof(FumenNoteBase))) { truncated = true; break; }
                 if (big_endian) swap_note(nb);
 
                 if (has_renda_padding(nb.type)) {
                     uint32_t extra[2]{};
-                    take(extra, 8);
+                    if (!take(extra, 8)) { truncated = true; break; }
                 }
 
                 if (b != 0) continue;
@@ -363,6 +364,8 @@ void FumenParser::build_notes(int diff) {
                 }
             }
 
+            if (truncated) break;
+
             if (b == 0) {
                 Note barline;
                 barline.type     = NoteType::BARLINE;
@@ -377,6 +380,8 @@ void FumenParser::build_notes(int diff) {
                 cached_notes.notes.push_back(barline);
             }
         }
+
+        if (truncated) break;
     }
 
     std::stable_sort(cached_notes.notes.begin(), cached_notes.notes.end(),

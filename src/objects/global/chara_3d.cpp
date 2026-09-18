@@ -75,8 +75,10 @@ static void reindex_animations(ray::Model& model, ray::Model& glb_model,
 
     for (int a = 0; a < anim_count; a++) {
         auto& anim = anims[a];
+        if (anim.keyframeCount <= 0 || !anim.keyframePoses) continue;
         ray::ModelAnimPose* new_poses =
             (ray::ModelAnimPose*)std::malloc(anim.keyframeCount * sizeof(ray::ModelAnimPose));
+        if (!new_poses) continue;
 
         for (int f = 0; f < anim.keyframeCount; f++) {
             new_poses[f] = (ray::Transform*)std::malloc(n * sizeof(ray::Transform));
@@ -110,9 +112,8 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
     if (!f) return result;
 
     uint32_t magic = 0, version = 0, total_len = 0;
-    fread(&magic,     4, 1, f);
-    fread(&version,   4, 1, f);
-    fread(&total_len, 4, 1, f);
+    if (fread(&magic, 4, 1, f) != 1 || fread(&version, 4, 1, f) != 1 ||
+        fread(&total_len, 4, 1, f) != 1) { fclose(f); return result; }
 
     if (magic != 0x46546C67u) { fclose(f); return result; }
 
@@ -122,9 +123,11 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
 
     if (chunk_type != 0x4E4F534Au) { fclose(f); return result; }
 
+    if (chunk_len == 0 || chunk_len + 20u > total_len) { fclose(f); return result; }
     std::string json(chunk_len, '\0');
-    fread(json.data(), 1, chunk_len, f);
+    const size_t read = fread(json.data(), 1, chunk_len, f);
     fclose(f);
+    if (read != chunk_len) return result;
 
     rapidjson::Document doc;
     doc.Parse(json.data(), json.size());
@@ -201,6 +204,23 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     std::vector<int> recolor_indices, additive_indices, cutout_indices, blend_indices, twosided_indices;
     int face_material_index = -1;
     auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices, blend_indices, twosided_indices);
+
+    // Material indices come from the GLB's own JSON and are not guaranteed to line up
+    // with what raylib actually imported (e.g. LoadModel failure, fewer materials).
+    auto valid_material = [&](int idx) { return idx >= 0 && idx < model.materialCount; };
+    if (!valid_material(face_material_index)) face_material_index = -1;
+    auto filter_materials = [&](std::vector<int>& v) {
+        v.erase(std::remove_if(v.begin(), v.end(), [&](int idx) { return !valid_material(idx); }), v.end());
+    };
+    filter_materials(recolor_indices);
+    filter_materials(additive_indices);
+    filter_materials(cutout_indices);
+    filter_materials(blend_indices);
+    filter_materials(twosided_indices);
+    for (auto it = material_indices.begin(); it != material_indices.end(); ) {
+        if (!valid_material(it->second)) it = material_indices.erase(it);
+        else ++it;
+    }
 
     if (face_material_index != -1) {
         // head/body parts always get the standard 0.137 plate; a costume keeps its own plate
@@ -353,7 +373,11 @@ Chara3D::~Chara3D() {
 
 void Chara3D::set_texture(fs::path& texture_path, int part_index, int material_index) {
     ray::Texture2D old = parts[part_index].materials[material_index].maps[ray::MATERIAL_MAP_DIFFUSE].texture;
-    if (old.id != 0) ray::UnloadTexture(old);
+    // Face material textures are owned by face_textures (shared across parts and unloaded
+    // in the destructor); unloading here would double-free / use-after-free.
+    bool is_face_material = part_face_material_index[part_index] != -1 &&
+                             material_index == part_face_material_index[part_index];
+    if (old.id != 0 && !is_face_material) ray::UnloadTexture(old);
     ray::Texture tex = ray::LoadTexture(texture_path.string().c_str());
     ray::GenTextureMipmaps(&tex);
     ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);

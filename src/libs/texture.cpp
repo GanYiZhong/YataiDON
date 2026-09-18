@@ -186,7 +186,11 @@ BaseAnimation* TextureWrapper::get_animation(const int id, const std::string& sc
         }
     }
 
-    auto& anim_map = screen_animations.at(screen_name);
+    auto screen_it = screen_animations.find(screen_name);
+    if (screen_it == screen_animations.end()) {
+        throw std::runtime_error("No animations available for screen: " + screen_name);
+    }
+    auto& anim_map = screen_it->second;
     auto it = anim_map.find(id);
     if (it == anim_map.end()) {
         throw std::runtime_error("Unable to find animation " + std::to_string(id) + " in screen: " + screen_name);
@@ -204,21 +208,30 @@ void TextureWrapper::read_tex_obj_data(const Value& tex_mapping, TextureObject* 
         bool has_crop_in_first = tex_mapping.Size() > 0 &&
                                  tex_mapping[0].IsObject() &&
                                  tex_mapping[0].HasMember("crop") &&
-                                 tex_mapping[0]["crop"].IsArray();
+                                 tex_mapping[0]["crop"].IsArray() &&
+                                 !tex_mapping[0]["crop"].Empty();
 
         std::vector<ray::Rectangle> crops;
         if (has_crop_in_first) {
             const Value& first_mapping = tex_mapping[0];
             for (SizeType j = 0; j < first_mapping["crop"].Size(); j++) {
                 const Value& crop = first_mapping["crop"][j];
+                if (!crop.IsArray() || crop.Size() < 4) {
+                    spdlog::error("Invalid crop entry {} for texture {}", j, tex_obj->name);
+                    continue;
+                }
                 crops.push_back(ray::Rectangle{
                     crop[0].GetFloat(), crop[1].GetFloat(),
                     crop[2].GetFloat(), crop[3].GetFloat()
                 });
             }
-            tex_obj->crop_data = crops;
-            tex_obj->width = static_cast<int>(crops[0].width);
-            tex_obj->height = static_cast<int>(crops[0].height);
+            if (crops.empty()) {
+                has_crop_in_first = false;
+            } else {
+                tex_obj->crop_data = crops;
+                tex_obj->width = static_cast<int>(crops[0].width);
+                tex_obj->height = static_cast<int>(crops[0].height);
+            }
         }
 
         for (SizeType i = 0; i < tex_mapping.Size(); i++) {
@@ -248,6 +261,10 @@ void TextureWrapper::read_tex_obj_data(const Value& tex_mapping, TextureObject* 
                     std::vector<ray::Texture2D> reordered;
                     for (SizeType j = 0; j < mapping["frame_order"].Size(); j++) {
                         int idx = static_cast<int>(json_number(mapping["frame_order"][j]));
+                        if (idx < 0 || idx >= static_cast<int>(framed->textures.size())) {
+                            spdlog::error("Invalid frame_order index {} for texture {}", idx, tex_obj->name);
+                            continue;
+                        }
                         reordered.push_back(framed->textures[idx]);
                     }
                     framed->textures = reordered;
@@ -261,18 +278,24 @@ void TextureWrapper::read_tex_obj_data(const Value& tex_mapping, TextureObject* 
             }
         }
     } else if (tex_mapping.IsObject()) {
-        if (tex_mapping.HasMember("crop") && tex_mapping["crop"].IsArray()) {
+        if (tex_mapping.HasMember("crop") && tex_mapping["crop"].IsArray() && !tex_mapping["crop"].Empty()) {
             std::vector<ray::Rectangle> crops;
             for (SizeType j = 0; j < tex_mapping["crop"].Size(); j++) {
                 const Value& crop = tex_mapping["crop"][j];
+                if (!crop.IsArray() || crop.Size() < 4) {
+                    spdlog::error("Invalid crop entry {} for texture {}", j, tex_obj->name);
+                    continue;
+                }
                 crops.push_back(ray::Rectangle{
                     crop[0].GetFloat(), crop[1].GetFloat(),
                     crop[2].GetFloat(), crop[3].GetFloat()
                 });
             }
-            tex_obj->crop_data = crops;
-            tex_obj->width = static_cast<int>(crops[0].width);
-            tex_obj->height = static_cast<int>(crops[0].height);
+            if (!crops.empty()) {
+                tex_obj->crop_data = crops;
+                tex_obj->width = static_cast<int>(crops[0].width);
+                tex_obj->height = static_cast<int>(crops[0].height);
+            }
         }
 
         tex_obj->x = {static_cast<int>(json_member(tex_mapping, "x", 0) * scale)};
@@ -287,6 +310,10 @@ void TextureWrapper::read_tex_obj_data(const Value& tex_mapping, TextureObject* 
                 std::vector<ray::Texture2D> reordered;
                 for (SizeType j = 0; j < tex_mapping["frame_order"].Size(); j++) {
                     int idx = static_cast<int>(json_number(tex_mapping["frame_order"][j]));
+                    if (idx < 0 || idx >= static_cast<int>(framed->textures.size())) {
+                        spdlog::error("Invalid frame_order index {} for texture {}", idx, tex_obj->name);
+                        continue;
+                    }
                     reordered.push_back(framed->textures[idx]);
                 }
                 framed->textures = reordered;
@@ -372,8 +399,14 @@ void decode_images_parallel(const std::vector<fs::path>& files, std::vector<ray:
     pool.reserve(workers);
     for (size_t w = 0; w < workers; ++w) {
         pool.emplace_back([&files, &out, &next]() {
-            for (size_t i = next.fetch_add(1); i < files.size(); i = next.fetch_add(1))
-                out[i] = ray::LoadImage(files[i].string().c_str());
+            for (size_t i = next.fetch_add(1); i < files.size(); i = next.fetch_add(1)) {
+                try {
+                    out[i] = ray::LoadImage(files[i].string().c_str());
+                } catch (const std::exception& e) {
+                    spdlog::error("Failed to decode image {}: {}", files[i].string(), e.what());
+                    out[i] = ray::Image{};
+                }
+            }
         });
     }
     for (auto& t : pool) t.join();
@@ -493,7 +526,13 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
                 std::vector<ray::Texture2D> texs;
                 texs.reserve(p.file_count);
                 for (size_t i = 0; i < p.file_count; ++i) {
-                    ray::Texture2D t = ray::LoadTextureFromImage(images[p.first_file + i]);
+                    const ray::Image& img = images[p.first_file + i];
+                    if (!img.data) {
+                        spdlog::error("Failed to decode image for texture {}: Frame {}", p.name, i);
+                        ok = false;
+                        continue;
+                    }
+                    ray::Texture2D t = ray::LoadTextureFromImage(img);
                     if (!ray::IsTextureValid(t)) {
                         spdlog::error("Failed to load texture {}: Frame {}", p.name, i);
                         ok = false;
@@ -667,6 +706,11 @@ void TextureWrapper::draw_texture(uint32_t id, const DrawTextureParams& params) 
         const float width = static_cast<float>(tex_obj->width);
         const float height = static_cast<float>(tex_obj->height);
         source_rect = ray::Rectangle{0, 0, width * mirror_x, height * mirror_y};
+    }
+
+    if (params.index < 0 || static_cast<size_t>(params.index) >= tex_obj->x.size()) {
+        spdlog::error("Draw index {} out of range for texture {}", params.index, tex_obj->name);
+        return;
     }
 
     // Calculate destination rectangle with reduced redundant calculations

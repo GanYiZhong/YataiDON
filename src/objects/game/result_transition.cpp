@@ -4,7 +4,11 @@
 ResultTransition::ResultTransition(PlayerNum player_num)
     : player_num(player_num), is_finished(false), is_started(false) {
 
-    move = (MoveAnimation*)global_tex.get_animation(5);
+    move = dynamic_cast<MoveAnimation*>(global_tex.get_animation(5));
+    if (!move) {
+        spdlog::error("ResultTransition: animation 5 is not a MoveAnimation");
+        return;
+    }
     move->reset();
 
     if (!load("ResultTransition", "result_transition", static_cast<int>(player_num))) return;
@@ -40,10 +44,12 @@ void ResultTransition::draw() {
 }
 
 void ResultTransition::draw_default() {
+    auto footer_it = global_tex.textures.find(RESULT_TRANSITION::_1P_SHUTTER_FOOTER);
+    if (footer_it == global_tex.textures.end() || !footer_it->second) return;
+    const float tex_height = footer_it->second->height;
+
     float x = 0;
     while (x < tex.screen_width) {
-        float tex_height = global_tex.textures[RESULT_TRANSITION::_1P_SHUTTER_FOOTER]->height;
-
         if (player_num == PlayerNum::TWO_PLAYER) {
             global_tex.draw_texture(RESULT_TRANSITION::_1P_SHUTTER, {
                 .frame = 0,

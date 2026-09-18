@@ -26,7 +26,16 @@ Transition::~Transition() {
 }
 
 void Transition::add_loading_graphic(const std::string& path) {
-    loading_graphic.emplace(ray::LoadTexture(path.c_str()));
+    if (loading_graphic.has_value()) {
+        ray::UnloadTexture(loading_graphic.value());
+        loading_graphic.reset();
+    }
+    ray::Texture2D tex = ray::LoadTexture(path.c_str());
+    if (tex.id == 0) {
+        spdlog::error("Failed to load transition loading graphic: {}", path);
+        return;
+    }
+    loading_graphic.emplace(tex);
     ray::GenTextureMipmaps(&loading_graphic.value());
     ray::SetTextureFilter(loading_graphic.value(), ray::TEXTURE_FILTER_TRILINEAR);
 }

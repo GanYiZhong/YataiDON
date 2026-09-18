@@ -1,14 +1,30 @@
 #include "clear_animation.h"
 #include "../../libs/texture.h"
 #include "../../libs/audio.h"
+#include <stdexcept>
+
+namespace {
+    constexpr int CLEAR_ANIM_BACHIO_FADE_IN = 46;
+    constexpr int CLEAR_ANIM_BACHIO_TEXTURE_CHANGE = 47;
+    constexpr int CLEAR_ANIM_BACHIO_OUT = 55;
+    constexpr int CLEAR_ANIM_BACHIO_MOVE_OUT = 66;
+    constexpr int CLEAR_ANIM_HIGHLIGHT_FADE_IN = 56;
+
+    template <class T>
+    T* require_anim(int id) {
+        auto* a = dynamic_cast<T*>(tex.get_animation(id, true));
+        if (!a) throw std::runtime_error("animation " + std::to_string(id) + " has unexpected type");
+        return a;
+    }
+}
 
 ClearAnimation::ClearAnimation(bool is_2p)
     : is_2p(is_2p), draw_clear_full(false), name("in"), frame(0) {
 
-    bachio_fade_in = (FadeAnimation*)tex.get_animation(46);
-    bachio_texture_change = (TextureChangeAnimation*)tex.get_animation(47);
-    bachio_out = (TextureChangeAnimation*)tex.get_animation(55);
-    bachio_move_out = (MoveAnimation*)tex.get_animation(66);
+    bachio_fade_in = require_anim<FadeAnimation>(CLEAR_ANIM_BACHIO_FADE_IN);
+    bachio_texture_change = require_anim<TextureChangeAnimation>(CLEAR_ANIM_BACHIO_TEXTURE_CHANGE);
+    bachio_out = require_anim<TextureChangeAnimation>(CLEAR_ANIM_BACHIO_OUT);
+    bachio_move_out = require_anim<MoveAnimation>(CLEAR_ANIM_BACHIO_MOVE_OUT);
 
     bachio_fade_in->start();
     bachio_texture_change->start();
@@ -25,7 +41,7 @@ ClearAnimation::ClearAnimation(bool is_2p)
         clear_separate_stretch.push_back(stretch);
     }
 
-    clear_highlight_fade_in = (FadeAnimation*)tex.get_animation(56);
+    clear_highlight_fade_in = require_anim<FadeAnimation>(CLEAR_ANIM_HIGHLIGHT_FADE_IN);
     clear_highlight_fade_in->start();
 
     audio.play_sound("clear", VolumePreset::SOUND);

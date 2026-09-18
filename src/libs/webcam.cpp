@@ -6,6 +6,30 @@ WebCamera::~WebCamera() {
     close();
 }
 
+WebCamera::WebCamera(WebCamera&& other) noexcept
+    : m_camera(other.m_camera), m_texture(other.m_texture),
+      m_width(other.m_width), m_height(other.m_height) {
+    other.m_camera = nullptr;
+    other.m_texture.reset();
+    other.m_width  = 0;
+    other.m_height = 0;
+}
+
+WebCamera& WebCamera::operator=(WebCamera&& other) noexcept {
+    if (this != &other) {
+        close();
+        m_camera = other.m_camera;
+        m_texture = other.m_texture;
+        m_width  = other.m_width;
+        m_height = other.m_height;
+        other.m_camera = nullptr;
+        other.m_texture.reset();
+        other.m_width  = 0;
+        other.m_height = 0;
+    }
+    return *this;
+}
+
 bool WebCamera::open(int device_index) {
     if (m_camera) close();
 
@@ -25,7 +49,7 @@ bool WebCamera::open(int device_index) {
         SDL_free(ids);
         return false;
     }
-    if (device_index >= count) {
+    if (device_index < 0 || device_index >= count) {
         spdlog::warn("WebCamera: device index {} out of range ({} found)", device_index, count);
         SDL_free(ids);
         return false;
@@ -77,6 +101,12 @@ void WebCamera::update() {
 
     if (!rgba) return;
 
+    if (rgba->pitch != rgba->w * 4) {
+        spdlog::warn("WebCamera: padded surface pitch {} (w={}), skipping frame", rgba->pitch, rgba->w);
+        SDL_DestroySurface(rgba);
+        return;
+    }
+
     if (!m_texture.has_value()) {
         m_width  = rgba->w;
         m_height = rgba->h;
@@ -88,6 +118,21 @@ void WebCamera::update() {
         img.mipmaps = 1;
         img.format  = ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
 
+        ray::Texture2D tex = ray::LoadTextureFromImage(img);
+        ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);
+        m_texture = tex;
+    } else if (rgba->w != m_width || rgba->h != m_height) {
+        // frame geometry changed - recreate the texture
+        ray::UnloadTexture(m_texture.value());
+        m_texture.reset();
+        m_width  = rgba->w;
+        m_height = rgba->h;
+        ray::Image img{};
+        img.data    = rgba->pixels;
+        img.width   = m_width;
+        img.height  = m_height;
+        img.mipmaps = 1;
+        img.format  = ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         ray::Texture2D tex = ray::LoadTextureFromImage(img);
         ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);
         m_texture = tex;

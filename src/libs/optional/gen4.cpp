@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 #include <rapidjson/document.h>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <algorithm>
@@ -94,13 +95,13 @@ const uint8_t AES_SBOX[256] = {
     0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16,
 };
 
-uint8_t AES_INV_SBOX[256];
-
-void build_inv_sbox() {
-    static bool built = false;
-    if (built) return;
-    for (int i = 0; i < 256; i++) AES_INV_SBOX[AES_SBOX[i]] = (uint8_t)i;
-    built = true;
+const std::array<uint8_t, 256>& inv_sbox() {
+    static const std::array<uint8_t, 256> table = [] {
+        std::array<uint8_t, 256> t{};
+        for (int i = 0; i < 256; i++) t[AES_SBOX[i]] = (uint8_t)i;
+        return t;
+    }();
+    return table;
 }
 
 inline uint8_t xtime(uint8_t x) { return (uint8_t)((x << 1) ^ ((x >> 7) * 0x1B)); }
@@ -149,7 +150,8 @@ void inv_shift_rows(uint8_t s[16]) {
 }
 
 void inv_sub_bytes(uint8_t s[16]) {
-    for (int i = 0; i < 16; i++) s[i] = AES_INV_SBOX[s[i]];
+    const auto& sbox = inv_sbox();
+    for (int i = 0; i < 16; i++) s[i] = sbox[s[i]];
 }
 
 void inv_mix_columns(uint8_t s[16]) {
@@ -209,7 +211,6 @@ std::vector<uint8_t> aes256_cbc_decrypt(const std::vector<uint8_t>& key,
                                         const uint8_t* iv,
                                         const uint8_t* data, size_t len) {
     if (key.size() != 32 || len == 0 || len % 16 != 0) return {};
-    build_inv_sbox();
 
     uint8_t round_keys[240];
     expand_key(key.data(), round_keys);
@@ -262,14 +263,20 @@ std::vector<uint8_t> gzip_inflate(const uint8_t* data, size_t len) {
     if (flags & 0x08) while (pos < len && data[pos++]) {}   // FNAME
     if (flags & 0x10) while (pos < len && data[pos++]) {}   // FCOMMENT
     if (flags & 0x02) pos += 2;                             // FHCRC
-    if (pos >= len) return {};
+    if (pos + 8 > len) return {};   // header must leave room for the trailer
 
     // The gzip trailer carries the uncompressed size, which saves growing the
     // output buffer blindly.
     uint32_t isize = (uint32_t)data[len - 4] | ((uint32_t)data[len - 3] << 8) |
                      ((uint32_t)data[len - 2] << 16) | ((uint32_t)data[len - 1] << 24);
 
-    std::vector<uint8_t> out(isize ? isize : (len * 4));
+    const size_t kMaxInflated = 64u * 1024 * 1024;
+    size_t want = isize ? (size_t)isize : len * 4;
+    if (want > kMaxInflated) {
+        spdlog::warn("gen4: gzip declares {} bytes, refusing", want);
+        return {};
+    }
+    std::vector<uint8_t> out(want);
     mz_stream stream = {};
     stream.next_in   = data + pos;
     stream.avail_in  = (unsigned int)(len - pos - 8);
@@ -282,8 +289,8 @@ std::vector<uint8_t> gzip_inflate(const uint8_t* data, size_t len) {
     }
     int status = mz_inflate(&stream, MZ_FINISH);
     mz_inflateEnd(&stream);
-    if (status != MZ_STREAM_END && status != MZ_OK) {
-        spdlog::warn("gen4: inflate failed ({})", status);
+    if (status != MZ_STREAM_END) {
+        spdlog::warn("gen4: inflate incomplete/failed ({})", status);
         return {};
     }
     out.resize(stream.total_out);
@@ -354,6 +361,7 @@ bool json_bool(const rapidjson::Value& v, const char* name) {
 bool Library::load(const fs::path& root) {
     is_loaded = false;
     entries.clear();
+    order_entries.clear();
     data_root = root;
 
     std::vector<uint8_t> table_key = derive_key(DATATABLE_SEED);

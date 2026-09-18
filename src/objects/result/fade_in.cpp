@@ -12,7 +12,8 @@ void FadeIn::update(double current_ms) {
 }
 
 bool FadeIn::is_finished() {
-    return call_r<bool>(fn_is_finished, "ResultFadeIn:is_finished").value_or(false);
+    // No script / Lua error -> behave as finished so the result screen can progress.
+    return call_r<bool>(fn_is_finished, "ResultFadeIn:is_finished").value_or(true);
 }
 
 void FadeIn::draw() {

@@ -19,7 +19,7 @@ void DrumrollCounter::update(double current_ms, int count) {
     fade->update(current_ms);
     stretch->update(current_ms);
 
-    if (count != 0) update_count(count);
+    update_count(count);
 }
 
 void DrumrollCounter::draw(float y) {

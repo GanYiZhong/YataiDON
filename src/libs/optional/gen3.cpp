@@ -69,9 +69,11 @@ std::string sfo_title(const fs::path& data_root) {
         size_t kend = k;
         while (kend < d.size() && d[kend]) kend++;
         if (std::string(d.begin() + k, d.begin() + kend) != "TITLE") continue;
-        size_t v = values + le32(e + 12), vmax = v + le32(e + 4);
+        size_t v = (size_t)values + le32(e + 12);
+        if (v >= d.size()) return "";
+        size_t vmax = std::min(d.size(), v + (size_t)le32(e + 4));
         size_t vend = v;
-        while (vend < d.size() && vend < vmax && d[vend]) vend++;
+        while (vend < vmax && d[vend]) vend++;
         return std::string(d.begin() + v, d.begin() + vend);
     }
     return "";
@@ -149,8 +151,8 @@ void Library::load_tuning(const fs::path& path) {
                               std::istreambuf_iterator<char>());
     auto be32 = [&](size_t off) -> int32_t {
         if (off + 4 > data.size()) return -1;
-        return (int32_t)((data[off] << 24) | (data[off+1] << 16) |
-                         (data[off+2] << 8) | data[off+3]);
+        return (int32_t)(((uint32_t)data[off] << 24) | ((uint32_t)data[off+1] << 16) |
+                         ((uint32_t)data[off+2] << 8) | (uint32_t)data[off+3]);
     };
 
     constexpr size_t RECORD_SIZE = 2316;
@@ -190,7 +192,7 @@ void Library::load_tuning(const fs::path& path) {
         for (int d = 0; d < 5; d++) {
             int32_t stars = be32(base + (3 + d * 32 + 1) * 4);
             if (stars > 0 && stars <= 10) it->second->stars[d] = (int)stars;
-            if (d < 4 && be32(base + (3 + d * 32) * 4) >= 0)
+            if (be32(base + (3 + d * 32) * 4) >= 0)
                 it->second->has_chart[d] = true;
         }
     }

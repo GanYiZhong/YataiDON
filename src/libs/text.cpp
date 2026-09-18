@@ -15,9 +15,15 @@ void FontManager::init(const fs::path& font_path) {
         throw std::runtime_error("Failed to load font: " + font_path.string());
     }
     this->font_path = font_path;
+    for (auto& [size, entry] : fonts) { release_font(entry); release_cache(entry); }
+    fonts.clear();
     {
         int size = 0;
         unsigned char* data = ray::LoadFileData(font_path.string().c_str(), &size);
+        if (!data || size <= 0) {
+            if (data) ray::UnloadFileData(data);
+            throw std::runtime_error("Failed to read font data: " + font_path.string());
+        }
         font_data.assign(data, data + size);
         ray::UnloadFileData(data);
     }
@@ -57,12 +63,12 @@ void FontManager::evict_lru(int keep_size) {
 }
 
 // Rasterize only the codepoints not yet in the cache (stb_truetype via LoadFontData).
-void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps) {
-    if (cps.empty()) return;
+bool FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vector<int>& cps) {
+    if (cps.empty()) return true;
     int count = 0;
     ray::GlyphInfo* g = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
                                           cps.data(), (int)cps.size(), ray::FONT_DEFAULT, &count);
-    if (!g) return;
+    if (!g) return false;
     std::unordered_set<int> got;
     for (int i = 0; i < count; i++) { entry.cache.push_back(g[i]); got.insert(g[i].value); }   // take ownership of the glyph images
     RL_FREE(g);                                                    // array only; images now live in `cache`
@@ -78,11 +84,11 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
         int alt = (int)han_fold_codepoint((uint32_t)cp);
         if (alt != cp) { missing.push_back(cp); alts.push_back(alt); }
     }
-    if (missing.empty()) return;
+    if (missing.empty()) return true;
     int alt_count = 0;
     ray::GlyphInfo* ag = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
                                            alts.data(), (int)alts.size(), ray::FONT_DEFAULT, &alt_count);
-    if (!ag) return;
+    if (!ag) return true;
     for (int i = 0; i < alt_count; i++) {
         bool used = false;
         for (size_t k = 0; k < alts.size(); k++) {
@@ -96,6 +102,7 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
         if (!used) ray::UnloadImage(ag[i].image);
     }
     RL_FREE(ag);
+    return true;
 }
 
 // Pack the cached glyphs into a fresh atlas texture. Glyph images stay in `cache`
@@ -107,9 +114,17 @@ void FontManager::rebuild_atlas(SizedFont& entry, int font_size) {
     f.baseSize     = font_size;
     f.glyphCount   = n;
     f.glyphPadding = 4;   // FONT_TTF_DEFAULT_CHARS_PADDING, same as LoadFontEx
-    f.glyphs = (ray::GlyphInfo*)RL_MALLOC(sizeof(ray::GlyphInfo) * (n > 0 ? n : 1));
+    if (n == 0) { entry.atlas_dirty = false; return; }   // nothing to pack; keep loaded == false
+    f.glyphs = (ray::GlyphInfo*)RL_MALLOC(sizeof(ray::GlyphInfo) * n);
+    if (!f.glyphs) return;
     for (int i = 0; i < n; i++) f.glyphs[i] = entry.cache[i];
     ray::Image atlas = ray::GenImageFontAtlas(f.glyphs, &f.recs, n, font_size, f.glyphPadding, 0);
+    if (!atlas.data || !f.recs) {
+        if (atlas.data) ray::UnloadImage(atlas);
+        if (f.recs) RL_FREE(f.recs);
+        RL_FREE(f.glyphs);
+        return;
+    }
     f.texture = ray::LoadTextureFromImage(atlas);
     // Like LoadFontEx: the Font's own glyph images are GRAY_ALPHA crops of the atlas
     // (ImageDrawTextEx / OutlinedText composite from them). The cache keeps the raw
@@ -156,7 +171,11 @@ bool FontManager::register_codepoints(SizedFont& entry, int font_size, const std
         ptr += cp_size;
     }
     if (fresh.empty()) return false;
-    rasterize_new(entry, font_size, fresh);
+    if (!rasterize_new(entry, font_size, fresh)) {
+        for (int cp : fresh) entry.codepoints.erase(cp);   // allow a later retry
+        spdlog::warn("font: failed to rasterize {} codepoints at {}px", fresh.size(), font_size);
+        return false;
+    }
     return true;
 }
 
@@ -302,7 +321,11 @@ static void stamp_outline(ray::Image* dst, const ray::Font& font, const char* te
 
 static ray::Font deep_copy_font(const ray::Font& src) {
     ray::Font dst = src;
-    if (src.glyphCount > 0) {
+    dst.glyphs = nullptr;
+    dst.recs   = nullptr;
+    dst.glyphCount = 0;
+    if (src.glyphCount > 0 && src.glyphs && src.recs) {
+        dst.glyphCount = src.glyphCount;
         dst.glyphs = (ray::GlyphInfo*)RL_MALLOC(src.glyphCount * sizeof(ray::GlyphInfo));
         memcpy(dst.glyphs, src.glyphs, src.glyphCount * sizeof(ray::GlyphInfo));
         for (int i = 0; i < src.glyphCount; i++) {

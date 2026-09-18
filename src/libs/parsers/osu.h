@@ -24,8 +24,8 @@ private:
     double slider_multiplier = 1.4;
     // Each timing point: {time_ms, beat_length}
     std::vector<std::array<double, 2>> timing_points;
-    // Each hit object: all numeric values extracted from the line
-    std::vector<std::vector<double>> hit_objects_data;
+    // Each hit object: comma-separated fields, kept as strings (positional)
+    std::vector<std::vector<std::string>> hit_objects_data;
 
     NoteList cached_notes;
     bool notes_built = false;
@@ -35,6 +35,8 @@ private:
         const std::vector<std::string>& lines, const std::string& section) const;
     std::vector<std::vector<double>> read_section_list(
         const std::vector<std::string>& lines, const std::string& section) const;
+    std::vector<std::vector<std::string>> read_hitobjects_fields(
+        const std::vector<std::string>& lines) const;
     double get_scroll_multiplier(double ms) const;
     double get_bpm_at(double ms) const;
     NoteList& get_notes();

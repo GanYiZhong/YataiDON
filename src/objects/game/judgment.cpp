@@ -4,10 +4,10 @@
 Judgment::Judgment(Judgments type, bool big)
     : type(type), big(big) {
 
-    fade_animation_1 = (FadeAnimation*)tex.get_animation(27, true);
-    fade_animation_2 = (FadeAnimation*)tex.get_animation(28, true);
-    move_animation = (MoveAnimation*)tex.get_animation(29, true);
-    texture_animation = (TextureChangeAnimation*)tex.get_animation(30, true);
+    fade_animation_1 = dynamic_cast<FadeAnimation*>(tex.get_animation(27, true));
+    fade_animation_2 = dynamic_cast<FadeAnimation*>(tex.get_animation(28, true));
+    move_animation = dynamic_cast<MoveAnimation*>(tex.get_animation(29, true));
+    texture_animation = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(30, true));
 
     move_animation->start();
     fade_animation_2->start();

@@ -30,15 +30,30 @@ static void log_trace_from_context(CONTEXT* ctx) {
     CONTEXT ctx_copy = *ctx;
     STACKFRAME64 sf  = {};
     sf.AddrPC.Mode      = AddrModeFlat;
-    sf.AddrPC.Offset    = ctx_copy.Rip;
     sf.AddrStack.Mode   = AddrModeFlat;
-    sf.AddrStack.Offset = ctx_copy.Rsp;
     sf.AddrFrame.Mode   = AddrModeFlat;
+#if defined(_M_X64)
+    sf.AddrPC.Offset    = ctx_copy.Rip;
+    sf.AddrStack.Offset = ctx_copy.Rsp;
     sf.AddrFrame.Offset = ctx_copy.Rbp;
+    const DWORD machine_type = IMAGE_FILE_MACHINE_AMD64;
+#elif defined(_M_ARM64)
+    sf.AddrPC.Offset    = ctx_copy.Pc;
+    sf.AddrStack.Offset = ctx_copy.Sp;
+    sf.AddrFrame.Offset = ctx_copy.Fp;
+    const DWORD machine_type = IMAGE_FILE_MACHINE_ARM64;
+#elif defined(_M_IX86)
+    sf.AddrPC.Offset    = ctx_copy.Eip;
+    sf.AddrStack.Offset = ctx_copy.Esp;
+    sf.AddrFrame.Offset = ctx_copy.Ebp;
+    const DWORD machine_type = IMAGE_FILE_MACHINE_I386;
+#else
+    #error "Unsupported architecture for Windows stack walking"
+#endif
 
     cpptrace::raw_trace raw;
     while (StackWalk64(
-        IMAGE_FILE_MACHINE_AMD64, process, thread, &sf, &ctx_copy,
+        machine_type, process, thread, &sf, &ctx_copy,
         nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr
     )) {
         if (sf.AddrPC.Offset == 0) break;
@@ -100,7 +115,13 @@ void handle_exception() {
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
-        std::exit(0);
+        // std::exit() runs static destructors (including the spdlog logger)
+        // from signal-handler context, which is not async-signal-safe and can
+        // deadlock if the interrupted thread was mid-log. Flush best-effort
+        // and terminate immediately instead.
+        auto logger = spdlog::default_logger();
+        if (logger) logger->flush();
+        std::_Exit(0);
     }
 }
 
@@ -128,8 +149,8 @@ static void crash_signal_handler(int sig) {
 
 static void install_crash_handlers() {
     std::set_terminate(handle_exception);
-    std::signal(SIGINT, signal_handler);
 #ifdef _WIN32
+    std::signal(SIGINT, signal_handler);
     SetUnhandledExceptionFilter(crash_exception_filter);
 #else
     // Run the crash handler on its own stack so a stack-overflow SIGSEGV
@@ -149,6 +170,13 @@ static void install_crash_handlers() {
     sigaction(SIGABRT, &sa, nullptr);
     sigaction(SIGFPE,  &sa, nullptr);
     sigaction(SIGILL,  &sa, nullptr);
+
+    // Use sigaction (not std::signal) for consistent restart/mask semantics
+    // with the crash handlers above.
+    struct sigaction sa_int{};
+    sa_int.sa_handler = signal_handler;
+    sigemptyset(&sa_int.sa_mask);
+    sigaction(SIGINT, &sa_int, nullptr);
 #endif
 }
 

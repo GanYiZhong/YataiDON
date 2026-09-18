@@ -162,14 +162,52 @@ static sf_count_t vf_tell(void* user_data) {
     return static_cast<VirtualFile*>(user_data)->pos;
 }
 
+static void unload_music_stream_from_map(std::unordered_map<std::string, music>& music_streams,
+                                          const std::string& name) {
+    auto it = music_streams.find(name);
+    if (it != music_streams.end()) {
+        music& mus = it->second;
+
+        mus.is_playing = false;
+
+        if (mus.file_handle) {
+            sf_close(mus.file_handle);
+            mus.file_handle = nullptr;
+        }
+
+        if (mus.pcm_data) {
+            delete[] mus.pcm_data;
+            mus.pcm_data = nullptr;
+        }
+
+        if (mus.stream_buffer) {
+            delete[] mus.stream_buffer;
+            mus.stream_buffer = nullptr;
+        }
+
+        if (mus.resampler) {
+            src_delete(mus.resampler);
+            mus.resampler = nullptr;
+        }
+
+        if (mus.resample_buffer) {
+            delete[] mus.resample_buffer;
+            mus.resample_buffer = nullptr;
+        }
+
+        music_streams.erase(it);
+        spdlog::debug("Unloaded music stream: {}", name);
+    } else {
+        spdlog::warn("Music stream {} not found", name);
+    }
+}
+
 AudioEngine::AudioEngine()
 {
 }
 
 AudioEngine::~AudioEngine() {
-    if (is_ready) {
-        close_audio_device();
-    }
+    close_audio_device();
 }
 
 void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* engine) {
@@ -280,23 +318,42 @@ void AudioEngine::mix(float* out, unsigned int framesPerBuffer, AudioEngine* eng
 
                     if (mus.resampler && frames_read > 0) {
                         double ratio = engine->target_sample_rate / (double)mus.file_info.samplerate;
+                        const unsigned int channels = mus.file_info.channels;
+                        const long output_budget = (long)(frames_read * ratio) + 256;
 
-                        SRC_DATA src_data;
-                        src_data.data_in = mus.stream_buffer;
-                        src_data.input_frames = frames_read;
-                        src_data.data_out = mus.resample_buffer;
-                        src_data.output_frames = (long)(frames_read * ratio) + 256;
-                        src_data.src_ratio = ratio;
-                        src_data.end_of_input = 0;
+                        sf_count_t input_consumed = 0;
+                        long output_generated = 0;
+                        bool resample_error = false;
 
-                        int error = src_process(mus.resampler, &src_data);
-                        if (error) {
-                            spdlog::error("Resampling error for music stream {}: {}", name, src_strerror(error));
-                            aref_playing.store(false, std::memory_order_release);
-                            break;
+                        while (input_consumed < frames_read && output_generated < output_budget) {
+                            SRC_DATA src_data;
+                            src_data.data_in = mus.stream_buffer + input_consumed * channels;
+                            src_data.input_frames = frames_read - input_consumed;
+                            src_data.data_out = mus.resample_buffer + output_generated * channels;
+                            src_data.output_frames = output_budget - output_generated;
+                            src_data.src_ratio = ratio;
+                            src_data.end_of_input = 0;
+
+                            int error = src_process(mus.resampler, &src_data);
+                            if (error) {
+                                spdlog::error("Resampling error for music stream {}: {}", name, src_strerror(error));
+                                aref_playing.store(false, std::memory_order_release);
+                                resample_error = true;
+                                break;
+                            }
+
+                            input_consumed += src_data.input_frames_used;
+                            output_generated += src_data.output_frames_gen;
+
+                            if (src_data.input_frames_used == 0 && src_data.output_frames_gen == 0) {
+                                // Converter made no progress on this call; avoid spinning.
+                                break;
+                            }
                         }
 
-                        mus.frames_in_buffer = src_data.output_frames_gen;
+                        if (resample_error) break;
+
+                        mus.frames_in_buffer = output_generated;
                     } else {
                         mus.frames_in_buffer = frames_read;
                     }
@@ -450,6 +507,14 @@ bool AudioEngine::init_rtaudio_device(RtAudio::Api api, const char* label) {
         rt_audio = nullptr;
         return false;
     }
+
+    channel_offsets.erase(std::remove_if(channel_offsets.begin(), channel_offsets.end(),
+                                         [](int off) { return off < 0; }),
+                          channel_offsets.end());
+    std::sort(channel_offsets.begin(), channel_offsets.end());
+    channel_offsets.erase(std::unique(channel_offsets.begin(), channel_offsets.end()),
+                          channel_offsets.end());
+    if (channel_offsets.empty()) channel_offsets.push_back(0);
 
     int max_offset = 0;
     for (int off : channel_offsets) max_offset = std::max(max_offset, off);
@@ -616,7 +681,7 @@ bool AudioEngine::init_sdl3_device() {
 
 bool AudioEngine::init_audio_device(const fs::path& sounds_path, const AudioConfig& audio_config, const VolumeConfig& volume_presets) {
     this->sounds_path = sounds_path;
-    this->target_sample_rate = audio_config.sample_rate < 0 ? 44100.0f : audio_config.sample_rate;
+    this->target_sample_rate = audio_config.sample_rate <= 0 ? 44100.0 : audio_config.sample_rate;
     this->buffer_size = audio_config.buffer_size;
     this->channel_offsets = audio_config.asio_channel.empty() ? std::vector<int>{0} : audio_config.asio_channel;
     this->volume_presets = volume_presets;
@@ -1385,8 +1450,8 @@ std::string AudioEngine::load_music_stream_memory(
         mus.stream_buffer    = nullptr;
 
         std::unique_lock<std::shared_mutex> guard(rw_lock);
-        music_streams[name] = std::move(mus);
-        music& stored = music_streams[name];  // reference into the map – stable address
+        unload_music_stream_from_map(music_streams, name);   // release any previous entry (handle/buffers/resampler)
+        music& stored = music_streams[name] = std::move(mus);  // reference into the map – stable address
 
         // vio_cursor now lives inside the map entry and will never move again.
         stored.vio_cursor = VirtualFile{ stored.memory_buffer.get(), 0 };
@@ -1535,42 +1600,7 @@ void AudioEngine::stop_music_stream(const std::string& name) {
 
 void AudioEngine::unload_music_stream(const std::string& name) {
     std::unique_lock<std::shared_mutex> guard(rw_lock);
-    auto it = music_streams.find(name);
-    if (it != music_streams.end()) {
-        music& mus = it->second;
-
-        mus.is_playing = false;
-
-        if (mus.file_handle) {
-            sf_close(mus.file_handle);
-            mus.file_handle = nullptr;
-        }
-
-        if (mus.pcm_data) {
-            delete[] mus.pcm_data;
-            mus.pcm_data = nullptr;
-        }
-
-        if (mus.stream_buffer) {
-            delete[] mus.stream_buffer;
-            mus.stream_buffer = nullptr;
-        }
-
-        if (mus.resampler) {
-            src_delete(mus.resampler);
-            mus.resampler = nullptr;
-        }
-
-        if (mus.resample_buffer) {
-            delete[] mus.resample_buffer;
-            mus.resample_buffer = nullptr;
-        }
-
-        music_streams.erase(it);
-        spdlog::debug("Unloaded music stream: {}", name);
-    } else {
-        spdlog::warn("Music stream {} not found", name);
-    }
+    unload_music_stream_from_map(music_streams, name);
 }
 
 void AudioEngine::unload_all_music() {

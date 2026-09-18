@@ -126,7 +126,10 @@ cpr::Header signed_headers(const std::string& method, const std::string& path,
 // real path once and point every request's CURLOPT_CAINFO at it.
 std::string ca_bundle_path() {
     static const std::string path = [] {
-        const std::string out_path = "/sdcard/YataiDON/cacert.pem";
+        // Store in app-private storage; external storage (/sdcard/...) is
+        // writable by other apps, which would let them substitute a rogue
+        // trust anchor for every HTTPS request.
+        const std::string out_path = std::string(SDL_GetPrefPath("YataiDON", "certs")) + "cacert.pem";
         std::ifstream existing(out_path, std::ios::binary);
         if (existing.good()) return out_path;
 
@@ -141,8 +144,12 @@ std::string ca_bundle_path() {
             return std::string{};
         }
         std::string buf(static_cast<std::size_t>(size), '\0');
-        SDL_ReadIO(io, buf.data(), static_cast<std::size_t>(size));
+        const std::size_t read = SDL_ReadIO(io, buf.data(), static_cast<std::size_t>(size));
         SDL_CloseIO(io);
+        if (read != static_cast<std::size_t>(size)) {
+            spdlog::error("Truncated read of bundled cacert.pem ({} of {} bytes)", read, size);
+            return std::string{};
+        }
 
         std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
         if (!out) {
@@ -156,7 +163,11 @@ std::string ca_bundle_path() {
 }
 
 cpr::SslOptions android_ca() {
-    return cpr::Ssl(cpr::ssl::CaInfo{ca_bundle_path()});
+    const std::string& path = ca_bundle_path();
+    if (path.empty()) {
+        spdlog::error("No CA bundle available; TLS verification cannot be configured");
+    }
+    return cpr::Ssl(cpr::ssl::CaInfo{path}, cpr::ssl::VerifyPeer{true}, cpr::ssl::VerifyHost{true});
 }
 #define NETWORK_CA_OPT , android_ca()
 #else
@@ -202,6 +213,7 @@ bool NetworkClient::check_import_requested(const std::string& access_code) {
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -218,6 +230,7 @@ bool NetworkClient::fetch_chara_colors(const std::string& access_code, ray::Colo
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -244,6 +257,7 @@ bool NetworkClient::fetch_username(const std::string& access_code, std::string& 
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -262,6 +276,7 @@ bool NetworkClient::fetch_title(const std::string& access_code, std::string& tit
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -280,6 +295,7 @@ bool NetworkClient::fetch_title_bg(const std::string& access_code, int& title_bg
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -298,6 +314,7 @@ void NetworkClient::update_username(const std::string& access_code, const std::s
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/update_username")},
+        signed_headers("POST", "/update_username", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Payload{{"username", username}},
         cpr::Timeout{5000}
@@ -312,6 +329,7 @@ bool NetworkClient::fetch_costume(const std::string& access_code, int& head_inde
     if (!network_enabled()) return false;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT
@@ -336,6 +354,7 @@ void NetworkClient::update_costume(const std::string& access_code, int head_inde
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
         cpr::Url{network_url("/update_costume")},
+        signed_headers("POST", "/update_costume", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Payload{
             {"chara_head_index", std::to_string(head_index)},
@@ -356,6 +375,7 @@ std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string& access_c
     if (!network_enabled()) return result;
     cpr::Response response = cpr::Get(
         cpr::Url{network_url("/user")},
+        signed_headers("GET", "/user", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{10000}
         NETWORK_CA_OPT
@@ -417,7 +437,7 @@ std::string NetworkClient::register_user(const std::string& username) {
     return response.text;
 }
 
-std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_map) {
+static std::string map_to_json_impl(const std::map<double, InputLogType>& my_map) {
     rapidjson::Document doc;
     doc.SetObject();
     rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
@@ -432,6 +452,10 @@ std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_
     doc.Accept(writer);
 
     return buffer.GetString();
+}
+
+std::string NetworkClient::map_to_json(const std::map<double, InputLogType>& my_map) {
+    return map_to_json_impl(my_map);
 }
 
 void NetworkClient::submit_score(std::string& hash, int difficulty, const std::string& access_code, Score score, std::map<double, InputLogType> input_log, int64_t played_at, const std::string& modifiers_json, bool chara_is_costume, int chara_cos_index) {
@@ -451,7 +475,9 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
     };
     // The upload runs off the render thread: a synchronous POST stalled the end of
     // the song for up to the 5 s timeout whenever the server was unreachable.
-    std::thread([this, params = std::move(params), input_log = std::move(input_log), played_at,
+    // TODO: replace the detached thread with an owned worker joined in ~NetworkClient(),
+    // or with cpr::PostAsync whose future is polled from update().
+    std::thread([params = std::move(params), input_log = std::move(input_log), played_at,
                  modifiers_json, chara_is_costume, chara_cos_index]() mutable {
         cpr::Response response = cpr::Post(
             cpr::Url{network_url("/submit_score")},
@@ -470,7 +496,7 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
                 {"max_combo", params["max_combo"]},
             },
             cpr::Payload{
-                {"input_log", map_to_json(input_log)},
+                {"input_log", map_to_json_impl(input_log)},
                 {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
                 {"modifiers", modifiers_json},
                 {"chara_is_costume", chara_is_costume ? "true" : "false"},
@@ -490,6 +516,7 @@ void NetworkClient::poll_song_jump(const std::string& access_code) {
     if (pending_song_jump.has_value()) return;
     pending_song_jump = cpr::GetAsync(
         cpr::Url{network_url("/poll_song_jump")},
+        signed_headers("GET", "/poll_song_jump", {{"access_code", access_code}}),
         cpr::Parameters{{"access_code", access_code}},
         cpr::Timeout{5000}
         NETWORK_CA_OPT

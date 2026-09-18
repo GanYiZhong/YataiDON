@@ -70,7 +70,7 @@ bool find_pack(const std::vector<uint8_t>& file, size_t& pack, size_t& pack_size
             pack_size = size;
             break;
         }
-        pos += 8 + size;
+        pos += (size_t)8 + (size_t)size;   // avoid 32-bit wrap / no-progress loop
     }
     if (!pack || pack + pack_size > file.size()) {
         spdlog::warn("gen4 audio: no PACK chunk");
@@ -103,6 +103,12 @@ bool parse_container(const std::vector<uint8_t>& file, size_t pack, size_t pack_
     out.num_samples    = (int)read_be32(fmt + 8);
     out.block_size     = read_be16(fmt + 0x10);
     out.block_samples  = read_be16(fmt + 0x12);
+    if (out.sample_rate < 8000 || out.sample_rate > 192000 ||
+        out.num_samples < 0) {
+        spdlog::warn("gen4 audio: implausible stream header ({} Hz, {} samples)",
+                     out.sample_rate, out.num_samples);
+        return false;
+    }
 
     if (flags != 0) {
         spdlog::warn("gen4 audio: stream is flagged {}, expected plain", flags);
@@ -167,12 +173,17 @@ bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size
     uint32_t data_size  = be(0x2C);   // per channel
 
     if (channels < 1 || channels > 2 || rate <= 0 || samples == 0 ||
+        hdr_size < 0x44 ||
         (size_t)hdr_off + (size_t)channels * hdr_size > pack_size ||
         (size_t)data_off + (size_t)channels * data_size > pack_size) {
         spdlog::warn("gen4 audio: IDSP stream shape not understood");
         return false;
     }
     if (interleave == 0) interleave = data_size;   // planar: one block each
+    if (interleave < 8) {
+        spdlog::warn("gen4 audio: IDSP interleave {} not usable", interleave);
+        return false;
+    }
 
     std::vector<IdspChannel> chans(channels);
     for (int c = 0; c < channels; c++) {
@@ -199,8 +210,10 @@ bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size
         uint32_t block_bytes = std::min<uint32_t>(interleave, data_size - b * interleave);
         uint32_t block_frames = block_bytes / 8;
         for (int c = 0; c < channels; c++) {
-            const uint8_t* src = p + data_off +
-                ((size_t)b * channels + c) * interleave;
+            const size_t src_off = data_off +
+                ((size_t)b * channels + c) * (size_t)interleave;
+            if (src_off + block_bytes > pack_size) break;   // malformed: stop early
+            const uint8_t* src = p + src_off;
             for (uint32_t f = 0; f < block_frames; f++)
                 idsp_decode_frame(src + f * 8, chans[c], pcm[c].data() + f * 14);
         }

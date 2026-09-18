@@ -4,14 +4,15 @@
 
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {
-    this->difficulty = std::min((int)Difficulty::ONI, difficulty);
+    this->difficulty = std::clamp(difficulty, 0, (int)Difficulty::ONI);
     // Per-difficulty norma in cells of 50: easy 30, normal 35, hard 35, oni/ura 40
     // -> 6000 / 7000 / 7000 / 8000 soul points.
     clear_points = this->difficulty <= (int)Difficulty::EASY   ? 6000
                  : this->difficulty <= (int)Difficulty::HARD   ? 7000
                                                               : 8000;
-    GaugeTable table_row = table[this->difficulty][std::min(9, level - 1)];
-    good_points = (int)std::ceil(1000000 / (total_notes * table_row.soul_percent));
+    const GaugeTable& table_row = table[this->difficulty][std::clamp(level - 1, 0, 9)];
+    const float denom = std::max(1, total_notes) * table_row.soul_percent;
+    good_points = (denom > 0.0f) ? (int)std::ceil(1000000.0f / denom) : 0;
     ok_points   = (int)std::round(good_points * table_row.ok_multiplier);
     bad_points  = (int)std::round(good_points * table_row.bad_multiplier);
     points = 0;
@@ -92,7 +93,9 @@ void Gauge::draw(float y) {
     int gauge_length_int = points * bar_units / max_points;
     int previous_length_int = previous_points * bar_units / max_points;
     int clear_point = clear_points * bar_units / max_points;
-    float bar_width  = tex.textures[tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")]->width;
+    float bar_width = 0.0f;
+    if (auto it = tex.textures.find(tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")); it != tex.textures.end())
+        bar_width = it->second->width;
 
     const bool cell_fade_in = tex.options[SCO::GAUGE_CELL_FADE_IN];
     const bool cell_pending = gauge_length_int <= bar_units && gauge_length_int > previous_length_int
@@ -174,11 +177,11 @@ void Gauge::draw(float y) {
                           {.y = y, .index = art_tier + (mirrored * 3)});
         if (get_is_rainbow()) {
             tex.draw_texture(GAUGE::TAMASHII_FIRE,
-                              {.frame = (int)tamashii_fire_change->attribute, .scale = 0.75f,
+                              {.frame = tamashii_fire_change ? (int)tamashii_fire_change->attribute : 0, .scale = 0.75f,
                                .center = true, .y = y, .index = mirrored});
         }
         tex.draw_texture(GAUGE::TAMASHII, {.y = y, .index = mirrored});
-        int fire_frame = (int)tamashii_fire_change->attribute;
+        int fire_frame = tamashii_fire_change ? (int)tamashii_fire_change->attribute : 0;
         if (get_is_rainbow() && (fire_frame == 0 || fire_frame == 1 || fire_frame == 4 || fire_frame == 5))
             tex.draw_texture(GAUGE::TAMASHII_OVERLAY, {.y = y, .fade = 0.5f, .index = mirrored});
     } else {

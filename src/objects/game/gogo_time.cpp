@@ -2,11 +2,18 @@
 #include "../../libs/texture.h"
 
 GogoTime::GogoTime() {
-    fire_resize = (TextureResizeAnimation*)tex.get_animation(24, true);
+    int resize_anim = 24;
+    if (!tex.has_animation(resize_anim))
+        throw std::runtime_error("gogo time: animation " + std::to_string(resize_anim) + " is missing");
+    fire_resize = dynamic_cast<TextureResizeAnimation*>(tex.get_animation(resize_anim, true));
+    if (!fire_resize)
+        throw std::runtime_error("gogo time: animation 24 is not a resize animation");
 
     int change_anim = 25;
     if (const SkinInfo* a = tex.skin_entry("gogo_fire_anim"); a && a->x > 0 && tex.has_animation((int)a->x))
         change_anim = (int)a->x;
+    if (!tex.has_animation(change_anim))
+        throw std::runtime_error("gogo time: animation " + std::to_string(change_anim) + " is missing");
     fire_change = (TextureChangeAnimation*)tex.get_animation(change_anim, true);
     fire_fade = 0.5f;
     if (const SkinInfo* f = tex.skin_entry("gogo_fire_fade"); f && f->x > 0)

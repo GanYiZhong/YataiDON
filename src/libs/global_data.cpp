@@ -65,6 +65,10 @@ void reset_session() {
 }
 
 int get_player_id(PlayerNum player_num) {
+    if (!global_data.config) {
+        spdlog::error("get_player_id() called before config was initialized");
+        return 0;
+    }
     return (player_num == global_data.first_login_player)
         ? global_data.config->general.player_1_id
         : global_data.config->general.player_2_id;

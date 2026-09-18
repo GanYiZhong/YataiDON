@@ -1,6 +1,13 @@
 #include "practice_menu.h"
 #include "../../libs/global_data.h"
 
+static std::string skin_text_for(SC key, const std::string& lang) {
+    const auto& texts = tex.skin_config[key].text;
+    auto it = texts.find(lang);
+    if (it == texts.end()) it = texts.find("en");
+    return (it != texts.end()) ? it->second : std::string();
+}
+
 void PracticeMenu::open_menu() {
     open = true;
     build_text();
@@ -37,11 +44,12 @@ void PracticeMenu::build_text() {
     };
 
     for (SC row : ROWS) {
-        std::string label = tex.skin_config[row].text.at(lang);
+        std::string label = skin_text_for(row, lang);
         int chars = 0;
         for (unsigned char c : label)
             if ((c & 0xC0) != 0x80) chars++;
-        const int base_fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+        int base_fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
+        if (base_fs <= 0) base_fs = 1;
         int   fs    = base_fs;
         float avail = tex.skin_config[SC::PRACTICE_MENU_LABEL].width;
         float v     = 1.0f;
@@ -50,6 +58,7 @@ void PracticeMenu::build_text() {
             if (v < 0.7f) {
                 v  = 0.7f;
                 fs = (int)(avail / (1.0f + (chars - 1) * 0.7f));
+                if (fs <= 0) fs = 1;
             } else if (v > 1.0f) {
                 v = 1.0f;
             }
@@ -88,9 +97,9 @@ void PracticeMenu::open_dialog(Dialog which, bool auto_on) {
     }
 
     int fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);
-    dlg_title = std::make_unique<OutlinedText>(tex.skin_config[title].text.at(lang), fs, ray::WHITE, ray::BLACK, false);
-    dlg_left  = std::make_unique<OutlinedText>(tex.skin_config[left].text.at(lang),  fs, ray::WHITE, ray::BLACK, false);
-    dlg_right = std::make_unique<OutlinedText>(tex.skin_config[right].text.at(lang), fs, ray::WHITE, ray::BLACK, false);
+    dlg_title = std::make_unique<OutlinedText>(skin_text_for(title, lang), fs, ray::WHITE, ray::BLACK, false);
+    dlg_left  = std::make_unique<OutlinedText>(skin_text_for(left, lang),  fs, ray::WHITE, ray::BLACK, false);
+    dlg_right = std::make_unique<OutlinedText>(skin_text_for(right, lang), fs, ray::WHITE, ray::BLACK, false);
 }
 
 PracticeMenu::Action PracticeMenu::activate(bool auto_on) {

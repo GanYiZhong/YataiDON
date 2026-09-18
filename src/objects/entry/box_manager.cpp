@@ -4,6 +4,8 @@
 
 #include <fstream>
 
+static constexpr int ENTRY_FADE_OUT_ANIM_ID = 9;
+
 // ─── ROUND 83 (r83-dandojo-as-mode) — `Cabinet.DaniDojoFolderAvailable()` ──────
 //
 // On the cabinet 段位道場 is a MODE BOARD, appended by
@@ -66,7 +68,10 @@ BoxManager::BoxManager(bool two_player)
     dan_text      = tex.skin_text("entry_dan", lang);
     dan_available = !dan_text.empty() && dan_library_available();
 
-    fade_out = (FadeAnimation*)tex.get_animation(9);
+    fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(ENTRY_FADE_OUT_ANIM_ID));
+    if (!fade_out) {
+        throw std::runtime_error("BoxManager: animation " + std::to_string(ENTRY_FADE_OUT_ANIM_ID) + " is not a FadeAnimation");
+    }
 
     build_board_list();
 }
@@ -189,7 +194,7 @@ void BoxManager::move_left() {
         boxes[selected_box_index + 1]->move_down();
         boxes[selected_box_index]->move_down();
     } else {
-        if (selected_box_index != selected_box_index - 1) {
+        if (selected_box_index + 1 < num_boxes) {
             boxes[selected_box_index + 1]->move_right();
         }
         boxes[selected_box_index]->move_right();
@@ -217,11 +222,9 @@ void BoxManager::move_right() {
 void BoxManager::update(double current_time_ms, bool is_2p) {
     this->is_2p = is_2p;
     if (!fade_out->is_started && check_board_list_change()) change_board_list();
-    if (this->is_2p) {
-        for (int i = 0; i < num_boxes; i++) {
-            if (box_locations[i] == Screens::SONG_SELECT)
-                boxes[i]->location = Screens::SONG_SELECT_2P;
-        }
+    for (int i = 0; i < num_boxes; i++) {
+        if (box_locations[i] == Screens::SONG_SELECT)
+            boxes[i]->location = this->is_2p ? Screens::SONG_SELECT_2P : Screens::SONG_SELECT;
     }
     fade_out->update(current_time_ms);
     for (int i = 0; i < num_boxes; i++) {

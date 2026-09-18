@@ -3,7 +3,7 @@
 
 LaneHitEffect::LaneHitEffect(DrumType type, Judgments judgment)
             : type(type), judgment(judgment) {
-    fade = (FadeAnimation*)tex.get_animation(0, true);
+    fade = dynamic_cast<FadeAnimation*>(tex.get_animation(0, true));
     fade->start();
 }
 

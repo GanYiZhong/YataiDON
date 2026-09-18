@@ -5,15 +5,15 @@
 FailAnimation::FailAnimation(bool is_2p)
     : is_2p(is_2p), name("in"), frame(0) {
 
-    bachio_fade_in = (FadeAnimation*)tex.get_animation(46);
-    bachio_texture_change = (TextureChangeAnimation*)tex.get_animation(47);
-    bachio_fall = (MoveAnimation*)tex.get_animation(48);
+    bachio_fade_in = (FadeAnimation*)tex.get_animation(46, true);
+    bachio_texture_change = (TextureChangeAnimation*)tex.get_animation(47, true);
+    bachio_fall = (MoveAnimation*)tex.get_animation(48, true);
     bachio_move_out = (MoveAnimation*)tex.get_animation(49);
     bachio_boom_fade_in = (FadeAnimation*)tex.get_animation(50);
     bachio_boom_scale = (TextureResizeAnimation*)tex.get_animation(51);
-    bachio_up = (MoveAnimation*)tex.get_animation(52);
-    bachio_down = (MoveAnimation*)tex.get_animation(53);
-    text_fade_in = (FadeAnimation*)tex.get_animation(54);
+    bachio_up = dynamic_cast<MoveAnimation*>(tex.get_animation(52, true));
+    bachio_down = dynamic_cast<MoveAnimation*>(tex.get_animation(53, true));
+    text_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(54, true));
 
     text_fade_in->start();
     bachio_fade_in->start();

@@ -46,9 +46,16 @@ void CostumeMenu::load_costume_icons(const std::string& subdir, const std::strin
             catch (...) {}
         }
     }
+    std::sort(entries.begin(), entries.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
     for (auto& [id, path] : entries) {
+        ray::Texture t = ray::LoadTexture(path.string().c_str());
+        if (t.id == 0 || t.width <= 0 || t.height <= 0) {
+            spdlog::warn("CostumeMenu: failed to load icon {}", path.string());
+            continue;
+        }
         costume_ids.push_back(id);
-        costume_icons.push_back(ray::LoadTexture(path.string().c_str()));
+        costume_icons.push_back(t);
     }
 
     fs::path names_path = resolve_skin_path("Models/costume_names.json");
@@ -170,6 +177,10 @@ void CostumeMenu::handle_input() {
                     picked_head_id = costume_ids[costume_icon_index];
                     pick_stage = CostumePickStage::BODY;
                     load_costume_icons("costume_body_icon", "body");
+                    if (costume_icons.empty()) {
+                        spdlog::warn("CostumeMenu: no body icons found, confirming head only");
+                        confirmed = true;
+                    }
                 } else {
                     confirmed = true;
                 }
@@ -197,15 +208,23 @@ void CostumeMenu::handle_input() {
 
         if (is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) {
             if (ITEMS[selected_index] == COSTUME_SELECT::COSTUME) {
-                costume_select_mode = true;
                 pick_stage = CostumePickStage::NONE;
                 load_costume_icons("costume_icon", "costume");
+                if (costume_icons.empty()) {
+                    spdlog::warn("CostumeMenu: no costume icons found, staying in menu");
+                    return;
+                }
+                costume_select_mode = true;
                 audio.play_sound("don", VolumePreset::SOUND);
             } else if (ITEMS[selected_index] == COSTUME_SELECT::HEAD_BODY) {
-                costume_select_mode = true;
                 pick_stage = CostumePickStage::HEAD;
                 picked_head_id = -1;
                 load_costume_icons("costume_head_icon", "head");
+                if (costume_icons.empty()) {
+                    spdlog::warn("CostumeMenu: no head icons found, staying in menu");
+                    return;
+                }
+                costume_select_mode = true;
                 audio.play_sound("don", VolumePreset::SOUND);
             } else if (presets_enabled && is_preset_item(ITEMS[selected_index])) {
                 if (!preset_cos_id) apply_preset(ITEMS[selected_index]);
@@ -228,17 +247,17 @@ void CostumeMenu::draw(float x, float y) {
         float base_x = ib->x[0] + x;
         float base_y = ib->y[0] + y;
         int n = (int)costume_icons.size();
-        for (int i = 0; i < 5; i++) {
+        int slots = std::min(5, n);
+        for (int i = 0; i < slots; i++) {
             int idx = ((costume_icon_index - 2 + i) % n + n) % n;
             auto& icon = costume_icons[idx];
             float scale = std::min(ITEM_W / icon.width, ITEM_W / icon.height);
             float dw = icon.width * scale, dh = icon.height * scale;
             float ix = tex.draw_offset_x + base_x + i * ITEM_W + (ITEM_W - dw) / 2.0f;
             float iy = tex.draw_offset_y + base_y + (ITEM_W - dh) / 2.0f;
-            float offset = (icon.width - ib->width) / 2.0f;
             ray::DrawTexturePro(icon,
                 {0, 0, (float)icon.width, (float)icon.height},
-                {ix + offset, iy + offset, dw, dh}, {0, 0}, 0, ray::WHITE);
+                {ix, iy, dw, dh}, {0, 0}, 0, ray::WHITE);
         }
     }
 

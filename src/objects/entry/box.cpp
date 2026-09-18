@@ -13,7 +13,15 @@ Box::Box(const std::string& text_str, int font_size, Screens location) : locatio
     moving_down = false;
     y_pos = 0;
     static_y = 0;
-    if (!load("EntryBox", "box", text_str, font_size)) return;
+    static_x = x;
+    left_x = x;
+    static_left = left_x;
+    right_x = left_x + tex.textures[MODE_SELECT::BOX]->width - tex.textures[MODE_SELECT::BOX_HIGHLIGHT_RIGHT]->width;
+    static_right = right_x;
+    if (!load("EntryBox", "box", text_str, font_size)) {
+        spdlog::error("Box: failed to load EntryBox/box script; draw() will be a no-op");
+        return;
+    }
     fn_draw = lua_object["draw"];
 }
 

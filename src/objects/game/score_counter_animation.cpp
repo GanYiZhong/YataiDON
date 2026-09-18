@@ -69,7 +69,7 @@ void ScoreCounterAnimation::draw(float y) {
 
         tex.draw_texture(LANE::SCORE_NUMBER, {
             .color = color,
-            .frame = counter_str[i] - '0',
+            .frame = (counter_str[i] >= '0' && counter_str[i] <= '9') ? counter_str[i] - '0' : 0,
             .x = start_x + (i * margin),
             .y = y_offset
         });

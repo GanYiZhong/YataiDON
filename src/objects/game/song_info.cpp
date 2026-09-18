@@ -16,14 +16,15 @@ SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bo
         song_num, plate_cfg ? plate_cfg->outline : -1.0f);
     if (song_total > 0 && tex.skin_entry("song_num_max"))
         song_max = std::make_unique<SongNum>(song_total, "song_num_max");
-    fade = (FadeAnimation*)tex.get_animation(3);
+    fade = dynamic_cast<FadeAnimation*>(tex.get_animation(3));
 }
 
 void SongInfo::update(double current_ms) {
-    fade->update(current_ms);
+    if (fade) fade->update(current_ms);
 }
 
 void SongInfo::draw() {
+    if (!fade) return;
     float text_x = tex.skin_config[SC::SONG_INFO].x;
     float text_y = tex.skin_config[SC::SONG_INFO].y - song_title->height / 2.0f;
 
@@ -86,7 +87,11 @@ SongNum::SongNum(int song_num, float outline_override) {
 
 SongNum::SongNum(int value, const std::string& config_key) {
     const SkinInfo* cfg = tex.skin_entry(config_key);
-    if (!cfg) return;
+    if (!cfg) {
+        width = 0.0f;
+        height = 0.0f;
+        return;
+    }
     std::string fmt;
     auto it = cfg->text.find(global_data.config->general.language);
     if (it != cfg->text.end()) fmt = it->second;

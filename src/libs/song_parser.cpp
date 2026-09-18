@@ -5,7 +5,10 @@ SongParser::SongParser(const fs::path& path, int start_delay, PlayerNum player_n
     // A gen 4 song is a folder of chart files rather than a single file.
 #ifdef SUPPORT_FUMEN
     std::error_code dir_ec;
-    if (fs::is_directory(path, dir_ec))
+    const bool is_dir = fs::is_directory(path, dir_ec);
+    if (dir_ec)
+        throw fs::filesystem_error("SongParser: cannot stat chart path", path, dir_ec);
+    if (is_dir)
         impl = FumenParser(path, start_delay);
     else if (path.extension() == ".osu")
         impl = OsuParser(path);

@@ -12,7 +12,10 @@ BaseAnimation::BaseAnimation(double duration, double delay, bool loop, bool lock
       start_ms(get_current_ms()), is_finished(false), is_started(false),
       is_reversing(false), unlocked(false), loop(loop),
       lock_input(lock_input), attribute(0) {
-          if (loop) is_started = true;
+          if (loop) {
+              is_started = true;
+              restart();
+          }
       }
 
 double BaseAnimation::easeIn(double progress, const std::string &ease_type) {
@@ -73,15 +76,18 @@ void BaseAnimation::start() {
 }
 
 void BaseAnimation::pause() {
+    if (!is_started) return;
     is_started = false;
-    if (lock_input) {
+    if (lock_input && !unlocked) {
+        unlocked = true;
         global_data.input_locked--;
     }
 }
 
 void BaseAnimation::unpause() {
     is_started = true;
-    if (lock_input) {
+    if (lock_input && unlocked) {
+        unlocked = false;
         global_data.input_locked++;
     }
 }
@@ -367,7 +373,12 @@ Value AnimationParser::resolveValue(const Value& ref_obj, std::set<int>& visited
         throw std::runtime_error("Reference requires 'reference_id' field");
     }
     if (ref_obj["reference_id"].IsString()) {
-        ref_id = std::stoi(ref_obj["reference_id"].GetString());
+        try {
+            ref_id = std::stoi(ref_obj["reference_id"].GetString());
+        } catch (const std::exception&) {
+            throw std::runtime_error(std::string("Invalid reference_id string: ") +
+                                     ref_obj["reference_id"].GetString());
+        }
     } else if (ref_obj["reference_id"].IsInt()) {
         ref_id = ref_obj["reference_id"].GetInt();
     } else {
@@ -450,6 +461,9 @@ Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
 }
 
 std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& anim_obj) {
+    if (!anim_obj.HasMember("type") || !anim_obj["type"].IsString()) {
+        throw std::runtime_error("Animation requires a string 'type'");
+    }
     std::string type = anim_obj["type"].GetString();
     // "sample" derives its natural duration from its table window, so the key
     // is optional there; every other type keeps requiring it (the old
@@ -542,7 +556,9 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         if (anim_obj.HasMember("textures") && anim_obj["textures"].IsArray()) {
             const Value& tex_array = anim_obj["textures"];
             for (SizeType i = 0; i < tex_array.Size(); i++) {
-                if (tex_array[i].IsArray() && tex_array[i].Size() == 3) {
+                if (tex_array[i].IsArray() && tex_array[i].Size() == 3 &&
+                    tex_array[i][0].IsNumber() && tex_array[i][1].IsNumber() &&
+                    tex_array[i][2].IsInt()) {
                     double start = tex_array[i][0].GetDouble();
                     double end = tex_array[i][1].GetDouble();
                     int index = tex_array[i][2].GetInt();

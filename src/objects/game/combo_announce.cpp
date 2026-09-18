@@ -1,8 +1,11 @@
 #include "combo_announce.h"
 #include "../../libs/texture.h"
 #include "../../libs/audio.h"
+#include <stdexcept>
 
 namespace {
+
+constexpr int COMBO_ANNOUNCE_FADE_ANIM_ID = 65;
 
 constexpr float CELL       = 104.0f;
 constexpr float GROUP_CX   = 204.0f;   // combo_num's origin inside the scroll
@@ -42,7 +45,10 @@ ComboAnnounce::ComboAnnounce(int combo, double current_ms, PlayerNum player_num)
     : combo(combo), wait(current_ms), player_num(player_num),
       is_finished(false), audio_played(false) {
 
-    fade = (FadeAnimation*)tex.get_animation(65, true);
+    fade = dynamic_cast<FadeAnimation*>(tex.get_animation(COMBO_ANNOUNCE_FADE_ANIM_ID, true));
+    if (fade == nullptr) {
+        throw std::runtime_error("combo announce fade animation missing or of unexpected type");
+    }
     fade->start();
 }
 
@@ -123,7 +129,7 @@ void ComboAnnounce::draw(float y) {
         }
         float text_offset = tex.skin_config[SC::COMBO_ANNOUNCE_TEXT_OFFSET].x;
         tex.draw_texture(COMBO::ANNOUNCE_TEXT, {.x = -text_offset / 2, .y = y, .fade = fade_value});
-    } else {
+    } else if (combo >= 100) {
         tex.draw_texture(COMBO::ANNOUNCE_NUMBER, {.frame = combo / 100 - 1, .x = 0, .y = y, .fade = fade_value});
         tex.draw_texture(COMBO::ANNOUNCE_TEXT, {.x = 0, .y = y, .fade = fade_value});
     }

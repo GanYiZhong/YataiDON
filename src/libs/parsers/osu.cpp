@@ -1,6 +1,8 @@
 #include "osu.h"
 #include <fstream>
+#include <sstream>
 #include <cmath>
+#include <algorithm>
 
 std::vector<std::string> OsuParser::read_file_lines(const fs::path& path) {
     std::vector<std::string> lines;
@@ -59,6 +61,26 @@ std::vector<std::vector<double>> OsuParser::read_section_list(
     return result;
 }
 
+std::vector<std::vector<std::string>> OsuParser::read_hitobjects_fields(
+    const std::vector<std::string>& lines) const
+{
+    std::vector<std::vector<std::string>> result;
+    bool in_section = false;
+    for (const auto& line : lines) {
+        if (line == "[HitObjects]") { in_section = true; continue; }
+        if (!line.empty() && line[0] == '[') { in_section = false; continue; }
+        if (!in_section) continue;
+        if (line.empty() || line[0] == '/' || line[0] == '\r') continue;
+        if (!std::isdigit((unsigned char)line[0]) && line[0] != '-' && line[0] != '+') continue;
+        std::vector<std::string> fields;
+        std::stringstream ss(line);
+        std::string field;
+        while (std::getline(ss, field, ',')) fields.push_back(field);
+        if (!fields.empty()) result.push_back(fields);
+    }
+    return result;
+}
+
 double OsuParser::get_scroll_multiplier(double ms) const {
     double base_scroll = (slider_multiplier >= 1.37 && slider_multiplier <= 1.47)
                          ? 1.0
@@ -68,6 +90,8 @@ double OsuParser::get_scroll_multiplier(double ms) const {
         if (tp[0] > ms) break;
         if (tp[1] < 0)
             current_scroll = -100.0 / tp[1];
+        else
+            current_scroll = 1.0; // uninherited point resets SV
     }
     return current_scroll * base_scroll;
 }
@@ -96,22 +120,31 @@ OsuParser::OsuParser(const fs::path& path) : file_path(path) {
     auto osu_meta   = read_section_dict(lines, "Metadata");
     auto difficulty = read_section_dict(lines, "Difficulty");
     auto tp_data    = read_section_list(lines, "TimingPoints");
-    hit_objects_data = read_section_list(lines, "HitObjects");
+    hit_objects_data = read_hitobjects_fields(lines);
 
     // Slider multiplier
-    if (difficulty.count("SliderMultiplier"))
-        slider_multiplier = std::stod(difficulty["SliderMultiplier"]);
+    if (difficulty.count("SliderMultiplier")) {
+        try {
+            double sm = std::stod(difficulty["SliderMultiplier"]);
+            if (sm > 0.0) slider_multiplier = sm;
+            else spdlog::warn("OsuParser: invalid SliderMultiplier '{}', using default", difficulty["SliderMultiplier"]);
+        } catch (const std::exception& e) {
+            spdlog::warn("OsuParser: failed to parse SliderMultiplier '{}': {}", difficulty["SliderMultiplier"], e.what());
+        }
+    }
 
     // Timing points: store {time_ms, beat_length}
     for (const auto& row : tp_data) {
         if (row.size() >= 2)
             timing_points.push_back({row[0], row[1]});
     }
+    std::sort(timing_points.begin(), timing_points.end(),
+              [](const std::array<double, 2>& a, const std::array<double, 2>& b) { return a[0] < b[0]; });
 
     // Metadata
-    if (osu_meta.count("Version"))
+    if (osu_meta.count("Title"))
         metadata.title["en"] = osu_meta["Title"];
-    if (osu_meta.count("Creator"))
+    if (osu_meta.count("Artist"))
         metadata.subtitle["en"] = osu_meta["Artist"];
     if (osu_meta.count("TitleUnicode"))
         metadata.title["ja"] = osu_meta["TitleUnicode"];
@@ -122,8 +155,13 @@ OsuParser::OsuParser(const fs::path& path) : file_path(path) {
 
     if (general.count("AudioFilename"))
         metadata.wave = path.parent_path() / general["AudioFilename"];
-    if (general.count("PreviewTime"))
-        metadata.demostart = std::stod(general["PreviewTime"]) / 1000.0;
+    if (general.count("PreviewTime")) {
+        try {
+            metadata.demostart = std::stod(general["PreviewTime"]) / 1000.0;
+        } catch (const std::exception& e) {
+            spdlog::warn("OsuParser: invalid PreviewTime '{}': {}", general["PreviewTime"], e.what());
+        }
+    }
 
     metadata.offset = -30.0 / 1000.0;
 
@@ -181,9 +219,17 @@ NoteList& OsuParser::get_notes() {
     for (const auto& line : hit_objects_data) {
         if (line.size() < 5) continue;
 
-        double note_time = line[2];
-        int obj_type     = (int)line[3];
-        int hit_sound    = (int)line[4];
+        double note_time;
+        int obj_type;
+        int hit_sound;
+        try {
+            note_time = std::stod(line[2]);
+            obj_type  = std::stoi(line[3]);
+            hit_sound = std::stoi(line[4]);
+        } catch (const std::exception& e) {
+            spdlog::warn("OsuParser: skipping malformed hit object line: {}", e.what());
+            continue;
+        }
         double scroll    = get_scroll_multiplier(note_time);
         double bpm_here  = get_bpm_at(note_time);
 
@@ -220,12 +266,11 @@ NoteList& OsuParser::get_notes() {
             cached_notes.notes.push_back(note);
 
         } else if (is_slider) {
-            // Drumroll: compute duration
+            // Drumroll: compute duration (field 7 is the slider "length")
             double slider_len = 0.0;
-            if (line.size() >= 9)
-                slider_len = line[8];
-            else if (line.size() >= 7)
-                slider_len = line[6];
+            if (line.size() > 7) {
+                try { slider_len = std::stod(line[7]); } catch (const std::exception&) {}
+            }
 
             double beat_len_at = first_beat_length;
             for (const auto& tp : timing_points) {
@@ -262,8 +307,11 @@ NoteList& OsuParser::get_notes() {
             cached_notes.notes.push_back(tail);
 
         } else if (is_spinner) {
-            // Balloon
-            double end_time = (line.size() >= 6) ? line[5] : note_time + 1000.0;
+            // Balloon (field 5 is the spinner "endTime")
+            double end_time = note_time + 1000.0;
+            if (line.size() > 5) {
+                try { end_time = std::stod(line[5]); } catch (const std::exception&) {}
+            }
 
             Note head;
             head.type     = NoteType::BALLOON_HEAD;

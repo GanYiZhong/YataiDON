@@ -137,15 +137,24 @@ void Player::handle_timeline(double ms_from_start) {
         timeline_buffer.push_back(timeline_object);
     }
 
-    for (int i = timeline_buffer.size() - 1; i >= 0; i--) {
-        auto& timeline_object = timeline_buffer[i];
-        handle_scroll_type_commands(ms_from_start, timeline_object, i);
-        handle_bpmchange(ms_from_start, timeline_object, i);
-        handle_judgeposition(ms_from_start, timeline_object, i);
-        handle_gogotime(ms_from_start, timeline_object, i);
-        handle_branch_param(ms_from_start, timeline_object, i);
-        handle_lyric(ms_from_start, timeline_object, i);
-        handle_section(ms_from_start, timeline_object, i);
+    for (int i = (int)timeline_buffer.size() - 1; i >= 0; i--) {
+        // NOTE: handlers may erase timeline_buffer[i]; take a copy and stop
+        // dispatching as soon as the entry has been consumed.
+        TimelineObject entry = timeline_buffer[i];
+        const size_t before = timeline_buffer.size();
+        handle_scroll_type_commands(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_bpmchange(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_judgeposition(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_gogotime(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_branch_param(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_lyric(ms_from_start, entry, i);
+        if (timeline_buffer.size() != before) continue;
+        handle_section(ms_from_start, entry, i);
     }
 }
 
@@ -575,6 +584,15 @@ void Player::get_load_time(Note& note) {
 }
 
 void Player::reset_chart() {
+    if (!parser.has_value()) return;
+
+    don_notes.clear();
+    kat_notes.clear();
+    other_notes.clear();
+    draw_note_list.clear();
+    draw_note_buffer.clear();
+    barlines.clear();
+
     auto [notes, branch_m_temp, branch_e_temp, branch_n_temp] = parser->notes_to_position(difficulty);
     apply_modifiers(notes, modifiers);
 
@@ -711,6 +729,11 @@ void Player::reset_chart() {
     if (score_method == ScoreMethod::SHINUCHI) {
         base_score = calculate_base_score(total_notes);
     } else if (score_method == ScoreMethod::GEN3) {
+        if (difficulty < 0 || difficulty >= (int)parser->metadata.course_data.size()) {
+            score_init = calculate_base_score(total_notes);
+            score_diff = 0;
+            return;
+        }
         score_diff = parser->metadata.course_data[difficulty].scorediff;
         if (score_diff <= 0) {
             spdlog::warn("Error: No scorediff specified or scorediff less than 0 | Using shinuchi scoring method instead");
@@ -718,7 +741,7 @@ void Player::reset_chart() {
         }
 
         std::vector<int> score_init_list = parser->metadata.course_data[difficulty].scoreinit;
-        if (score_init_list.size() <= 0) {
+        if (score_init_list.empty()) {
             spdlog::warn("Error: No scoreinit specified or scoreinit less than 0 | Using shinuchi scoring method instead");
             score_init = calculate_base_score(total_notes);
             score_diff = 0;
@@ -761,7 +784,7 @@ void Player::handle_scroll_type_commands(double ms_from_start, const TimelineObj
     }
 
     if (timeline_object.delay.has_value()) {
-        if (delay_start.has_value()) {
+        if (!delay_start.has_value()) {
             delay_start = timeline_object.start_time;
             delay_end = timeline_object.start_time + timeline_object.delay.value();
         } else {
@@ -850,8 +873,14 @@ void Player::handle_branch_param(double ms_from_start, const TimelineObject& tim
 
     if (parts.size() >= 3) {
         std::string branch_cond = parts[0];
-        float e_req = std::stof(parts[1]);
-        float m_req = std::stof(parts[2]);
+        float e_req = 0.0f, m_req = 0.0f;
+        try {
+            e_req = std::stof(parts[1]);
+            m_req = std::stof(parts[2]);
+        } catch (const std::exception& e) {
+            spdlog::warn("Invalid #BRANCHSTART params '{}': {}", params, e.what());
+            e_req = m_req = 0.0f;
+        }
 
         if (!is_branch) {
             is_branch = true;
@@ -864,8 +893,10 @@ void Player::handle_branch_param(double ms_from_start, const TimelineObject& tim
                 branch_condition_end_time = branch_e.front().notes.front().load_ms;
             } else if (!branch_n.empty() && !branch_n.front().notes.empty()) {
                 branch_condition_end_time = branch_n.front().notes.front().load_ms;
-            } else {
+            } else if (!draw_note_list.empty()) {
                 branch_condition_end_time = draw_note_list.front().load_ms;
+            } else {
+                branch_condition_end_time = ms_from_start;
             }
 
             if (branch_cond == "r") {
@@ -952,6 +983,7 @@ void Player::play_note_manager(double current_ms, std::optional<Background>& bac
             curr_balloon_count = 0;
             return;
         }
+        if (other_notes.size() < 2) return;
         Note& tail = other_notes[1];
         if (tail.hit_ms <= current_ms) {
             other_notes.pop_front();
@@ -1135,9 +1167,6 @@ void Player::check_kusudama(double current_ms, DrumType drum_type, const Note& b
     total_drumroll++;
     score += 100;
     base_score_list.push_back(ScoreCounterAnimation(player_num, 100, is_2p));
-    if (curr_balloon_count == balloon.count.value()) {
-        is_balloon = false;
-
     owner->kusudama_shared_hits++;
     owner->kusudama_counter->update(current_ms, owner->kusudama_shared_hits);
 
@@ -1154,7 +1183,6 @@ void Player::check_kusudama(double current_ms, DrumType drum_type, const Note& b
             kusudama_partner->is_balloon = false;
             kusudama_partner->note_correct(partner_note, current_ms);
         }
-    }
 
         owner->kusudama_shared_hits = 0;
     }
@@ -1406,7 +1434,8 @@ void Player::draw_drumroll(double current_ms, float y, const Note& head, int cur
                                head.index + 1, [](const Note& n, int idx) { return n.index < idx; });
     while (it != draw_note_buffer.end() && it->type != NoteType::TAIL) ++it;
 
-    auto& tail = (it != draw_note_buffer.end()) ? *it : draw_note_buffer[1];
+    if (it == draw_note_buffer.end()) return;  // tail not loaded yet
+    auto& tail = *it;
     bool is_big = head.type == NoteType::ROLL_HEAD_L;
     float end_position = get_position_x(tail, current_ms);
     float length = end_position - start_position;
@@ -1448,7 +1477,8 @@ void Player::draw_balloon(double current_ms, float y, const Note& head, int curr
                                head.index + 1, [](const Note& n, int idx) { return n.index < idx; });
     while (it != draw_note_buffer.end() && it->type != NoteType::TAIL) ++it;
 
-    auto& tail = (it != draw_note_buffer.end()) ? *it : draw_note_buffer[1];
+    if (it == draw_note_buffer.end()) return;  // tail not loaded yet
+    auto& tail = *it;
     float end_position = get_position_x(tail, current_ms);
     float pause_position = JudgePos::X + judge_x;
     float y_pos = y + tex.skin_config[SC::NOTES].y + get_position_y(head, current_ms) + judge_y;

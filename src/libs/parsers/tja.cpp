@@ -284,7 +284,8 @@ void TJAParser::get_metadata() {
                 } else if (course == "0" || course == "easy") {
                     current_diff = 0;
                 } else {
-                    spdlog::warn("Course level empty in " + file_path.string());
+                    current_diff = -1;
+                    spdlog::warn("Unrecognized COURSE value '{}' in {}", course, file_path.string());
                 }
 
                 if (current_diff != -1) {
@@ -308,27 +309,39 @@ void TJAParser::get_metadata() {
                 else if (item.find("BALLOONNOR") == 0) {
                     std::string balloon_data = split_after_colon(item);
                     if (!balloon_data.empty()) {
-                        auto balloons = parse_balloon_data(balloon_data);
-                        metadata.course_data[current_diff].balloon.insert(
-                            metadata.course_data[current_diff].balloon.end(),
-                            balloons.begin(), balloons.end()
-                        );
+                        try {
+                            auto balloons = parse_balloon_data(balloon_data);
+                            metadata.course_data[current_diff].balloon.insert(
+                                metadata.course_data[current_diff].balloon.end(),
+                                balloons.begin(), balloons.end()
+                            );
+                        } catch (const std::exception& e) {
+                            spdlog::warn("Invalid BALLOONNOR value '{}' in {}: {}", balloon_data, file_path.string(), e.what());
+                        }
                     }
                 }
                 else if (item.find("BALLOONEXP") == 0) {
                     std::string balloon_data = split_after_colon(item);
                     if (!balloon_data.empty()) {
-                        auto balloons = parse_balloon_data(balloon_data);
-                        metadata.course_data[current_diff].balloon.insert(
-                            metadata.course_data[current_diff].balloon.end(),
-                            balloons.begin(), balloons.end()
-                        );
+                        try {
+                            auto balloons = parse_balloon_data(balloon_data);
+                            metadata.course_data[current_diff].balloon.insert(
+                                metadata.course_data[current_diff].balloon.end(),
+                                balloons.begin(), balloons.end()
+                            );
+                        } catch (const std::exception& e) {
+                            spdlog::warn("Invalid BALLOONEXP value '{}' in {}: {}", balloon_data, file_path.string(), e.what());
+                        }
                     }
                 }
                 else if (item.find("BALLOONMAS") == 0) {
                     std::string balloon_data = split_after_colon(item);
                     if (!balloon_data.empty()) {
-                        metadata.course_data[current_diff].balloon = parse_balloon_data(balloon_data);
+                        try {
+                            metadata.course_data[current_diff].balloon = parse_balloon_data(balloon_data);
+                        } catch (const std::exception& e) {
+                            spdlog::warn("Invalid BALLOONMAS value '{}' in {}: {}", balloon_data, file_path.string(), e.what());
+                        }
                     }
                 }
                 else if (item.find("BALLOON") == 0) {
@@ -338,7 +351,11 @@ void TJAParser::get_metadata() {
                     }
                     std::string balloon_data = split_after_colon(item);
                     if (!balloon_data.empty()) {
-                        metadata.course_data[current_diff].balloon = parse_balloon_data(balloon_data);
+                        try {
+                            metadata.course_data[current_diff].balloon = parse_balloon_data(balloon_data);
+                        } catch (const std::exception& e) {
+                            spdlog::warn("Invalid BALLOON value '{}' in {}: {}", balloon_data, file_path.string(), e.what());
+                        }
                     }
                 }
                 else if (item.find("SCOREINIT") == 0) {
@@ -416,7 +433,7 @@ TJAParser::notes_to_position(int diff) {
         // Calculate bar length (sum of non-command parts)
         int bar_length = 0;
         for (const auto& part : bar) {
-            if (part.find('#') == std::string::npos) {
+            if (part.empty() || part[0] != '#') {
                 bar_length += part.length();
             }
         }
@@ -455,7 +472,9 @@ TJAParser::notes_to_position(int diff) {
                 current_ms += ms_per_measure;
                 increment = 0.0f;
             } else {
-                increment = ms_per_measure / static_cast<double>(bar_length);
+                increment = (bar_length > 0)
+                    ? ms_per_measure / static_cast<double>(bar_length)
+                    : 0.0;
             }
 
             // Process each note character
@@ -1081,10 +1100,10 @@ void TJAParser::handle_JPOSSCROLL(const std::string& part, ParserState& state) {
     for (auto it = state.curr_timeline->rbegin(); it != state.curr_timeline->rend(); ++it) {
         TimelineObject& obj = *it;
         if (!obj.delta_x.has_value() || !obj.delta_y.has_value()) continue;
-        if (obj.start_time > this->current_ms) {
-            float available_time = this->current_ms - obj.start_time;
-            float total_duration = obj.end_time - obj.start_time;
-            double ratio = (total_duration > 0) ? std::min(1.0f, available_time / total_duration) : 1.0f;
+        if (obj.end_time > this->current_ms) {
+            double available_time = this->current_ms - obj.start_time;
+            double total_duration = obj.end_time - obj.start_time;
+            double ratio = (total_duration > 0) ? std::min(1.0, available_time / total_duration) : 1.0;
 
             obj.delta_x.value() *= ratio;
             obj.delta_y.value() *= ratio;
@@ -1466,8 +1485,8 @@ std::string TJAParser::get_song_hash() {
     };
 
     for (const auto& [course, course_data] : metadata.course_data) {
-        for (int diff = course; diff < 4; diff++) {
-            auto [notes, branch_m, branch_e, branch_n] = notes_to_position(diff);
+        {
+            auto [notes, branch_m, branch_e, branch_n] = notes_to_position(course);
 
             auto absorb_notes = [&](const NoteList& note_list) {
                 for (const Note& note : note_list.notes) {

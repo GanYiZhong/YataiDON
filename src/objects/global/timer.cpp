@@ -2,7 +2,7 @@
 #include "../../libs/global_data.h"
 
 Timer::Timer(int time, double current_time_ms, std::function<void()> confirm_func) {
-    bool is_frozen = global_data.config->general.timer_frozen;
+    bool is_frozen = global_data.config ? global_data.config->general.timer_frozen : false;
     if (!load("Timer", "timer", time, current_time_ms, confirm_func, is_frozen)) return;
     fn_update = lua_object["update"];
     fn_draw   = lua_object["draw"];

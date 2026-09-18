@@ -12,6 +12,8 @@
 #include <spdlog/spdlog.h>
 
 static SessionData& current_session() {
+    static SessionData fallback{};
+    if (global_data.session_data.empty()) return fallback;
     int idx = (int)global_data.player_num;
     if (idx < 0 || idx >= (int)global_data.session_data.size()) idx = 0;
     return global_data.session_data[idx];
@@ -95,14 +97,20 @@ static bool same_params(const DrawTextureParams& a, const DrawTextureParams& b) 
 // fills the gaps, the same way its graphics do.
 void ScriptManager::index_scripts(const fs::path& script_path) {
     std::error_code ec;
-    for (const auto& script : fs::directory_iterator(script_path, ec)) {
+    fs::directory_iterator dir(script_path, ec);
+    if (ec) {
+        spdlog::warn("Unable to index scripts in {}: {}", script_path.string(), ec.message());
+        return;
+    }
+    for (const auto& script : dir) {
         fs::path p = script.path();
         if (fs::is_directory(p)) {
             fs::path lua_file = p / (p.stem().string() + ".lua");
             if (fs::exists(lua_file) && !scripts.count(p.stem().string())) {
                 scripts[p.stem().string()] = lua_file.string();
             }
-            for (const auto& sub : fs::directory_iterator(p)) {
+            std::error_code sub_ec;
+            for (const auto& sub : fs::directory_iterator(p, sub_ec)) {
                 fs::path sub_p = sub.path();
                 if (!fs::is_directory(sub_p) && sub_p.extension() == ".lua" && sub_p.stem() != p.stem() &&
                     !scripts.count(sub_p.stem().string())) {
@@ -166,7 +174,8 @@ std::string ScriptManager::get_lua_script_path(const std::string& script_name) {
 }
 
 void ScriptManager::shutdown() {
-    script_manager.tex.unload_textures();
+    tex.unload_textures();
+    scripts.clear();
     lua.reset();
 }
 
@@ -540,7 +549,12 @@ void ScriptManager::register_lua_bindings() {
                 return nullptr;
             }
             int font_size = config_it->second.font_size;
-            std::string text = config_it->second.text[global_data.config->general.language];
+            std::string text;
+            const auto& text_map = config_it->second.text;
+            for (const std::string& l : {global_data.config->general.language, std::string("ja"), std::string("en")}) {
+                auto t = text_map.find(l);
+                if (t != text_map.end() && !t->second.empty()) { text = t->second; break; }
+            }
             ray::Color color_val;
             color_val.r = color[0];
             color_val.g = color[1];

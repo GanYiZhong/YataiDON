@@ -2,17 +2,20 @@
 #include "audio.h"
 #include "texture.h"
 #include <spdlog/spdlog.h>
+#include <climits>
 
 VideoPlayer::VideoPlayer(fs::path path)
     : is_finished_arr{false, false}
 {
     if (path.extension() == ".png" || path.extension() == ".jpg") {
         texture  = ray::LoadTexture(path.string().c_str());
+        is_static = true;
         if (!ray::IsTextureValid(texture.value())) {
             spdlog::error("Failed to load static texture for video: {}", path.stem().string());
+            ray::UnloadTexture(texture.value());
+            texture.reset();
             return;
         }
-        is_static = true;
         return;
     }
 
@@ -24,8 +27,17 @@ VideoPlayer::VideoPlayer(fs::path path)
     }
     video_stream = container->streams().video(0);
     audio_stream = container->streams().audio(0);
+    if (!video_stream) {
+        spdlog::error("Video has no video stream: {}", path.string());
+        container.reset();
+        return;
+    }
 
-    audio_s = audio.load_music_stream_memory(*audio_stream, "video_player");
+    if (audio_stream) {
+        audio_s = audio.load_music_stream_memory(*audio_stream, "video_player");
+    } else {
+        is_finished_arr[1] = true; // no audio track: audio side is trivially done
+    }
 
     fps = video_stream->average_rate().value_or(0.f);
 
@@ -146,6 +158,8 @@ void VideoPlayer::start(double current_ms) {
     stop_decode_thread(); // no-op on first start; resets state on restart
     decode_stop.store(false);
     frame_index = 0;
+    is_finished_arr = {false, false};
+    audio_started = false;
     start_ms = current_ms;
     decode_thread = std::thread(&VideoPlayer::decode_loop, this);
 }
@@ -164,7 +178,7 @@ void VideoPlayer::update(double current_ms) {
 
     audio_manager();
 
-    if (frame_index >= frame_count) {
+    if (frame_count > 0 && frame_index >= frame_count) {
         is_finished_arr[0] = true;
         return;
     }
@@ -172,9 +186,11 @@ void VideoPlayer::update(double current_ms) {
     if (!is_started()) return;
 
     double elapsed_ms = current_ms - start_ms.value();
+    // Unknown fps/duration: drain whatever the decoder has produced and rely
+    // on decode_eof (below) to signal completion instead of a frame estimate.
     int target_frame = (frame_duration > 0.0)
         ? static_cast<int>(elapsed_ms / frame_duration)
-        : 0;
+        : INT_MAX;
 
     // Drain all due frames from the decode queue but upload only the newest;
     // intermediate catch-up frames skip the GPU entirely
@@ -252,6 +268,7 @@ void VideoPlayer::stop() {
 
     if (container) {
         container->close();
+        container.reset();
     }
 
     if (texture.has_value()) {
@@ -259,6 +276,9 @@ void VideoPlayer::stop() {
         texture.reset();
     }
 
-    audio.stop_music_stream(audio_s);
-    audio.unload_music_stream(audio_s);
+    if (!audio_s.empty()) {
+        audio.stop_music_stream(audio_s);
+        audio.unload_music_stream(audio_s);
+        audio_s.clear();
+    }
 }
