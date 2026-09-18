@@ -10,7 +10,9 @@
 namespace ray {
 #include <raymath.h>
 }
-extern "C" { void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); }
+extern "C" { void rlSetCullFace(int mode); void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); void rlColorMask(bool r, bool g, bool b, bool a); }
+static constexpr int RL_CULL_FACE_FRONT = 0;
+static constexpr int RL_CULL_FACE_BACK  = 1;
 
 static void draw_model_face_last(ray::Model& model, int face_material_index, const std::vector<int>& blend_materials,
                                  const std::vector<int>& twosided_materials, ray::Vector3 position, float scale) {
@@ -574,24 +576,52 @@ void Chara3D::draw_outline(float x, float y) {
     }
 
     {
-        // Black line, drawn after the model: screen-space push along the view normal, a small
-        // depth push back, facing test in the shader. No culling: the shader keeps only the
-        // camera-facing side, so inside-out parts do not become black shells.
-        // 2.5 px at 720p, scaled with the output; the depth push keeps the line behind the
-        // surface it belongs to even on receding slopes, where a 2 px shift changes depth.
+        // Black line, drawn after the model: screen-space push along the view normal, a depth
+        // push back, facing test in the shader. 2.5 px at 720p, scaled with the output; the
+        // depth push keeps the line behind the surface it belongs to even on receding slopes.
+        // Three steps:
+        //  1. the line of the camera-facing vertices (the crease and cut-out lines);
+        //  2. the model's back faces written to the depth buffer only, so that step 3 can only
+        //     show up outside the model. An inside-out part (a single-sided glass dome, a head
+        //     shell with inward normals) has its near side culled in the model pass, and
+        //     without this the lines of everything behind that side would paint over it;
+        //  3. the line of the vertices facing away, which closes the silhouette where the
+        //     front rings carry no line weight (the body's rim by the drum head) and on coarse
+        //     small parts (the feet): it is behind the model everywhere but the overhang.
         const float thickness_px = 2.5f * (float)ray::GetRenderHeight() / 720.0f;
-        float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push, in model units
+        float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push (model units); 0 = front faces, 1 = back faces
         float size[2]  = {(float)ray::GetRenderWidth(), (float)ray::GetRenderHeight()};
         if (outline_param_loc < 0) outline_param_loc = ray::GetShaderLocation(outline_shader, "outlineParam");
         if (outline_size_loc < 0)  outline_size_loc  = ray::GetShaderLocation(outline_shader, "screenSize");
         ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
         ray::SetShaderValue(outline_shader, outline_size_loc, size, ray::SHADER_UNIFORM_VEC2);
-        rlDisableBackfaceCulling();
         // scale is in 1280x720 virtual units; the camera maps the skin's virtual
         // canvas to the window, so follow the skin resolution or the model
         // shrinks relative to everything else on hi-res skins.
+        const float draw_size = scale * draw_scale * tex.screen_scale;
+        rlDisableBackfaceCulling();
         for (auto& part : parts)
-            ray::DrawModel(part, {x, y, 400.0f}, scale * draw_scale * tex.screen_scale, ray::WHITE);
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
+        rlEnableBackfaceCulling();
+
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = saved[p][i];
+        rlColorMask(false, false, false, false);
+        rlSetCullFace(RL_CULL_FACE_FRONT);
+        for (size_t p = 0; p < parts.size(); p++)
+            draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], part_twosided_indices[p], {x, y, 400.0f}, draw_size);
+        rlSetCullFace(RL_CULL_FACE_BACK);
+        rlColorMask(true, true, true, true);
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0) ? null_shader : outline_shader;
+
+        param[3] = 1.0f;
+        ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
+        rlDisableBackfaceCulling();
+        for (auto& part : parts)
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
         rlEnableBackfaceCulling();
     }
 

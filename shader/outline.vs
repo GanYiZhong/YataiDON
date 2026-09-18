@@ -10,7 +10,7 @@ uniform mat4 matView;
 uniform mat4 matNormal;
 uniform mat4 matModel;
 uniform mat4 matProjection;
-uniform vec4 outlineParam;   // x: thickness in pixels, y: base depth push, z: cap of the slope push (both in model units), w: facing threshold
+uniform vec4 outlineParam;   // x: thickness in pixels, y: base depth push, z: cap of the slope push (both in model units), w: 0 = front faces, 1 = back faces
 uniform vec2 screenSize;
 
 out vec2 fragTexCoord;
