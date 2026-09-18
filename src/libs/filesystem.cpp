@@ -31,16 +31,22 @@ void set_working_directory_to_executable() {
     std::filesystem::path exe_dir("/sdcard/YataiDON");
     std::error_code ec;
     std::filesystem::create_directories(exe_dir, ec);
-    std::filesystem::current_path(exe_dir);
+    std::filesystem::current_path(exe_dir, ec);
     spdlog::info("Working directory set to: {}", exe_dir.string());
 #elif __EMSCRIPTEN__
     spdlog::info("Emscripten: using virtual FS root as working directory");
 #elif _WIN32
     wchar_t buffer[MAX_PATH];
-    GetModuleFileNameW(NULL, buffer, MAX_PATH);
+    DWORD n = GetModuleFileNameW(NULL, buffer, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        spdlog::error("Failed to get executable path (error {}), keeping current working directory", GetLastError());
+        return;
+    }
+    buffer[n] = L'\0';
     std::filesystem::path exe_path(buffer);
     std::filesystem::path exe_dir = exe_path.parent_path();
-    std::filesystem::current_path(exe_dir);
+    std::error_code ec;
+    std::filesystem::current_path(exe_dir, ec);
     spdlog::info("Working directory set to: {}", exe_dir.string());
 #elif __APPLE__
     char buffer[PATH_MAX];
@@ -55,7 +61,8 @@ void set_working_directory_to_executable() {
         return;
     }
     std::filesystem::path exe_dir = std::filesystem::path(resolved).parent_path();
-    std::filesystem::current_path(exe_dir);
+    std::error_code ec;
+    std::filesystem::current_path(exe_dir, ec);
     spdlog::info("Working directory set to: {}", exe_dir.string());
 #else
     char buffer[PATH_MAX];
@@ -66,7 +73,8 @@ void set_working_directory_to_executable() {
     }
     buffer[len] = '\0';
     std::filesystem::path exe_dir = std::filesystem::path(buffer).parent_path();
-    std::filesystem::current_path(exe_dir);
+    std::error_code ec;
+    std::filesystem::current_path(exe_dir, ec);
     spdlog::info("Working directory set to: {}", exe_dir.string());
 #endif
 }
@@ -130,6 +138,7 @@ void ensure_skin_extracted(const std::string& skin_name) {
     int num_files = (int)mz_zip_reader_get_num_files(&zip);
 
     std::string common_prefix;
+    bool prefix_initialized = false;
     for (int i = 0; i < num_files; i++) {
         mz_zip_archive_file_stat stat;
         if (!mz_zip_reader_file_stat(&zip, i, &stat)) continue;
@@ -137,7 +146,7 @@ void ensure_skin_extracted(const std::string& skin_name) {
         auto slash = name.find('/');
         if (slash == std::string::npos) { common_prefix.clear(); break; }
         std::string top = name.substr(0, slash + 1);
-        if (i == 0) common_prefix = top;
+        if (!prefix_initialized) { common_prefix = top; prefix_initialized = true; }
         else if (top != common_prefix) { common_prefix.clear(); break; }
     }
 
@@ -195,23 +204,34 @@ static void collect_charts_from(const fs::path& path, std::vector<fs::path>& son
         fs::path root_canonical = fs::canonical(path, canon_ec);
         if (!canon_ec) visited_dirs.insert(root_canonical.string());
     }
+    std::error_code it_ec;
     auto it = fs::recursive_directory_iterator(
         path, fs::directory_options::skip_permission_denied | fs::directory_options::follow_directory_symlink);
-    for (; it != fs::end(it); ++it) {
+    for (; it != fs::end(it); it.increment(it_ec)) {
+        if (it_ec) {
+            spdlog::warn("collect_charts_from: stopping scan of {} after iteration error: {}", path.string(), it_ec.message());
+            break;
+        }
         const auto& entry = *it;
 
-        if (entry.is_directory()) {
+        std::error_code dir_ec;
+        bool is_dir = entry.is_directory(dir_ec);
+        if (is_dir) {
             fs::path entry_canonical = fs::canonical(entry.path(), canon_ec);
-            if (!canon_ec) {
-                if (!visited_dirs.insert(entry_canonical.string()).second) {
-                    it.disable_recursion_pending();
-                    continue;
-                }
+            if (canon_ec) {
+                // Cannot prove this is not a loop -> do not recurse into it.
+                spdlog::warn("collect_charts_from: cannot canonicalize {}, skipping recursion", entry.path().string());
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (!visited_dirs.insert(entry_canonical.string()).second) {
+                it.disable_recursion_pending();
+                continue;
             }
         }
 
 #ifdef SUPPORT_FUMEN
-        if (entry.is_directory() &&
+        if (is_dir &&
             (gen4::find_data_root(entry.path()) == entry.path() ||
              gen3::find_data_root(entry.path()) == entry.path())) {
             it.disable_recursion_pending();

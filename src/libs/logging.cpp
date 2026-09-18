@@ -9,7 +9,11 @@
 #ifdef __ANDROID__
 #include <spdlog/sinks/android_sink.h>
 #endif
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <exception>
 #include <vector>
 #if !defined(__ANDROID__) && !defined(YATAIDON_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
@@ -20,12 +24,21 @@
 #include <windows.h>
 #include <dbghelp.h>
 
+// dbghelp is not reentrant/thread-safe; serialize entry so two threads
+// crashing concurrently don't call into it at the same time.
+static std::atomic_flag g_dbghelp_lock = ATOMIC_FLAG_INIT;
+
 static void log_trace_from_context(CONTEXT* ctx) {
     HANDLE process = GetCurrentProcess();
     HANDLE thread  = GetCurrentThread();
 
+    while (g_dbghelp_lock.test_and_set(std::memory_order_acquire)) {}
+
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
-    SymInitialize(process, nullptr, TRUE);
+    const bool sym_initialized = SymInitialize(process, nullptr, TRUE);
+    if (!sym_initialized) {
+        spdlog::critical("SymInitialize failed (error {}); stack trace may lack symbols", GetLastError());
+    }
 
     CONTEXT ctx_copy = *ctx;
     STACKFRAME64 sf  = {};
@@ -69,6 +82,9 @@ static void log_trace_from_context(CONTEXT* ctx) {
         spdlog::critical("(stack trace resolution failed)");
     }
     spdlog::default_logger()->flush();
+
+    if (sym_initialized) SymCleanup(process);
+    g_dbghelp_lock.clear(std::memory_order_release);
 }
 
 static LONG WINAPI crash_exception_filter(EXCEPTION_POINTERS* ep) {
@@ -154,30 +170,62 @@ static void install_crash_handlers() {
     SetUnhandledExceptionFilter(crash_exception_filter);
 #else
     // Run the crash handler on its own stack so a stack-overflow SIGSEGV
-    // (where the normal stack is exhausted) still gets caught.
-    static std::vector<char> altstack(SIGSTKSZ);
+    // (where the normal stack is exhausted) still gets caught. On modern
+    // glibc SIGSTKSZ is not a compile-time constant and is too small for
+    // spdlog formatting + cpptrace symbolisation, so enforce a floor.
+    static std::vector<char> altstack(std::max<std::size_t>(SIGSTKSZ, 64 * 1024));
     stack_t ss{};
     ss.ss_sp = altstack.data();
     ss.ss_size = altstack.size();
     ss.ss_flags = 0;
-    sigaltstack(&ss, nullptr);
+    if (sigaltstack(&ss, nullptr) != 0) {
+        spdlog::warn("sigaltstack failed: {}", strerror(errno));
+    }
 
     struct sigaction sa{};
     sa.sa_handler = crash_signal_handler;
     sa.sa_flags = SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
-    sigaction(SIGSEGV, &sa, nullptr);
-    sigaction(SIGABRT, &sa, nullptr);
-    sigaction(SIGFPE,  &sa, nullptr);
-    sigaction(SIGILL,  &sa, nullptr);
+    if (sigaction(SIGSEGV, &sa, nullptr) != 0) spdlog::warn("sigaction(SIGSEGV) failed: {}", strerror(errno));
+    if (sigaction(SIGABRT, &sa, nullptr) != 0) spdlog::warn("sigaction(SIGABRT) failed: {}", strerror(errno));
+    if (sigaction(SIGFPE,  &sa, nullptr) != 0) spdlog::warn("sigaction(SIGFPE) failed: {}", strerror(errno));
+    if (sigaction(SIGILL,  &sa, nullptr) != 0) spdlog::warn("sigaction(SIGILL) failed: {}", strerror(errno));
 
     // Use sigaction (not std::signal) for consistent restart/mask semantics
     // with the crash handlers above.
     struct sigaction sa_int{};
     sa_int.sa_handler = signal_handler;
     sigemptyset(&sa_int.sa_mask);
-    sigaction(SIGINT, &sa_int, nullptr);
+    if (sigaction(SIGINT, &sa_int, nullptr) != 0) spdlog::warn("sigaction(SIGINT) failed: {}", strerror(errno));
 #endif
+}
+
+static spdlog::level::level_enum parse_log_level(const std::string& log_level_str) {
+    if (log_level_str == "debug") return spdlog::level::debug;
+    if (log_level_str == "info") return spdlog::level::info;
+    if (log_level_str == "warning") return spdlog::level::warn;
+    if (log_level_str == "error") return spdlog::level::err;
+    if (log_level_str == "critical") return spdlog::level::critical;
+    return spdlog::level::info;
+}
+
+static void apply_flush_policy() {
+    spdlog::flush_on(spdlog::level::critical);
+    // Without a periodic flush the file trails several seconds behind
+    // the game, which reads like a freeze wherever the log happens to
+    // stop mid-line.
+    spdlog::flush_every(std::chrono::seconds(1));
+}
+
+static void setup_fallback_logging(const std::string& log_level_str) {
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_pattern("[%^%l%$] %n: %v");
+    auto logger = std::make_shared<spdlog::logger>("", console_sink);
+    logger->set_level(parse_log_level(log_level_str));
+    spdlog::set_default_logger(logger);
+    apply_flush_policy();
+
+    install_crash_handlers();
 }
 
 void setup_logging(const std::string& log_level_str) {
@@ -202,31 +250,17 @@ void setup_logging(const std::string& log_level_str) {
         auto logger = std::make_shared<spdlog::logger>("",
             sinks.begin(), sinks.end());
 
-        spdlog::level::level_enum level = spdlog::level::info;
-        if (log_level_str == "debug") level = spdlog::level::debug;
-        else if (log_level_str == "info") level = spdlog::level::info;
-        else if (log_level_str == "warning") level = spdlog::level::warn;
-        else if (log_level_str == "error") level = spdlog::level::err;
-        else if (log_level_str == "critical") level = spdlog::level::critical;
-
-        logger->set_level(level);
+        logger->set_level(parse_log_level(log_level_str));
         spdlog::set_default_logger(logger);
-        spdlog::flush_on(spdlog::level::critical);
-        // Without a periodic flush the file trails several seconds behind
-        // the game, which reads like a freeze wherever the log happens to
-        // stop mid-line.
-        spdlog::flush_every(std::chrono::seconds(1));
+        apply_flush_policy();
 
         install_crash_handlers();
 
     } catch (const std::exception& ex) {
         std::cerr << "Log initialization failed: " << ex.what() << " -- falling back to console-only logging" << std::endl;
-
-        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_pattern("[%^%l%$] %n: %v");
-        auto logger = std::make_shared<spdlog::logger>("console", console_sink);
-        spdlog::set_default_logger(logger);
-
-        install_crash_handlers();
+        setup_fallback_logging(log_level_str);
+    } catch (...) {
+        std::cerr << "Log initialization failed with unknown exception -- falling back to console-only logging" << std::endl;
+        setup_fallback_logging(log_level_str);
     }
 }

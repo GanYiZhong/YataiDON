@@ -36,7 +36,7 @@ void CostumeMenu::load_costume_icons(const std::string& subdir, const std::strin
     costume_name_text_index = -1;
     costume_icon_index = 0;
 
-    fs::path dir = resolve_skin_path(fs::path("Models") / subdir);
+    fs::path dir = tex.resolve_skin_path(fs::path("Models") / subdir);
     if (!fs::exists(dir)) return;
 
     std::vector<std::pair<int, fs::path>> entries;
@@ -58,7 +58,7 @@ void CostumeMenu::load_costume_icons(const std::string& subdir, const std::strin
         costume_icons.push_back(t);
     }
 
-    fs::path names_path = resolve_skin_path("Models/costume_names.json");
+    fs::path names_path = tex.resolve_skin_path("Models/costume_names.json");
     if (fs::exists(names_path)) {
         try {
             auto doc = read_json_file(names_path);
@@ -243,7 +243,7 @@ void CostumeMenu::draw(float x, float y) {
     constexpr float ITEM_W = 80.0f;
 
     if (costume_select_mode && !costume_icons.empty()) {
-        auto& ib = tex.textures[COSTUME_SELECT::ITEM_BOX_1P];
+        auto& ib = tex.textures[is_2p ? COSTUME_SELECT::ITEM_BOX_2P : COSTUME_SELECT::ITEM_BOX_1P];
         float base_x = ib->x[0] + x;
         float base_y = ib->y[0] + y;
         int n = (int)costume_icons.size();
@@ -270,7 +270,7 @@ void CostumeMenu::draw(float x, float y) {
                 costume_name_text_index = costume_icon_index;
                 costume_name_text = std::make_unique<OutlinedText>(it->second, 32, ray::WHITE, ray::BLACK, false);
             }
-            auto& th = tex.textures[COSTUME_SELECT::TEXT_HIGHLIGHT_1P];
+            auto& th = tex.textures[is_2p ? COSTUME_SELECT::TEXT_HIGHLIGHT_2P : COSTUME_SELECT::TEXT_HIGHLIGHT_1P];
             float banner_cx = tex.draw_offset_x + th->x[0] + x;
             float banner_cy = tex.draw_offset_y + th->y[0] + y;
             float text_x = banner_cx - costume_name_text->width / 2.0f;

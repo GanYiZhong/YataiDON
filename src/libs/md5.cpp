@@ -1,5 +1,6 @@
 #include "md5.h"
 
+#include <cassert>
 #include <cstring>
 
 namespace {
@@ -28,7 +29,8 @@ void md5(const uint8_t* data, size_t len, uint32_t out[4]) {
 
     size_t padded = ((len + 8) / 64 + 1) * 64 - 8;
     std::vector<uint8_t> msg(padded + 8, 0);
-    if (len > 0 && data != nullptr) {
+    assert(data != nullptr || len == 0);
+    if (len > 0) {
         memcpy(msg.data(), data, len);
     }
     msg[len] = 0x80;

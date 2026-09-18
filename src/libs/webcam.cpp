@@ -33,13 +33,9 @@ WebCamera& WebCamera::operator=(WebCamera&& other) noexcept {
 bool WebCamera::open(int device_index) {
     if (m_camera) close();
 
-    static bool camera_init_done = false;
-    if (!camera_init_done) {
-        if (!SDL_InitSubSystem(SDL_INIT_CAMERA)) {
-            spdlog::error("WebCamera: failed to init SDL camera subsystem: {}", SDL_GetError());
-            return false;
-        }
-        camera_init_done = true;
+    if (!SDL_InitSubSystem(SDL_INIT_CAMERA)) {
+        spdlog::error("WebCamera: failed to init SDL camera subsystem: {}", SDL_GetError());
+        return false;
     }
 
     int count = 0;
@@ -47,11 +43,13 @@ bool WebCamera::open(int device_index) {
     if (!ids || count == 0) {
         spdlog::warn("WebCamera: no camera devices found");
         SDL_free(ids);
+        SDL_QuitSubSystem(SDL_INIT_CAMERA);
         return false;
     }
     if (device_index < 0 || device_index >= count) {
         spdlog::warn("WebCamera: device index {} out of range ({} found)", device_index, count);
         SDL_free(ids);
+        SDL_QuitSubSystem(SDL_INIT_CAMERA);
         return false;
     }
 
@@ -60,6 +58,7 @@ bool WebCamera::open(int device_index) {
 
     if (!cam) {
         spdlog::error("WebCamera: failed to open device {}: {}", device_index, SDL_GetError());
+        SDL_QuitSubSystem(SDL_INIT_CAMERA);
         return false;
     }
 
@@ -76,6 +75,7 @@ void WebCamera::close() {
     if (m_camera) {
         SDL_CloseCamera(static_cast<SDL_Camera*>(m_camera));
         m_camera = nullptr;
+        SDL_QuitSubSystem(SDL_INIT_CAMERA);
     }
     m_width  = 0;
     m_height = 0;
@@ -119,6 +119,12 @@ void WebCamera::update() {
         img.format  = ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
 
         ray::Texture2D tex = ray::LoadTextureFromImage(img);
+        if (tex.id == 0) {
+            spdlog::error("WebCamera: failed to create texture {}x{}", m_width, m_height);
+            m_width = m_height = 0;
+            SDL_DestroySurface(rgba);
+            return;
+        }
         ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);
         m_texture = tex;
     } else if (rgba->w != m_width || rgba->h != m_height) {
@@ -134,6 +140,12 @@ void WebCamera::update() {
         img.mipmaps = 1;
         img.format  = ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         ray::Texture2D tex = ray::LoadTextureFromImage(img);
+        if (tex.id == 0) {
+            spdlog::error("WebCamera: failed to create texture {}x{}", m_width, m_height);
+            m_width = m_height = 0;
+            SDL_DestroySurface(rgba);
+            return;
+        }
         ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);
         m_texture = tex;
     } else {

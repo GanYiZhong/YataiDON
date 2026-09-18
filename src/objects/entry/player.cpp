@@ -57,8 +57,10 @@ void EntryPlayer::draw_drum() {
     auto pos_opt = call_r<sol::table>(fn_draw_drum_back, "EntryPlayer:draw_drum_back");
     if (pos_opt) {
         sol::table& pos = pos_opt.value();
+        sol::optional<float> x = pos[1];
+        sol::optional<float> y = pos[2];
         sol::optional<float> s = pos[3];
-        chara->draw(pos.get<float>(1), pos.get<float>(2), s.value_or(1.0f));
+        chara->draw(x.value_or(0.0f), y.value_or(0.0f), s.value_or(1.0f));
     }
     call(fn_draw_drum_front, "EntryPlayer:draw_drum_front");
 }
@@ -160,6 +162,7 @@ void EntryPlayer::handle_input() {
                 }
             }
             costume_menu.reset();
+            chara_index = -1;
             chara_pick_stage = CostumePickStage::NONE;
             audio.play_sound("costume_select_" + std::to_string((int)player_num) + "p", VolumePreset::VOICE);
             chara->set_anim(AnimIndex::DON_BALLOON_SUCCESS);

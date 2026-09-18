@@ -44,7 +44,7 @@ void GaugeHitEffect::update(double current_ms) {
         } else {
             color = ray::ORANGE;
         }
-    } else if (resize->attribute <= 1.00) {
+    } else {
         if (is_2p) {
             color = ray::Color{84, 250, 238, 255};
         } else {

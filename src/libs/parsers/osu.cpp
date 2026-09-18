@@ -54,8 +54,13 @@ std::vector<std::vector<double>> OsuParser::read_section_list(
         std::vector<double> nums;
         auto begin = std::sregex_iterator(line.begin(), line.end(), num_re);
         auto end   = std::sregex_iterator();
-        for (auto it = begin; it != end; ++it)
-            nums.push_back(std::stod(it->str()));
+        for (auto it = begin; it != end; ++it) {
+            try {
+                nums.push_back(std::stod(it->str()));
+            } catch (const std::out_of_range&) {
+                nums.push_back(0.0);
+            }
+        }
         if (!nums.empty()) result.push_back(nums);
     }
     return result;
@@ -101,7 +106,7 @@ double OsuParser::get_bpm_at(double ms) const {
     for (const auto& tp : timing_points) {
         if (tp[0] > ms) break;
         if (tp[1] > 0 && tp[1] < 60000)
-            bpm = std::floor(60000.0 / tp[1]);
+            bpm = 60000.0 / tp[1];
     }
     return bpm;
 }
@@ -201,7 +206,7 @@ OsuParser::OsuParser(const fs::path& path) : file_path(path) {
             break;
         }
     }
-    metadata.bpm = std::floor(60000.0 / first_beat_length);
+    metadata.bpm = 60000.0 / first_beat_length;
 
     // One course entry (difficulty 0 = Easy slot, used for all osu songs)
     metadata.course_data[0] = CourseData{};
@@ -209,7 +214,6 @@ OsuParser::OsuParser(const fs::path& path) : file_path(path) {
 
 NoteList& OsuParser::get_notes() {
     if (notes_built) return cached_notes;
-    notes_built = true;
 
     double first_bpm = metadata.bpm;
     double first_beat_length = (first_bpm > 0) ? 60000.0 / first_bpm : 500.0;
@@ -247,20 +251,19 @@ NoteList& OsuParser::get_notes() {
             note.index    = counter++;
             note.moji     = 1;
 
-            if (hit_sound == 0) {
-                note.type = NoteType::DON;
-            } else if (hit_sound == 2 || hit_sound == 8) {
-                note.type = NoteType::KAT;
-                note.moji = 4;
-            } else if (hit_sound == 4) {
-                note.type = NoteType::DON_L;
-                note.moji = 5;
-            } else if (hit_sound == 6 || hit_sound == 12) {
+            bool kat = (hit_sound & (2 | 8)) != 0;  // whistle or clap bit -> kat
+            bool big = (hit_sound & 4) != 0;        // finish bit -> big don/kat
+            if (big && kat) {
                 note.type = NoteType::KAT_L;
                 note.moji = 6;
+            } else if (big) {
+                note.type = NoteType::DON_L;
+                note.moji = 5;
+            } else if (kat) {
+                note.type = NoteType::KAT;
+                note.moji = 4;
             } else {
-                // Fallback: odd sounds → don, even → kat
-                note.type = ((hit_sound & 2) || (hit_sound & 8)) ? NoteType::KAT : NoteType::DON;
+                note.type = NoteType::DON;
             }
 
             cached_notes.notes.push_back(note);
@@ -345,12 +348,13 @@ NoteList& OsuParser::get_notes() {
             TimelineObject tl;
             tl.start_time = tp[0];
             tl.end_time   = tp[0];
-            tl.bpm        = std::floor(60000.0 / tp[1]);
+            tl.bpm        = 60000.0 / tp[1];
             cached_notes.timeline.push_back(tl);
         }
     }
 
     modifier_moji(cached_notes);
+    notes_built = true;
     return cached_notes;
 }
 

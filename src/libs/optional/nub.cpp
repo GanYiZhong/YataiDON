@@ -29,6 +29,7 @@ struct MemReader {
 };
 
 int mem_read(void* opaque, uint8_t* buf, int buf_size) {
+    if (buf_size <= 0) return 0;
     MemReader* r = static_cast<MemReader*>(opaque);
     size_t left = r->size - r->pos;
     size_t n = std::min<size_t>(left, (size_t)buf_size);
@@ -112,7 +113,7 @@ bool decode_nub(const fs::path& path, gen4::DecodedAudio& out) {
     uint32_t fact_samples = 0, fact_delay = 0;
     {
         size_t pos = riff + 12;
-        while (pos + 8 < file.size()) {
+        while (pos + 8 <= file.size()) {
             uint32_t sz = (uint32_t)file[pos+4] | ((uint32_t)file[pos+5] << 8) |
                           ((uint32_t)file[pos+6] << 16) | ((uint32_t)file[pos+7] << 24);
             if (memcmp(file.data() + pos, "fact", 4) == 0 && sz >= 12 && pos + 8 + sz <= file.size()) {
@@ -125,7 +126,9 @@ bool decode_nub(const fs::path& path, gen4::DecodedAudio& out) {
                 break;
             }
             if (memcmp(file.data() + pos, "data", 4) == 0) break;
-            pos += 8 + sz + (sz & 1);
+            size_t advance = (size_t)8 + sz + (sz & 1);
+            if (advance < 8 || pos + advance <= pos) break;  // malformed size / overflow
+            pos += advance;
         }
     }
 
@@ -188,9 +191,23 @@ bool decode_nub(const fs::path& path, gen4::DecodedAudio& out) {
 
         bool bad_format = false;
         while (av_read_frame(fmt, pkt) >= 0) {
-            if (pkt->stream_index == idx && avcodec_send_packet(codec_ctx, pkt) >= 0) {
-                while (avcodec_receive_frame(codec_ctx, frame) >= 0)
-                    if (!append_samples(frame, out.channels, out.samples)) { bad_format = true; break; }
+            if (pkt->stream_index == idx) {
+                int send_ret = avcodec_send_packet(codec_ctx, pkt);
+                if (send_ret == AVERROR(EAGAIN)) {
+                    // Decoder's output queue is full; drain it, then retry the send.
+                    while (avcodec_receive_frame(codec_ctx, frame) >= 0)
+                        if (!append_samples(frame, out.channels, out.samples)) { bad_format = true; break; }
+                    if (!bad_format)
+                        send_ret = avcodec_send_packet(codec_ctx, pkt);
+                }
+                if (!bad_format) {
+                    if (send_ret >= 0) {
+                        while (avcodec_receive_frame(codec_ctx, frame) >= 0)
+                            if (!append_samples(frame, out.channels, out.samples)) { bad_format = true; break; }
+                    } else {
+                        bad_format = true;
+                    }
+                }
             }
             av_packet_unref(pkt);
             if (bad_format) break;
@@ -198,7 +215,7 @@ bool decode_nub(const fs::path& path, gen4::DecodedAudio& out) {
         if (!bad_format) {
             avcodec_send_packet(codec_ctx, nullptr);
             while (avcodec_receive_frame(codec_ctx, frame) >= 0)
-                if (!append_samples(frame, out.channels, out.samples)) break;
+                if (!append_samples(frame, out.channels, out.samples)) { bad_format = true; break; }
         }
 
         // Cut the priming delay off the front and the padding off the end, so

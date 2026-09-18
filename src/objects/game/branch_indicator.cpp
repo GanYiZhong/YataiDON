@@ -1,5 +1,6 @@
 #include "branch_indicator.h"
 #include "../../libs/texture.h"
+#include <algorithm>
 #include <stdexcept>
 
 namespace {
@@ -59,10 +60,9 @@ void BranchIndicator::level_down(BranchDifficulty difficulty) {
 
 void BranchIndicator::draw(float y) {
     if (difficulty == BranchDifficulty::EXPERT) {
-        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
-    }
-    if (difficulty == BranchDifficulty::MASTER) {
-        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
+        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
+    } else if (difficulty == BranchDifficulty::MASTER) {
+        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
     }
 
     std::string level_texture = direction == -1 ? "level_down" : "level_up";

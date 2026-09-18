@@ -4,7 +4,7 @@
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
 SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total)
-    : song_name(song_name), genre(genre) {
+    : song_name(song_name), genre(genre >= 0 && genre < 9 ? genre : 0) {
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
@@ -35,7 +35,7 @@ void SongInfo::draw() {
     }
 
     if (const SkinInfo* plate = tex.skin_entry("song_num_game")) {
-        song_title->draw({.x=title_x, .y=text_y, .fade=1.0});
+        song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
         if (genre < 9) {
             tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
         }
@@ -67,7 +67,15 @@ void SongInfo::draw() {
 }
 
 SongNum::SongNum(int song_num, float outline_override) {
-    std::string song_format = tex.skin_config[SC::SONG_NUM].text[global_data.config->general.language];
+    static const SkinInfo default_info{};
+    auto cfg_it = tex.skin_config.find(SC::SONG_NUM);
+    const SkinInfo& cfg = cfg_it != tex.skin_config.end() ? cfg_it->second : default_info;
+
+    std::string song_format;
+    auto it = cfg.text.find(global_data.config->general.language);
+    if (it != cfg.text.end()) song_format = it->second;
+    else if (!cfg.text.empty()) song_format = cfg.text.begin()->second;
+    else song_format = "{0}";
     size_t pos = song_format.find("{0}");
     if (pos != std::string::npos) {
         song_format.replace(pos, 3, std::to_string(song_num));
@@ -78,9 +86,9 @@ SongNum::SongNum(int song_num, float outline_override) {
     } else {
         outline_color = ray::BLACK;
     }
-    text = std::make_unique<OutlinedText>(song_format, tex.skin_config[SC::SONG_NUM].font_size, ray::WHITE, outline_color, false,
+    text = std::make_unique<OutlinedText>(song_format, cfg.font_size, ray::WHITE, outline_color, false,
                                           outline_override >= 0 ? outline_override
-                                                                : skin_outline(tex.skin_config[SC::SONG_NUM]));
+                                                                : skin_outline(cfg));
     width = text->width;
     height = text->height;
 }

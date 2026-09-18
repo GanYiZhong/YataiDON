@@ -13,12 +13,13 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
     }
 
     int version = 0;
-    auto callback = [](void* data, int, char** argv, char**) -> int {
-        *static_cast<int*>(data) = std::atoi(argv[0]);
+    auto callback = [](void* data, int argc, char** argv, char**) -> int {
+        if (argc > 0 && argv && argv[0]) *static_cast<int*>(data) = std::atoi(argv[0]);
         return 0;
     };
     sqlite3_exec(db_fsd, "PRAGMA user_version;", callback, &version, nullptr);
 
+    bool migrations_ok = true;
     if (version < 2) {
         const char* migrations[] = {
             "ALTER TABLE players ADD COLUMN modifier_auto BOOL NOT NULL DEFAULT 0;",
@@ -44,18 +45,21 @@ ScoresManager::ScoresManager(const fs::path& db_path) {
             "ALTER TABLE players ADD COLUMN chara_acce_index INTEGER NOT NULL DEFAULT 0;",
         };
         for (const char* sql : migrations) {
-            sqlite3_exec(db_fsd, sql, nullptr, nullptr, nullptr);
+            if (sqlite3_exec(db_fsd, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
+                migrations_ok = false;
         }
     }
     sqlite3_exec(db_fsd, "ALTER TABLE scores ADD COLUMN played_at INTEGER NOT NULL DEFAULT 0;",
                     nullptr, nullptr, nullptr);
 
     if (version < 4) {
-        sqlite3_exec(db_fsd, "ALTER TABLE scores ADD COLUMN modifiers TEXT NOT NULL DEFAULT '{}';",
-                     nullptr, nullptr, nullptr);
+        if (sqlite3_exec(db_fsd, "ALTER TABLE scores ADD COLUMN modifiers TEXT NOT NULL DEFAULT '{}';",
+                     nullptr, nullptr, nullptr) != SQLITE_OK)
+            migrations_ok = false;
     }
 
-    sqlite3_exec(db_fsd, "PRAGMA user_version = 4;", nullptr, nullptr, nullptr);
+    if (migrations_ok) sqlite3_exec(db_fsd, "PRAGMA user_version = 4;", nullptr, nullptr, nullptr);
+    else spdlog::error("ScoresManager: one or more migrations failed, not raising user_version");
 
     sqlite3_exec(db_fsd,
             "ALTER TABLE players ADD COLUMN modifier_skip BOOL NOT NULL DEFAULT 0;",
@@ -210,7 +214,8 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
     // Open old DB
     sqlite3* old_db;
     if (sqlite3_open(old_db_path.string().c_str(), &old_db) != SQLITE_OK) {
-        spdlog::error("py_taiko_import: failed to open old DB at {}", old_db_path.string());
+        spdlog::error("py_taiko_import: failed to open old DB at {}: {}", old_db_path.string(), sqlite3_errmsg(old_db));
+        sqlite3_close(old_db);
         return;
     }
 
@@ -268,11 +273,12 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
         }
 
         // Duplicate check
+        bool exists = false;
+        int existing_crown = 0, existing_score = 0;
         {
             sqlite3_stmt* check_stmt;
-            char check_query[256];
-            snprintf(check_query, sizeof(check_query),
-                "SELECT 1 FROM scores WHERE player_id = 1 AND hash = ? AND difficulty = ? LIMIT 1;");
+            const char* check_query =
+                "SELECT crown, score FROM scores WHERE player_id = 1 AND hash = ? AND difficulty = ? LIMIT 1;";
             if (sqlite3_prepare_v2(db_fsd, check_query, -1, &check_stmt, nullptr) != SQLITE_OK) {
                 spdlog::warn("py_taiko_import: failed to prepare check statement, skipping");
                 skipped++;
@@ -280,38 +286,58 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
             }
             sqlite3_bind_text(check_stmt, 1, new_hash.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(check_stmt,  2, diff);
-            bool exists = (sqlite3_step(check_stmt) == SQLITE_ROW);
-            sqlite3_finalize(check_stmt);
-
-            if (exists) {
-                spdlog::debug("py_taiko_import: score already exists for '{}' diff {}, skipping", en, diff);
-                skipped++;
-                continue;
+            if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+                exists = true;
+                existing_crown = sqlite3_column_int(check_stmt, 0);
+                existing_score = sqlite3_column_int(check_stmt, 1);
             }
+            sqlite3_finalize(check_stmt);
         }
 
-        // Insert score
+        bool legacy_is_better = crown_val > existing_crown ||
+            (crown_val == existing_crown && score_val > existing_score);
+
+        if (exists && !legacy_is_better) {
+            spdlog::debug("py_taiko_import: existing score for '{}' diff {} is not worse, skipping", en, diff);
+            skipped++;
+            continue;
+        }
+
+        // Insert or update score
         {
             sqlite3_stmt* ins_stmt;
-            char ins_query[512];
-            snprintf(ins_query, sizeof(ins_query),
+            const char* ins_query = exists ?
+                "UPDATE scores SET score = ?, good = ?, ok = ?, bad = ?, drumroll = ?, max_combo = ?, crown = ? "
+                "WHERE player_id = 1 AND hash = ? AND difficulty = ?;" :
                 "INSERT INTO scores "
                 "(player_id, hash, difficulty, score, good, ok, bad, drumroll, max_combo, crown, rank) "
-                "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);");
+                "VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);";
             if (sqlite3_prepare_v2(db_fsd, ins_query, -1, &ins_stmt, nullptr) != SQLITE_OK) {
-                spdlog::warn("py_taiko_import: failed to prepare insert statement, skipping");
+                spdlog::warn("py_taiko_import: failed to prepare {} statement, skipping", exists ? "update" : "insert");
                 skipped++;
                 continue;
             }
-            sqlite3_bind_text(ins_stmt, 1, new_hash.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int(ins_stmt,  2, diff);
-            sqlite3_bind_int(ins_stmt,  3, score_val);
-            sqlite3_bind_int(ins_stmt,  4, good);
-            sqlite3_bind_int(ins_stmt,  5, ok);
-            sqlite3_bind_int(ins_stmt,  6, bad);
-            sqlite3_bind_int(ins_stmt,  7, drumroll);
-            sqlite3_bind_int(ins_stmt,  8, combo);
-            sqlite3_bind_int(ins_stmt,  9, crown_val);
+            if (exists) {
+                sqlite3_bind_int (ins_stmt, 1, score_val);
+                sqlite3_bind_int (ins_stmt, 2, good);
+                sqlite3_bind_int (ins_stmt, 3, ok);
+                sqlite3_bind_int (ins_stmt, 4, bad);
+                sqlite3_bind_int (ins_stmt, 5, drumroll);
+                sqlite3_bind_int (ins_stmt, 6, combo);
+                sqlite3_bind_int (ins_stmt, 7, crown_val);
+                sqlite3_bind_text(ins_stmt, 8, new_hash.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int (ins_stmt, 9, diff);
+            } else {
+                sqlite3_bind_text(ins_stmt, 1, new_hash.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_int(ins_stmt,  2, diff);
+                sqlite3_bind_int(ins_stmt,  3, score_val);
+                sqlite3_bind_int(ins_stmt,  4, good);
+                sqlite3_bind_int(ins_stmt,  5, ok);
+                sqlite3_bind_int(ins_stmt,  6, bad);
+                sqlite3_bind_int(ins_stmt,  7, drumroll);
+                sqlite3_bind_int(ins_stmt,  8, combo);
+                sqlite3_bind_int(ins_stmt,  9, crown_val);
+            }
             sqlite3_step(ins_stmt);
             sqlite3_finalize(ins_stmt);
             imported++;
@@ -416,7 +442,8 @@ Score ScoresManager::save_score(std::string& hash, int difficulty, int player_id
     sqlite3_bind_int64(stmt, 12, played_at);
     sqlite3_bind_text(stmt, 13, modifiers_json.c_str(), -1, nullptr);
 
-    sqlite3_step(stmt);
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+        spdlog::error("save_score: failed to insert score for hash {}: {}", hash, sqlite3_errmsg(db_fsd));
     sqlite3_finalize(stmt);
     spdlog::info("Saved score for hash: {} score: {} crown: {}", hash, score.score, (int)score.crown);
 

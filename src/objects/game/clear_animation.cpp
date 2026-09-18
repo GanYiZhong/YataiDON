@@ -54,7 +54,7 @@ void ClearAnimation::update(double current_ms) {
     bachio_move_out->update(current_ms);
     clear_highlight_fade_in->update(current_ms);
 
-    if (clear_highlight_fade_in->attribute == 1.0f) {
+    if (clear_highlight_fade_in->is_finished || clear_highlight_fade_in->attribute >= 1.0) {
         draw_clear_full = true;
     }
 

@@ -23,9 +23,10 @@ static std::unordered_map<SDL_JoystickID, SDL_Joystick*> sdl_joysticks;
 static std::unordered_map<int64_t, bool>  sdl_prev_button;
 // keyed by joy_id * 256 + axis_index
 static std::unordered_map<int64_t, float> sdl_prev_axis;
+static bool sdl_joysticks_init_done = false;
 
 static void refresh_sdl_joysticks() {
-    static bool init_done = false;
+    bool& init_done = sdl_joysticks_init_done;
     if (!init_done) {
         SDL_InitSubSystem(SDL_INIT_JOYSTICK);
         init_done = true;
@@ -100,8 +101,9 @@ bool is_input_key_pressed(const std::vector<int>& keys, const std::vector<int>& 
 
 bool is_l_don_pressed(PlayerNum player_num) {
     if (player_num == PlayerNum::P1) {
-        if (is_input_key_pressed(global_data.config->keys_1p.left_don, global_data.config->gamepad_1p.left_don)) return true;
-        return check_key_pressed(TOUCH_L_DON);
+        bool a = is_input_key_pressed(global_data.config->keys_1p.left_don, global_data.config->gamepad_1p.left_don);
+        bool b = check_key_pressed(TOUCH_L_DON);
+        return a || b;
     } else if (player_num == PlayerNum::P2) {
         return is_input_key_pressed(global_data.config->keys_2p.left_don, global_data.config->gamepad_2p.left_don);
     } else if (player_num != PlayerNum::ALL) {
@@ -113,14 +115,16 @@ bool is_l_don_pressed(PlayerNum player_num) {
     std::vector<int> gamepad_buttons = global_data.config->gamepad_1p.left_don;
     const auto& gp2 = global_data.config->gamepad_2p.left_don;
     gamepad_buttons.insert(gamepad_buttons.end(), gp2.begin(), gp2.end());
-    if (is_input_key_pressed(keys, gamepad_buttons)) return true;
-    return check_key_pressed(TOUCH_L_DON);
+    bool a = is_input_key_pressed(keys, gamepad_buttons);
+    bool b = check_key_pressed(TOUCH_L_DON);
+    return a || b;
 }
 
 bool is_r_don_pressed(PlayerNum player_num) {
     if (player_num == PlayerNum::P1) {
-        if (is_input_key_pressed(global_data.config->keys_1p.right_don, global_data.config->gamepad_1p.right_don)) return true;
-        return check_key_pressed(TOUCH_R_DON);
+        bool a = is_input_key_pressed(global_data.config->keys_1p.right_don, global_data.config->gamepad_1p.right_don);
+        bool b = check_key_pressed(TOUCH_R_DON);
+        return a || b;
     } else if (player_num == PlayerNum::P2) {
         return is_input_key_pressed(global_data.config->keys_2p.right_don, global_data.config->gamepad_2p.right_don);
     } else if (player_num != PlayerNum::ALL) {
@@ -132,14 +136,16 @@ bool is_r_don_pressed(PlayerNum player_num) {
     std::vector<int> gamepad_buttons = global_data.config->gamepad_1p.right_don;
     const auto& gp2 = global_data.config->gamepad_2p.right_don;
     gamepad_buttons.insert(gamepad_buttons.end(), gp2.begin(), gp2.end());
-    if (is_input_key_pressed(keys, gamepad_buttons)) return true;
-    return check_key_pressed(TOUCH_R_DON);
+    bool a = is_input_key_pressed(keys, gamepad_buttons);
+    bool b = check_key_pressed(TOUCH_R_DON);
+    return a || b;
 }
 
 bool is_l_kat_pressed(PlayerNum player_num) {
     if (player_num == PlayerNum::P1) {
-        if (is_input_key_pressed(global_data.config->keys_1p.left_kat, global_data.config->gamepad_1p.left_kat)) return true;
-        return check_key_pressed(TOUCH_L_KAT);
+        bool a = is_input_key_pressed(global_data.config->keys_1p.left_kat, global_data.config->gamepad_1p.left_kat);
+        bool b = check_key_pressed(TOUCH_L_KAT);
+        return a || b;
     } else if (player_num == PlayerNum::P2) {
         return is_input_key_pressed(global_data.config->keys_2p.left_kat, global_data.config->gamepad_2p.left_kat);
     } else if (player_num != PlayerNum::ALL) {
@@ -151,14 +157,16 @@ bool is_l_kat_pressed(PlayerNum player_num) {
     std::vector<int> gamepad_buttons = global_data.config->gamepad_1p.left_kat;
     const auto& gp2 = global_data.config->gamepad_2p.left_kat;
     gamepad_buttons.insert(gamepad_buttons.end(), gp2.begin(), gp2.end());
-    if (is_input_key_pressed(keys, gamepad_buttons)) return true;
-    return check_key_pressed(TOUCH_L_KAT);
+    bool a = is_input_key_pressed(keys, gamepad_buttons);
+    bool b = check_key_pressed(TOUCH_L_KAT);
+    return a || b;
 }
 
 bool is_r_kat_pressed(PlayerNum player_num) {
     if (player_num == PlayerNum::P1) {
-        if (is_input_key_pressed(global_data.config->keys_1p.right_kat, global_data.config->gamepad_1p.right_kat)) return true;
-        return check_key_pressed(TOUCH_R_KAT);
+        bool a = is_input_key_pressed(global_data.config->keys_1p.right_kat, global_data.config->gamepad_1p.right_kat);
+        bool b = check_key_pressed(TOUCH_R_KAT);
+        return a || b;
     } else if (player_num == PlayerNum::P2) {
         return is_input_key_pressed(global_data.config->keys_2p.right_kat, global_data.config->gamepad_2p.right_kat);
     } else if (player_num != PlayerNum::ALL) {
@@ -170,8 +178,9 @@ bool is_r_kat_pressed(PlayerNum player_num) {
     std::vector<int> gamepad_buttons = global_data.config->gamepad_1p.right_kat;
     const auto& gp2 = global_data.config->gamepad_2p.right_kat;
     gamepad_buttons.insert(gamepad_buttons.end(), gp2.begin(), gp2.end());
-    if (is_input_key_pressed(keys, gamepad_buttons)) return true;
-    return check_key_pressed(TOUCH_R_KAT);
+    bool a = is_input_key_pressed(keys, gamepad_buttons);
+    bool b = check_key_pressed(TOUCH_R_KAT);
+    return a || b;
 }
 
 #ifdef _WIN32
@@ -292,6 +301,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
 #if defined(__linux__) && !defined(PLATFORM_ANDROID)
     if (event->type == SDL_EVENT_TEXT_INPUT && event->text.text) {
         const bool* key_state = SDL_GetKeyboardState(nullptr);
+        std::lock_guard<std::mutex> lock(input_mutex);
         for (const char* p = event->text.text; *p; p++) {
             unsigned char c = (unsigned char)*p;
             int key = char_to_raylib_key(c);
@@ -299,8 +309,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
             SDL_Keycode keycode = (c >= 'A' && c <= 'Z') ? (c + 32) : c;
             SDL_Keymod mod = SDL_KMOD_NONE;
             SDL_Scancode sc = SDL_GetScancodeFromKey(keycode, &mod);
-            if (sc != SDL_SCANCODE_UNKNOWN && key_state[sc]) continue;
-            std::lock_guard<std::mutex> lock(input_mutex);
+            if (sc != SDL_SCANCODE_UNKNOWN && key_state && key_state[sc]) continue;
             pressed_keys.insert(key);
             released_keys.insert(key);
         }
@@ -322,7 +331,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
     }
 
     if (event->type == SDL_EVENT_FINGER_DOWN) {
-        if (!global_data.config->general.touch_input) return 1;
+        if (!global_data.config || !global_data.config->general.touch_input) return 1;
         SDL_FingerID id = event->tfinger.fingerID;
         std::lock_guard<std::mutex> lock(input_mutex);
         if (!touch_id_to_vkey.count(id)) {
@@ -509,6 +518,10 @@ void shutdown_sdl_joysticks() {
         SDL_CloseJoystick(joy);
     }
     sdl_joysticks.clear();
+    sdl_prev_button.clear();
+    sdl_prev_axis.clear();
+    SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+    sdl_joysticks_init_done = false;
 }
 
 void android_set_keyboard_visible(bool visible) {

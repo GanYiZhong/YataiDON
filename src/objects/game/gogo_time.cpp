@@ -1,5 +1,6 @@
 #include "gogo_time.h"
 #include "../../libs/texture.h"
+#include <algorithm>
 
 GogoTime::GogoTime() {
     int resize_anim = 24;
@@ -17,7 +18,7 @@ GogoTime::GogoTime() {
     fire_change = (TextureChangeAnimation*)tex.get_animation(change_anim, true);
     fire_fade = 0.5f;
     if (const SkinInfo* f = tex.skin_entry("gogo_fire_fade"); f && f->x > 0)
-        fire_fade = f->x;
+        fire_fade = std::clamp((float)f->x, 0.0f, 1.0f);
 
     fire_resize->start();
     fire_change->start();

@@ -2,6 +2,7 @@
 
 #include <string_view>
 #include <cstring>
+#include <algorithm>
 #include "global_data.h"
 #include "text.h"
 #include "audio.h"
@@ -299,11 +300,17 @@ void ScriptManager::register_lua_bindings() {
         std::vector<std::tuple<double, double, int>> keyframes;
 
         for (size_t i = 1; i <= textures_table.size(); ++i) {
-            sol::table tex_entry = textures_table[i];
-            double start = tex_entry[1].get<double>();
-            double end = tex_entry[2].get<double>();
-            int index = tex_entry[3].get<int>();
-            keyframes.emplace_back(start, end, index);
+            sol::optional<sol::table> entry_opt = textures_table[i];
+            if (!entry_opt) continue;
+            sol::table tex_entry = entry_opt.value();
+            sol::optional<double> start = tex_entry[1];
+            sol::optional<double> end   = tex_entry[2];
+            sol::optional<int>    index = tex_entry[3];
+            if (!start || !end || !index) {
+                spdlog::error("anim.texture_change: malformed keyframe at index {}", i);
+                continue;
+            }
+            keyframes.emplace_back(start.value(), end.value(), index.value());
         }
 
         double delay = 0.0;
@@ -546,7 +553,7 @@ void ScriptManager::register_lua_bindings() {
             auto config_it = script_manager.tex.skin_config_by_name.find(skin_config_key);
             if (config_it == script_manager.tex.skin_config_by_name.end()) {
                 spdlog::error("Skin config key not found: {}", skin_config_key);
-                return nullptr;
+                throw sol::error("Skin config key not found: " + skin_config_key);
             }
             int font_size = config_it->second.font_size;
             std::string text;
@@ -555,16 +562,17 @@ void ScriptManager::register_lua_bindings() {
                 auto t = text_map.find(l);
                 if (t != text_map.end() && !t->second.empty()) { text = t->second; break; }
             }
+            auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
             ray::Color color_val;
-            color_val.r = color[0];
-            color_val.g = color[1];
-            color_val.b = color[2];
-            color_val.a = color[3];
+            color_val.r = to_u8(color[0]);
+            color_val.g = to_u8(color[1]);
+            color_val.b = to_u8(color[2]);
+            color_val.a = to_u8(color[3]);
             ray::Color outline_color_val;
-            outline_color_val.r = outline_color[0];
-            outline_color_val.g = outline_color[1];
-            outline_color_val.b = outline_color[2];
-            outline_color_val.a = outline_color[3];
+            outline_color_val.r = to_u8(outline_color[0]);
+            outline_color_val.g = to_u8(outline_color[1]);
+            outline_color_val.b = to_u8(outline_color[2]);
+            outline_color_val.a = to_u8(outline_color[3]);
             std::unique_ptr<OutlinedText> ptr = std::make_unique<OutlinedText>(text, font_size, color_val, outline_color_val, is_vertical, outline_thickness, spacing);
             ptr->x_offset = config_it->second.x;
             ptr->y_offset = config_it->second.y;
@@ -575,8 +583,9 @@ void ScriptManager::register_lua_bindings() {
         std::array<int, 4> color, std::array<int, 4> outline_color,
         bool is_vertical, sol::optional<float> thickness, sol::optional<float> spacing)
         -> std::unique_ptr<OutlinedText> {
-            ray::Color c  = { (uint8_t)color[0],         (uint8_t)color[1],         (uint8_t)color[2],         (uint8_t)color[3] };
-            ray::Color oc = { (uint8_t)outline_color[0], (uint8_t)outline_color[1], (uint8_t)outline_color[2], (uint8_t)outline_color[3] };
+            auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
+            ray::Color c  = { to_u8(color[0]),         to_u8(color[1]),         to_u8(color[2]),         to_u8(color[3]) };
+            ray::Color oc = { to_u8(outline_color[0]), to_u8(outline_color[1]), to_u8(outline_color[2]), to_u8(outline_color[3]) };
             return std::make_unique<OutlinedText>(content, font_size, c, oc, is_vertical,
                 thickness.value_or(5.0f), spacing.value_or(2.0f));
     });

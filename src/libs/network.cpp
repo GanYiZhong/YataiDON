@@ -8,7 +8,9 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
@@ -49,9 +51,15 @@ namespace {
 bool version_less(const std::string& a, const std::string& b) {
     size_t ai = 0, bi = 0;
     while (ai < a.size() || bi < b.size()) {
-        int an = 0, bn = 0;
-        while (ai < a.size() && a[ai] != '.') an = an * 10 + (a[ai++] - '0');
-        while (bi < b.size() && b[bi] != '.') bn = bn * 10 + (b[bi++] - '0');
+        long long an = 0, bn = 0;
+        while (ai < a.size() && a[ai] != '.') {
+            if (!std::isdigit(static_cast<unsigned char>(a[ai]))) return false;  // malformed: treat as not-less
+            an = std::min<long long>(an * 10 + (a[ai++] - '0'), 1'000'000'000LL);
+        }
+        while (bi < b.size() && b[bi] != '.') {
+            if (!std::isdigit(static_cast<unsigned char>(b[bi]))) return false;
+            bn = std::min<long long>(bn * 10 + (b[bi++] - '0'), 1'000'000'000LL);
+        }
         if (an != bn) return an < bn;
         if (ai < a.size()) ai++;
         if (bi < b.size()) bi++;
@@ -443,7 +451,9 @@ static std::string map_to_json_impl(const std::map<double, InputLogType>& my_map
     rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
 
     for (const auto& pair : my_map) {
-        rapidjson::Value key(std::to_string(pair.first).c_str(), allocator);
+        char keybuf[32];
+        std::snprintf(keybuf, sizeof(keybuf), "%.17g", pair.first);
+        rapidjson::Value key(keybuf, allocator);
         doc.AddMember(key, (int)pair.second, allocator);
     }
 

@@ -134,8 +134,7 @@ static void swap_note(FumenNoteBase& n) {
     swap32(&n.type, 3);
     swap16(&n.initial_score_value);
     swap16(&n.score_diff_times4);
-    swap16(&n.unknown2);
-    swap16(reinterpret_cast<uint16_t*>(&n.unknown2) + 1);
+    swap32(&n.unknown2, 1);
     swap32(&n.length, 1);
 }
 
@@ -219,7 +218,7 @@ std::vector<uint8_t> FumenParser::read_chart(int diff) {
 
 void FumenParser::build_notes(int diff) {
     if (cached_diff == diff) return;
-    cached_diff  = diff;
+    cached_diff  = -1;
     cached_notes = NoteList();
 
     std::vector<uint8_t> data = read_chart(diff);
@@ -390,6 +389,7 @@ void FumenParser::build_notes(int diff) {
         cached_notes.notes[i].index = (int)i;
 
     modifier_moji(cached_notes);
+    cached_diff = diff;
 }
 
 std::tuple<NoteList, std::deque<NoteList>, std::deque<NoteList>, std::deque<NoteList>>

@@ -1,5 +1,6 @@
 #include "fireworks.h"
 #include "../../libs/texture.h"
+#include <algorithm>
 
 static constexpr int GOGO_EXPLOSION_ANIM_ID = 23;
 
@@ -22,9 +23,10 @@ void Fireworks::draw() {
     if (!explosion_anim->is_finished) {
         int slots = 5;
         int mirror_from = -1;
+        constexpr int MAX_EXPLOSION_SLOTS = 32;
         if (const SkinInfo* s = tex.skin_entry("gogo_explosion_slots"); s && s->x > 0) {
-            slots = (int)s->x;
-            if (s->y > 0) mirror_from = (int)s->y;
+            slots = std::clamp(static_cast<int>(s->x), 1, MAX_EXPLOSION_SLOTS);
+            if (s->y > 0) mirror_from = std::min(static_cast<int>(s->y), slots);
         }
         for (int i = 0; i < slots; i++) {
             tex.draw_texture(GOGO_TIME::EXPLOSION, {

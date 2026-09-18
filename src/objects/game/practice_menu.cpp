@@ -21,7 +21,7 @@ void PracticeMenu::close() {
 
 void PracticeMenu::step(bool right) {
     if (dialog != Dialog::NONE) {
-        dialog_sel = 1 - dialog_sel;
+        dialog_sel = right ? 1 : 0;
         return;
     }
     int n = (int)menu_text.size();
@@ -93,7 +93,9 @@ void PracticeMenu::open_dialog(Dialog which, bool auto_on) {
             title = SC::PRACTICE_MENU_CONFIRM_END;
             dialog_sel = 0;
             break;
-        default: return;
+        default:
+            dialog = Dialog::NONE;
+            return;
     }
 
     int fs = (int)(tex.skin_config[SC::SONG_BOX_NAME].font_size);

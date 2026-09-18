@@ -1,5 +1,6 @@
 #include "score_counter.h"
 #include "../../libs/texture.h"
+#include <algorithm>
 
 ScoreCounter::ScoreCounter(int score, bool is_2p) : score(score), is_2p(is_2p) {
     stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(4, true));
@@ -16,9 +17,7 @@ void ScoreCounter::update_count(int score) {
 }
 
 void ScoreCounter::update(double current_ms) {
-    if (score > 0) {
-        stretch->update(current_ms);
-    }
+    stretch->update(current_ms);
 }
 
 void ScoreCounter::draw(float y) {
@@ -29,7 +28,7 @@ void ScoreCounter::draw(float y) {
         tex.draw_texture(LANE::LANE_SCORE_COVER, {.y=y});
     }
 
-    std::string counter = std::to_string(score);
+    std::string counter = std::to_string(std::max(score, 0));
 
     float x = tex.skin_config[SC::SCORE_COUNTER_POS].x;
     float y_pos = y + tex.skin_config[SC::SCORE_COUNTER_POS].y + p2_offset;

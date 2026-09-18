@@ -11,11 +11,11 @@ FPSCounter::FPSCounter() {
 
 void FPSCounter::update() {
     double currentTime = get_current_ms();
-    float deltaTime = currentTime - lastTime;
+    double deltaTime = currentTime - lastTime;
     lastTime = currentTime;
 
-    frameTimes[currentFrame % SAMPLE_SIZE] = deltaTime;
-    currentFrame++;
+    frameTimes[currentFrame] = (float)deltaTime;
+    currentFrame = (currentFrame + 1) % SAMPLE_SIZE;
 }
 
 float FPSCounter::get_fps() {

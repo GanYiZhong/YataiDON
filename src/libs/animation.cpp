@@ -63,10 +63,13 @@ void BaseAnimation::update(double current_time_ms) {
 void BaseAnimation::restart() {
     start_ms = get_current_ms();
     is_finished = false;
+    is_reversing = false;
     delay = delay_saved;
-    unlocked = false;
-    if (lock_input) {
-        global_data.input_locked++;
+    if (is_started) {
+        unlocked = false;
+        if (lock_input) {
+            global_data.input_locked++;
+        }
     }
 }
 
@@ -445,8 +448,12 @@ Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
 
     visited.insert(anim_id);
 
+    auto raw_it = raw_anims.find(anim_id);
+    if (raw_it == raw_anims.end()) {
+        throw runtime_error("Animation " + std::to_string(anim_id) + " not found");
+    }
     Value animation;
-    animation.CopyFrom(raw_anims[anim_id], *allocator);
+    animation.CopyFrom(raw_it->second, *allocator);
 
     for (auto it = animation.MemberBegin(); it != animation.MemberEnd(); ++it) {
         if (it->value.IsObject() && it->value.HasMember("reference_id")) {
@@ -470,9 +477,14 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
     // unconditional GetDouble() threw on absence, matching this).
     double duration = 0.0;
     if (anim_obj.HasMember("duration")) {
+        if (!anim_obj["duration"].IsNumber()) {
+            throw std::runtime_error("Animation 'duration' must be numeric");
+        }
         duration = anim_obj["duration"].IsDouble() ? anim_obj["duration"].GetDouble()
-                 : anim_obj["duration"].IsInt() ? static_cast<double>(anim_obj["duration"].GetInt())
-                 : 0.0;
+                 : static_cast<double>(anim_obj["duration"].GetInt());
+        if (type != "sample" && duration <= 0.0) {
+            throw std::runtime_error("Animation of type '" + type + "' requires a positive duration");
+        }
     } else if (type != "sample") {
         throw std::runtime_error("Animation of type '" + type + "' requires duration");
     }
@@ -616,7 +628,13 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
         if (!item.HasMember("type")) {
             throw std::runtime_error("Animation requires type");
         }
+        if (!item["id"].IsInt()) {
+            throw std::runtime_error("Animation 'id' must be an int");
+        }
         int id = item["id"].GetInt();
+        if (raw_anims.find(id) != raw_anims.end()) {
+            throw std::runtime_error("Duplicate animation id: " + std::to_string(id));
+        }
         Value item_copy;
         item_copy.CopyFrom(item, *allocator);
         raw_anims[id] = std::move(item_copy);
@@ -624,12 +642,18 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
 
     std::unordered_map<int, std::unique_ptr<BaseAnimation>> anim_dict;
 
-    for (auto& [id, _] : raw_anims) {
-        std::set<int> visited;
-        Value absolute_anim = findRefs(id, visited);
+    try {
+        for (auto& [id, _] : raw_anims) {
+            std::set<int> visited;
+            Value absolute_anim = findRefs(id, visited);
 
-        auto anim = createAnimation(absolute_anim);
-        anim_dict[id] = std::move(anim);
+            auto anim = createAnimation(absolute_anim);
+            anim_dict[id] = std::move(anim);
+        }
+    } catch (...) {
+        raw_anims.clear();
+        allocator = nullptr;
+        throw;
     }
 
     // temp_doc (and the pool allocator/Values it owns) is about to go out of

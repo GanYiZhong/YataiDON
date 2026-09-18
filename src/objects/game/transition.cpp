@@ -50,12 +50,12 @@ void Transition::set_dan(int color, const std::string& rank_name) {
     }
 }
 
-void Transition::draw_dan(float /*total_offset*/) {
+void Transition::draw_dan(float total_offset) {
     const double f = 36.0 + (get_current_ms() - dan_start_ms) * 0.06;
     const float  y = -106.0f - 0.625f * (float)std::clamp(f - 36.0, 0.0, 179.0);
     const float  a = (float)std::clamp((f - 44.0) / 20.0, 0.0, 1.0);
     const float  black = (float)std::clamp(1.0 - (f - 36.0) / 29.0, 0.0, 1.0);
-    const float  dy = -(float)rainbow_up->attribute;
+    const float  dy = -(float)rainbow_up->attribute - total_offset;
 
     global_tex.draw_texture(LOADING_DAN::NIGHT, {.y = y + dy});
     if (a > 0.0f) {

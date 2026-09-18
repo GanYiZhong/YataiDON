@@ -81,6 +81,11 @@ static bool ffmpeg_decode_float(const char* path,
     std::vector<float> pcm;
     AVPacket* pkt = av_packet_alloc();
     AVFrame*  frm = av_frame_alloc();
+    if (!pkt || !frm) {
+        av_packet_free(&pkt); av_frame_free(&frm);
+        swr_free(&swr); avcodec_free_context(&dec); avformat_close_input(&fmt);
+        return false;
+    }
 
     auto drain = [&]() {
         while (true) {
@@ -92,15 +97,22 @@ static bool ffmpeg_decode_float(const char* path,
             uint8_t* op = (uint8_t*)tmp.data();
             int got = swr_convert(swr, &op, (int)n,
                                   (const uint8_t**)frm->extended_data, frm->nb_samples);
-            if (got > 0) pcm.insert(pcm.end(), tmp.begin(), tmp.begin() + got * out_ch);
+            if (got > 0) {
+                pcm.insert(pcm.end(), tmp.begin(), tmp.begin() + got * out_ch);
+            } else if (got < 0) {
+                spdlog::error("ffmpeg_decode_float: swr_convert failed for {}", path);
+            }
             av_frame_unref(frm);
         }
     };
 
     while (av_read_frame(fmt, pkt) >= 0) {
         if (pkt->stream_index == audio_idx) {
-            avcodec_send_packet(dec, pkt);
-            drain();
+            if (avcodec_send_packet(dec, pkt) < 0) {
+                spdlog::error("ffmpeg_decode_float: avcodec_send_packet failed for {}", path);
+            } else {
+                drain();
+            }
         }
         av_packet_unref(pkt);
     }
@@ -110,6 +122,12 @@ static bool ffmpeg_decode_float(const char* path,
     av_packet_free(&pkt);
     av_frame_free(&frm);
     swr_free(&swr);
+
+    if (pcm.empty()) {
+        avcodec_free_context(&dec);
+        avformat_close_input(&fmt);
+        return false;
+    }
 
     *out_rate    = (unsigned int)dec->sample_rate;
     *out_channels = (unsigned int)out_ch;
@@ -1592,6 +1610,7 @@ void AudioEngine::stop_music_stream(const std::string& name) {
 
         if (mus.file_handle) {
             sf_seek(mus.file_handle, 0, SEEK_SET);
+            if (mus.resampler) src_reset(mus.resampler);
         }
     } else {
         spdlog::warn("Music stream {} not found", name);
@@ -1631,10 +1650,12 @@ void AudioEngine::seek_music_stream(const std::string& name, float position) {
             if (frame_position >= mus.file_info.frames) frame_position = mus.file_info.frames - 1;
 
             sf_seek(mus.file_handle, frame_position, SEEK_SET);
+            if (mus.resampler) src_reset(mus.resampler);
 
             mus.buffer_position  = 0;
             mus.frames_in_buffer = 0;
-            mus.current_frame    = frame_position;
+            mus.current_frame    = static_cast<unsigned long long>(
+                std::max(position, 0.0f) * static_cast<float>(target_sample_rate));
         } else if (mus.pcm_data) {
             unsigned long long frame_pos = static_cast<unsigned long long>(
                 std::max(position, 0.0f) * static_cast<float>(target_sample_rate));

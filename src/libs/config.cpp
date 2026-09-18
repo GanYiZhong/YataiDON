@@ -78,6 +78,16 @@ std::string getKeyString(int key_code) {
 }
 
 static int getKeyCode(const std::string& key) {
+    // Unambiguous escaped form for round-tripping key codes that have no
+    // known string representation (see getKeyStringSafe).
+    if (key.rfind("code:", 0) == 0) {
+        try {
+            return std::stoi(key.substr(5));
+        } catch (...) {
+            throw std::runtime_error("Invalid key: " + key);
+        }
+    }
+
     // Handle single alphanumeric characters
     if (key.length() == 1 && std::isalnum(static_cast<unsigned char>(key[0]))) {
         return std::toupper(static_cast<unsigned char>(key[0]));
@@ -159,7 +169,12 @@ static int getKeyCodeOrDefault(const std::string& v, const char* def) {
         return getKeyCode(v);
     } catch (const std::runtime_error& e) {
         spdlog::warn("{} -- using {}", e.what(), def);
-        return getKeyCode(def);
+        try {
+            return getKeyCode(def);
+        } catch (const std::runtime_error& e2) {
+            spdlog::error("Invalid default key '{}': {} -- using escape", def, e2.what());
+            return ray::KEY_ESCAPE;
+        }
     }
 }
 
@@ -206,17 +221,21 @@ Config get_config() {
     try {
         config_file = toml::parse_file(config_path.string());
     } catch (const toml::parse_error& err) {
-        spdlog::error("Failed to parse {}: {} -- using defaults", config_path.string(), err.what());
-        // Back up the unparsable file before defaults get written over it by
-        // the next save_config(), so the user's real settings aren't lost.
         std::error_code ec;
-        fs::path backup_path = config_path;
-        backup_path += ".bak";
-        fs::copy_file(config_path, backup_path, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            spdlog::error("Failed to back up {}: {}", config_path.string(), ec.message());
+        if (!fs::exists(config_path, ec)) {
+            spdlog::info("{} not found -- using defaults", config_path.string());
         } else {
-            spdlog::warn("Backed up unparsable config to {}", backup_path.string());
+            spdlog::error("Failed to parse {}: {} -- using defaults", config_path.string(), err.what());
+            // Back up the unparsable file before defaults get written over it by
+            // the next save_config(), so the user's real settings aren't lost.
+            fs::path backup_path = config_path;
+            backup_path += ".bak";
+            fs::copy_file(config_path, backup_path, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                spdlog::error("Failed to back up {}: {}", config_path.string(), ec.message());
+            } else {
+                spdlog::warn("Backed up unparsable config to {}", backup_path.string());
+            }
         }
     }
 
@@ -262,30 +281,38 @@ Config get_config() {
 
     // Parse keys_1p
     if (auto left_kat = config_file["keys_1p"]["left_kat"].as_array()) {
-        config.keys_1p.left_kat = parseKeyArray(*left_kat);
+        auto parsed = parseKeyArray(*left_kat);
+        if (!parsed.empty()) config.keys_1p.left_kat = std::move(parsed);
     }
     if (auto left_don = config_file["keys_1p"]["left_don"].as_array()) {
-        config.keys_1p.left_don = parseKeyArray(*left_don);
+        auto parsed = parseKeyArray(*left_don);
+        if (!parsed.empty()) config.keys_1p.left_don = std::move(parsed);
     }
     if (auto right_don = config_file["keys_1p"]["right_don"].as_array()) {
-        config.keys_1p.right_don = parseKeyArray(*right_don);
+        auto parsed = parseKeyArray(*right_don);
+        if (!parsed.empty()) config.keys_1p.right_don = std::move(parsed);
     }
     if (auto right_kat = config_file["keys_1p"]["right_kat"].as_array()) {
-        config.keys_1p.right_kat = parseKeyArray(*right_kat);
+        auto parsed = parseKeyArray(*right_kat);
+        if (!parsed.empty()) config.keys_1p.right_kat = std::move(parsed);
     }
 
     // Parse keys_2p
     if (auto left_kat = config_file["keys_2p"]["left_kat"].as_array()) {
-        config.keys_2p.left_kat = parseKeyArray(*left_kat);
+        auto parsed = parseKeyArray(*left_kat);
+        if (!parsed.empty()) config.keys_2p.left_kat = std::move(parsed);
     }
     if (auto left_don = config_file["keys_2p"]["left_don"].as_array()) {
-        config.keys_2p.left_don = parseKeyArray(*left_don);
+        auto parsed = parseKeyArray(*left_don);
+        if (!parsed.empty()) config.keys_2p.left_don = std::move(parsed);
     }
     if (auto right_don = config_file["keys_2p"]["right_don"].as_array()) {
-        config.keys_2p.right_don = parseKeyArray(*right_don);
+        auto parsed = parseKeyArray(*right_don);
+        if (!parsed.empty()) config.keys_2p.right_don = std::move(parsed);
     }
     if (auto right_kat = config_file["keys_2p"]["right_kat"].as_array()) {
-        config.keys_2p.right_kat = parseKeyArray(*right_kat);
+        auto parsed = parseKeyArray(*right_kat);
+        if (!parsed.empty()) config.keys_2p.right_kat = std::move(parsed);
     }
 
     // Parse gamepad_1p (fallback to legacy [gamepad] if missing)
@@ -293,25 +320,41 @@ Config get_config() {
                          ? config_file["gamepad_1p"].as_table()
                          : config_file["gamepad"].as_table();
     if (gamepad_1p_node) {
-        if (auto left_kat = (*gamepad_1p_node)["left_kat"].as_array())
-            config.gamepad_1p.left_kat = parseIntArray(*left_kat);
-        if (auto left_don = (*gamepad_1p_node)["left_don"].as_array())
-            config.gamepad_1p.left_don = parseIntArray(*left_don);
-        if (auto right_don = (*gamepad_1p_node)["right_don"].as_array())
-            config.gamepad_1p.right_don = parseIntArray(*right_don);
-        if (auto right_kat = (*gamepad_1p_node)["right_kat"].as_array())
-            config.gamepad_1p.right_kat = parseIntArray(*right_kat);
+        if (auto left_kat = (*gamepad_1p_node)["left_kat"].as_array()) {
+            auto parsed = parseIntArray(*left_kat);
+            if (!parsed.empty()) config.gamepad_1p.left_kat = std::move(parsed);
+        }
+        if (auto left_don = (*gamepad_1p_node)["left_don"].as_array()) {
+            auto parsed = parseIntArray(*left_don);
+            if (!parsed.empty()) config.gamepad_1p.left_don = std::move(parsed);
+        }
+        if (auto right_don = (*gamepad_1p_node)["right_don"].as_array()) {
+            auto parsed = parseIntArray(*right_don);
+            if (!parsed.empty()) config.gamepad_1p.right_don = std::move(parsed);
+        }
+        if (auto right_kat = (*gamepad_1p_node)["right_kat"].as_array()) {
+            auto parsed = parseIntArray(*right_kat);
+            if (!parsed.empty()) config.gamepad_1p.right_kat = std::move(parsed);
+        }
     }
 
     // Parse gamepad_2p
-    if (auto left_kat = config_file["gamepad_2p"]["left_kat"].as_array())
-        config.gamepad_2p.left_kat = parseIntArray(*left_kat);
-    if (auto left_don = config_file["gamepad_2p"]["left_don"].as_array())
-        config.gamepad_2p.left_don = parseIntArray(*left_don);
-    if (auto right_don = config_file["gamepad_2p"]["right_don"].as_array())
-        config.gamepad_2p.right_don = parseIntArray(*right_don);
-    if (auto right_kat = config_file["gamepad_2p"]["right_kat"].as_array())
-        config.gamepad_2p.right_kat = parseIntArray(*right_kat);
+    if (auto left_kat = config_file["gamepad_2p"]["left_kat"].as_array()) {
+        auto parsed = parseIntArray(*left_kat);
+        if (!parsed.empty()) config.gamepad_2p.left_kat = std::move(parsed);
+    }
+    if (auto left_don = config_file["gamepad_2p"]["left_don"].as_array()) {
+        auto parsed = parseIntArray(*left_don);
+        if (!parsed.empty()) config.gamepad_2p.left_don = std::move(parsed);
+    }
+    if (auto right_don = config_file["gamepad_2p"]["right_don"].as_array()) {
+        auto parsed = parseIntArray(*right_don);
+        if (!parsed.empty()) config.gamepad_2p.right_don = std::move(parsed);
+    }
+    if (auto right_kat = config_file["gamepad_2p"]["right_kat"].as_array()) {
+        auto parsed = parseIntArray(*right_kat);
+        if (!parsed.empty()) config.gamepad_2p.right_kat = std::move(parsed);
+    }
 
     // Parse audio
     config.audio.device_type = config_file["audio"]["device_type"].value_or(0);
@@ -342,8 +385,8 @@ static std::string getKeyStringSafe(int key_code) {
     try {
         return getKeyString(key_code);
     } catch (const std::runtime_error& e) {
-        spdlog::warn("{} -- saving numeric key code {}", e.what(), key_code);
-        return std::to_string(key_code);
+        spdlog::warn("{} -- saving escaped key code {}", e.what(), key_code);
+        return "code:" + std::to_string(key_code);
     }
 }
 
@@ -505,5 +548,7 @@ void save_config(const Config& config) {
     fs::rename(tmp_path, config_path, ec);
     if (ec) {
         spdlog::error("Failed to save config.toml: {}", ec.message());
+        std::error_code rm_ec;
+        fs::remove(tmp_path, rm_ec);
     }
 };

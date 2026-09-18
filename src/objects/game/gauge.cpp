@@ -56,7 +56,8 @@ void Gauge::add_bad() {
     points = std::max(0, std::min(max_points, points + bad_points));
 
     if (previous_points == max_points && points < max_points) {
-        if (rainbow_fade_in.has_value()) rainbow_fade_in.reset();
+        if (rainbow_fade_in.has_value() && rainbow_fade_in.value()) rainbow_fade_in.value()->pause();
+        rainbow_fade_in.reset();
         rainbow_start_ms = -1.0;
         rainbow_frac     = 0.0f;
     }
@@ -92,7 +93,7 @@ void Gauge::draw(float y) {
     const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
     int gauge_length_int = points * bar_units / max_points;
     int previous_length_int = previous_points * bar_units / max_points;
-    int clear_point = clear_points * bar_units / max_points;
+    int clear_point = std::clamp(clear_points * bar_units / max_points, 1, bar_units);
     float bar_width = 0.0f;
     if (auto it = tex.textures.find(tex.get_enum("gauge/" + std::to_string((int)player_num) + "p_bar")); it != tex.textures.end())
         bar_width = it->second->width;

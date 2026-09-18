@@ -345,6 +345,8 @@ static ray::Font deep_copy_font(const ray::Font& src) {
     return dst;
 }
 
+// NOTE: the returned Font aliases manager-owned glyphs/recs/texture; it is only valid
+// until the next acquire()/register_text() call for any size. Use copy_font() to keep it.
 ray::Font FontManager::get_font(const std::string& text, int font_size) {
     std::lock_guard<std::mutex> lock(font_mutex);
     return acquire(text, font_size).font;
@@ -456,6 +458,7 @@ OutlinedText::OutlinedText(std::string text, int font_size,
         while (*ptr) {
             int cp_size = 0;
             ray::GetCodepointNext(ptr, &cp_size);
+            if (cp_size <= 0) break;
             std::string s(ptr, cp_size);
             float w = ray::MeasureTextEx(worker_font, s.c_str(), font_size, spacing).x;
             if (w > max_char_width) max_char_width = w;
@@ -573,6 +576,7 @@ OutlinedText::BuildData OutlinedText::build_vertical_text(
         while (*ptr) {
             int cp_size = 0;
             ray::GetCodepointNext(ptr, &cp_size);
+            if (cp_size <= 0) break;
             raw_chars.emplace_back(ptr, cp_size);
             ptr += cp_size;
         }
@@ -719,6 +723,8 @@ bool OutlinedText::upload_pending() {
         pending_image.reset();
     }
 
+    // the build task still reads worker_font; only release it once the task has finished
+    if (build_future.valid()) build_future.wait();
     worker_font.texture = {};
     ray::UnloadFont(worker_font);
     worker_font = {};

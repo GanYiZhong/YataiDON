@@ -231,7 +231,7 @@ std::vector<uint8_t> aes256_cbc_decrypt(const std::vector<uint8_t>& key,
     // PKCS#7, unpadded by hand so that a wrong key is a clear failure rather
     // than a buffer of noise handed on to the inflater.
     uint8_t pad = out.back();
-    if (pad == 0 || pad > 16 || pad > out.size()) {
+    if (pad == 0 || pad > 16) {
         spdlog::warn("gen4: bad PKCS#7 padding ({}), wrong key?", (int)pad);
         return {};
     }
@@ -535,7 +535,9 @@ int genre_of_path(const fs::path& path) {
     if (name.rfind("@genre_", 0) != 0) return -1;
     try {
         return std::stoi(name.substr(7));
-    } catch (...) {
+    } catch (const std::invalid_argument&) {
+        return -1;
+    } catch (const std::out_of_range&) {
         return -1;
     }
 }
@@ -543,15 +545,12 @@ int genre_of_path(const fs::path& path) {
 static bool is_root_dir(const fs::path& dir) {
     static std::mutex               mutex;
     static std::map<fs::path, bool> cache;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        auto it = cache.find(dir);
-        if (it != cache.end()) return it->second;
-    }
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = cache.find(dir);
+    if (it != cache.end()) return it->second;
     std::error_code ec;
     bool ok = fs::exists(dir / "datatable" / "musicinfo.bin", ec) &&
               fs::is_directory(dir / "fumen", ec);
-    std::lock_guard<std::mutex> lock(mutex);
     cache[dir] = ok;
     return ok;
 }
@@ -575,10 +574,10 @@ const Library* library_for(const fs::path& path) {
     auto it = cache.find(root.string());
     if (it == cache.end()) {
         Library lib;
-        lib.load(root);
+        if (!lib.load(root)) return nullptr;
         it = cache.emplace(root.string(), std::move(lib)).first;
     }
-    return it->second.loaded() ? &it->second : nullptr;
+    return &it->second;
 }
 
 std::vector<uint8_t> load_encrypted(const fs::path& path, const std::vector<uint8_t>& key) {

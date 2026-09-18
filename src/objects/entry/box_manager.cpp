@@ -35,14 +35,18 @@ static bool dan_library_available() {
     if (!global_data.config) return false;
     const auto dan_names = GENRE_MAP.find(GenreIndex::DAN);
     if (dan_names == GENRE_MAP.end()) return false;   // fail soft
-    std::error_code ec;
     for (const fs::path& root : global_data.config->paths.tja_path) {
+        std::error_code ec;
         if (!fs::is_directory(root, ec)) continue;
+        ec.clear();
         fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
         if (ec) continue;
-        for (const auto& entry : it) {
-            if (!entry.is_directory(ec)) continue;
-            std::ifstream box_def(entry.path() / "box.def");
+        const fs::directory_iterator end_it;
+        for (; it != end_it; it.increment(ec)) {
+            if (ec) break;
+            std::error_code entry_ec;
+            if (!it->is_directory(entry_ec)) continue;
+            std::ifstream box_def(it->path() / "box.def");
             if (!box_def) continue;
             std::string line;
             while (std::getline(box_def, line)) {
@@ -63,6 +67,9 @@ static bool dan_library_available() {
 
 BoxManager::BoxManager(bool two_player)
     : selected_box_index(0), is_2p(two_player), costume_menu_open(false) {
+    if (!global_data.config) {
+        throw std::runtime_error("BoxManager: global_data.config not initialized");
+    }
     const std::string lang = global_data.config->general.language;
 
     dan_text      = tex.skin_text("entry_dan", lang);

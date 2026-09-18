@@ -253,8 +253,9 @@ static void populate_screens(std::unordered_map<Screens, std::unique_ptr<Screen>
 
 void drop_other_screens_for_skin_reload() {
     if (!g_loop) return;
-    for (auto& [key, ptr] : g_loop->screens) {
-        if (key != g_loop->current_screen) ptr.reset();
+    for (auto it = g_loop->screens.begin(); it != g_loop->screens.end(); ) {
+        if (it->first != g_loop->current_screen) it = g_loop->screens.erase(it);
+        else ++it;
     }
 }
 
@@ -452,6 +453,7 @@ int main(int argc, char* argv[]) {
     spdlog::info("Starting YataiDON");
     set_working_directory_to_executable();
     global_data.config = new Config(get_config());
+    Screens initial_screen = check_args(argc, argv);
     init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
     unsigned int flags = ray::FLAG_WINDOW_RESIZABLE;
     if (global_data.config->video.vsync) {
@@ -530,8 +532,10 @@ int main(int argc, char* argv[]) {
             scores_manager.save_player_data(scores_manager.player_1_data);
         }
 
-        int head_index, body_index, cos_index;
-        bool is_costume;
+        int head_index = scores_manager.player_1_data.chara_head_index;
+        int body_index = scores_manager.player_1_data.chara_body_index;
+        int cos_index = scores_manager.player_1_data.chara_cos_index;
+        bool is_costume = scores_manager.player_1_data.chara_is_costume;
         if (network.fetch_costume(global_data.config->network.access_code, head_index, body_index, cos_index, is_costume) &&
             (head_index != scores_manager.player_1_data.chara_head_index ||
              body_index != scores_manager.player_1_data.chara_body_index ||
@@ -548,8 +552,6 @@ int main(int argc, char* argv[]) {
             scores_manager.sync_from_server(global_data.config->network.access_code);
         }
     }
-
-    Screens initial_screen = check_args(argc, argv);
 
     double target_fps = global_data.config->video.target_fps;
     if (target_fps != -1) {

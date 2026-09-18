@@ -3,6 +3,8 @@
 
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 
@@ -120,7 +122,14 @@ bool Library::load(const fs::path& root) {
         e.title  = tag_text(xml, "musicname", pos, end);
         e.genre  = tag_text(xml, "genrename", pos, end);
         e.secret = tag_text(xml, "secret", pos, end) == "1";
-        try { e.unique_id = std::stoi(tag_text(xml, "uniqueid", pos, end)); } catch (...) {}
+        const std::string uid = tag_text(xml, "uniqueid", pos, end);
+        if (!uid.empty()) {
+            try {
+                e.unique_id = std::stoi(uid);
+            } catch (const std::logic_error&) {
+                spdlog::debug("gen3: bad uniqueid '{}' for song {}", uid, e.id);
+            }
+        }
         if (!e.id.empty()) entries.push_back(std::move(e));
 
         pos = end;

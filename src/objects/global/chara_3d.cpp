@@ -67,6 +67,7 @@ static ray::Matrix rotation_xyz(float ax, float ay, float az) {
 
 static void reindex_animations(ray::Model& model, ray::Model& glb_model,
                                ray::ModelAnimation* anims, int anim_count) {
+    if (!anims || anim_count <= 0 || !model.skeleton.bones || !glb_model.skeleton.bones) return;
     std::unordered_map<std::string, int> glb_bone_idx;
     for (int i = 0; i < glb_model.skeleton.boneCount; i++)
         glb_bone_idx[glb_model.skeleton.bones[i].name] = i;
@@ -236,8 +237,10 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
                 miny = std::min(miny, mesh.vertices[v * 3 + 1]); maxy = std::max(maxy, mesh.vertices[v * 3 + 1]);
             }
             const float size = std::max(maxx - minx, maxy - miny);
-            if (normalize_face_scale || size > COS_FACE_PLANE_SIZE * 1.02f)
+            if (normalize_face_scale || size > COS_FACE_PLANE_SIZE * 1.02f) {
                 normalize_face_mesh_size(mesh, COS_FACE_PLANE_SIZE);
+                ray::UpdateMeshBuffer(mesh, 0, mesh.vertices, mesh.vertexCount * 3 * (int)sizeof(float), 0);
+            }
         }
     }
 #if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
@@ -548,30 +551,35 @@ void Chara3D::update(double current_ms) {
     int anim_count = part_anim_count.empty() ? 0 : part_anim_count[0];
     if (anim_count > 0) {
         int ai = static_cast<int>(anim_index);
-        double ms_per_beat = 60000.0 / bpm;
-        if (anim_index == AnimIndex::DON_NORMAL || anim_index == AnimIndex::DON_SABI) ms_per_beat *= 3;
-        if (anim_index == AnimIndex::DON_BALLOON_LOOP) ms_per_beat /= 2;
-        double ms_per_frame = ms_per_beat / part_anims[0][ai].keyframeCount;
-        if (current_ms - last_frame_ms >= ms_per_frame) {
-            int loop_frames = part_anims[0][ai].keyframeCount - 1;
-            last_frame_ms = current_ms;
+        const int kf = part_anims[0][ai].keyframeCount;
+        if (bpm > 0.0f && kf > 0) {
+            double ms_per_beat = 60000.0 / bpm;
+            if (anim_index == AnimIndex::DON_NORMAL || anim_index == AnimIndex::DON_SABI) ms_per_beat *= 3;
+            if (anim_index == AnimIndex::DON_BALLOON_LOOP) ms_per_beat /= 2;
+            double ms_per_frame = ms_per_beat / kf;
+            if (current_ms - last_frame_ms >= ms_per_frame) {
+                int loop_frames = kf - 1;
+                last_frame_ms = current_ms;
 
-            if (loop_frames <= 0) {
-                if (!is_looping) {
-                    set_anim(prev_anim_idx);
-                    is_looping = true;
-                }
-            } else {
-                anim_frame = (anim_frame + 1) % loop_frames;
-                // UpdateModelAnimation CPU-skins and uploads position/normal
-                // buffers to the GPU itself; no manual UpdateMeshBuffer needed
-                for (size_t p = 0; p < parts.size(); p++)
-                    ray::UpdateModelAnimation(parts[p], part_anims[p][ai], anim_frame);
-                render_dirty = true;
+                if (loop_frames <= 0) {
+                    if (!is_looping) {
+                        set_anim(prev_anim_idx);
+                        is_looping = true;
+                    }
+                } else {
+                    anim_frame = (anim_frame + 1) % loop_frames;
+                    // UpdateModelAnimation CPU-skins and uploads position/normal
+                    // buffers to the GPU itself; no manual UpdateMeshBuffer needed
+                    for (size_t p = 0; p < parts.size(); p++) {
+                        if (ai >= part_anim_count[p]) continue;
+                        ray::UpdateModelAnimation(parts[p], part_anims[p][ai], anim_frame);
+                    }
+                    render_dirty = true;
 
-                if (!is_looping && anim_frame == loop_frames - 1) {
-                    set_anim(prev_anim_idx);
-                    is_looping = true;
+                    if (!is_looping && anim_frame == loop_frames - 1) {
+                        set_anim(prev_anim_idx);
+                        is_looping = true;
+                    }
                 }
             }
         }

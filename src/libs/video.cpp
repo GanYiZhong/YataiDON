@@ -45,9 +45,6 @@ VideoPlayer::VideoPlayer(fs::path path)
                    ? static_cast<double>(container->duration()) / av::AVContainer::time_base()
                    : 0.0;
 
-    width  = static_cast<float>(video_stream->width());
-    height = static_cast<float>(video_stream->height());
-
     frame_count = (fps > 0.f) ? static_cast<int>(duration * fps) + 1 : 0;
 
     frame_index    = 0;
@@ -61,6 +58,7 @@ VideoPlayer::~VideoPlayer() {
 
 void VideoPlayer::audio_manager() {
     if (is_finished_arr[1]) return;
+    if (!is_started()) return;
 
     if (!audio_started) {
         audio.play_music_stream(audio_s);
@@ -178,11 +176,6 @@ void VideoPlayer::update(double current_ms) {
 
     audio_manager();
 
-    if (frame_count > 0 && frame_index >= frame_count) {
-        is_finished_arr[0] = true;
-        return;
-    }
-
     if (!is_started()) return;
 
     double elapsed_ms = current_ms - start_ms.value();
@@ -215,6 +208,11 @@ void VideoPlayer::update(double current_ms) {
         std::lock_guard<std::mutex> lock(queue_mutex);
         spare_buffers.push_back(std::move(latest->bytes));
     } else if (drained_at_eof) {
+        is_finished_arr[0] = true;
+    } else if (frame_count > 0 && frame_index >= frame_count) {
+        // Sanity bound only: real completion is decode_eof + empty queue
+        // above. This just prevents playback from running forever if the
+        // fps*duration estimate is off and decode_eof never arrives.
         is_finished_arr[0] = true;
     }
 }

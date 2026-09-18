@@ -58,7 +58,11 @@ bool find_pack(const std::vector<uint8_t>& file, size_t& pack, size_t& pack_size
         return false;
     }
 
-    size_t pos = 0x14 + read_le32(file.data() + 0x10);
+    size_t pos = (size_t)0x14 + read_le32(file.data() + 0x10);
+    if (pos > file.size()) {
+        spdlog::warn("gen4 audio: BANKTOC size out of range");
+        return false;
+    }
     pack = 0; pack_size = 0;
     while (pos + 8 <= file.size()) {
         uint32_t size = read_le32(file.data() + pos + 4);
@@ -129,8 +133,13 @@ bool parse_container(const std::vector<uint8_t>& file, size_t pack, size_t pack_
     }
     out.data_size   = read_be32(p + sdat + 4);
     out.data_offset = pack + sdat + 8;
-    if (out.data_offset + out.data_size > file.size())
-        out.data_size = file.size() - out.data_offset;
+    const size_t pack_end = std::min(pack + pack_size, file.size());
+    if (out.data_offset > pack_end) {
+        spdlog::warn("gen4 audio: sdat starts past the PACK chunk");
+        return false;
+    }
+    if (out.data_offset + out.data_size > pack_end)
+        out.data_size = pack_end - out.data_offset;
 
     return true;
 }
@@ -257,6 +266,13 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
     }
     Bnsf info;
     if (!parse_container(file, pack, pack_size, info)) return false;
+
+    if (info.block_size % info.channels != 0 ||
+        info.block_size / info.channels <= 0) {
+        spdlog::warn("gen4 audio: block size {} not usable for {} ch",
+                     info.block_size, info.channels);
+        return false;
+    }
 
     // One decoder per channel, each fed its own frames: the channels are
     // interleaved a whole frame at a time, not sample by sample.

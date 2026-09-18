@@ -625,7 +625,8 @@ std::vector<std::vector<std::string>> TJAParser::data_to_notes(int diff) {
                 std::string course_value = to_lower(trim(line.substr(7)));
 
                 bool is_digit = !course_value.empty() &&
-                               std::all_of(course_value.begin(), course_value.end(), ::isdigit);
+                               std::all_of(course_value.begin(), course_value.end(),
+                                           [](unsigned char c) { return std::isdigit(c) != 0; });
 
                 target_found = (is_digit && std::stoi(course_value) == diff) ||
                               course_value == diff_name;
@@ -736,6 +737,7 @@ std::vector<std::vector<std::string>> TJAParser::data_to_notes(int diff) {
 }
 
 float TJAParser::apply_easing(float t, EasingPoint easing_point, EasingFunction easing_function) {
+        const float original_t = t;
         switch (easing_point) {
             case EasingPoint::IN_:
                 break;
@@ -784,7 +786,7 @@ float TJAParser::apply_easing(float t, EasingPoint easing_point, EasingFunction 
                 result = 1.0f - result;
                 break;
             case EasingPoint::IN_OUT:
-                if (t >= 0.5f) {
+                if (original_t >= 0.5f) {
                     result = 1.0f - result;
                 }
                 break;

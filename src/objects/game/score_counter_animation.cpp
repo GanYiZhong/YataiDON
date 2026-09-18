@@ -1,5 +1,6 @@
 #include "score_counter_animation.h"
 #include "../../libs/texture.h"
+#include <cmath>
 
 ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, bool is_2p) : counter(counter) {
     direction = is_2p ? -1 : 1;
@@ -49,7 +50,7 @@ void ScoreCounterAnimation::update(double current_ms) {
 
 void ScoreCounterAnimation::draw(float y) {
     float x = move_animation_1->is_finished ? move_animation_2->attribute : move_animation_1->attribute;
-    if (x == 0) {
+    if (std::fabs(x) < 1e-6f) {
         return;
     }
 

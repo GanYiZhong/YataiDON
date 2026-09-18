@@ -647,6 +647,7 @@ void Player::reset_chart() {
         if (!branch.empty()) {
             for (NoteList& section : branch) {
                 apply_modifiers(section, modifiers);
+                Note* last_note = nullptr;
                 for (Note& note: section.notes) {
                     get_load_time(note);
                     if (note.type == NoteType::TAIL && last_note != nullptr) {
@@ -1137,6 +1138,7 @@ void Player::check_drumroll(double current_ms, DrumType drum_type, std::optional
 
 void Player::check_balloon(double current_ms, DrumType drum_type, const Note& balloon, std::optional<Background>& background) {
     if (drum_type != DrumType::DON) return;
+    if (!balloon.count.has_value()) return;
     if (!balloon_counter.has_value()) {
         balloon_counter = BalloonCounter(balloon.count.value(), is_2p);
         chara->set_anim(AnimIndex::DON_BALLOON_LOOP);
@@ -1157,6 +1159,7 @@ void Player::check_balloon(double current_ms, DrumType drum_type, const Note& ba
 
 void Player::check_kusudama(double current_ms, DrumType drum_type, const Note& balloon, std::optional<Background>& background) {
     if (drum_type != DrumType::DON) return;
+    if (!balloon.count.has_value()) return;
 
     Player* owner = kusudama_owner();
     if (!owner->kusudama_counter.has_value()) {

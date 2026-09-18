@@ -2,6 +2,10 @@
 #include "../../libs/script.h"
 
 Background::Background(PlayerNum player_num, float bpm, const std::string& scene_preset) {
+    if (!script_manager.lua) {
+        spdlog::error("Background: Lua state is not available");
+        return;
+    }
     sol::state& lua = *script_manager.lua;
 
     if (!lua["Background"].valid()) {
@@ -30,6 +34,8 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
     if (!call_result.valid()) {
         sol::error err = call_result;
         spdlog::error("Error calling Background.new: {}", err.what());
+    } else if (call_result.get_type() != sol::type::table) {
+        spdlog::error("Background.new did not return a table");
     } else {
         lua_object = call_result;
         fn_update        = lua_object["update"];
