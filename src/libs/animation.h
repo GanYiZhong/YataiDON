@@ -1,32 +1,16 @@
 #pragma once
 
-#include <chrono>
 #include <rapidjson/document.h>
 #include <map>
 #include <unordered_map>
 #include <set>
+#include "time.h"
 
-#ifdef YATAIDON_PLATFORM_IOS
-#include "../platform/ios.h"
-#endif
-
-inline double get_current_ms() {
-#ifdef YATAIDON_PLATFORM_IOS
-    return ios_game_time_ms();
-#else
-    using namespace std::chrono;
-    auto now = high_resolution_clock::now();
-    return duration<double, std::milli>(now.time_since_epoch()).count();
-#endif
-}
-
-extern double g_frame_ms;
-
-// Returns time frozen at frame start — use this for game/note position calculations
-// so render-time variance doesn't cause jitter.
-inline double get_frame_ms() {
-    return (g_frame_ms > 0.0) ? g_frame_ms : get_current_ms();
-}
+enum class EaseType {
+    Quadratic,
+    Cubic,
+    Exponential
+};
 
 class BaseAnimation {
 protected:
@@ -37,12 +21,12 @@ protected:
     bool loop;
     bool lock_input;
 
-    double easeIn(double progress, const std::string& ease_type);
+    double easeIn(double progress, EaseType ease_type);
 
-    double easeOut(double progress, const std::string& ease_type);
+    double easeOut(double progress, EaseType ease_type);
 
-    double applyEasing(double progress, const std::optional<std::string>& ease_in_opt,
-                      const std::optional<std::string>& ease_out_opt);
+    double applyEasing(double progress, const std::optional<EaseType>& ease_in_opt,
+                      const std::optional<EaseType>& ease_out_opt);
 
 public:
     double attribute;
@@ -79,16 +63,16 @@ private:
     double final_opacity;
     double initial_opacity_saved;
     double final_opacity_saved;
-    std::optional<std::string> ease_in;
-    std::optional<std::string> ease_out;
+    std::optional<EaseType> ease_in;
+    std::optional<EaseType> ease_out;
     std::optional<double> reverse_delay;
     std::optional<double> reverse_delay_saved;
 
 public:
     FadeAnimation(double duration, double initial_opacity = 1.0, bool loop = false,
                   bool lock_input = false, double final_opacity = 0.0, double delay = 0.0,
-                  std::optional<std::string> ease_in = std::nullopt,
-                  std::optional<std::string> ease_out = std::nullopt,
+                  std::optional<EaseType> ease_in = std::nullopt,
+                  std::optional<EaseType> ease_out = std::nullopt,
                   std::optional<double> reverse_delay = std::nullopt);
 
     void restart() override;
@@ -103,8 +87,8 @@ private:
     int total_distance;
     int total_distance_saved;
     int start_position_saved;
-    std::optional<std::string> ease_in;
-    std::optional<std::string> ease_out;
+    std::optional<EaseType> ease_in;
+    std::optional<EaseType> ease_out;
     std::optional<double> reverse_delay;
     std::optional<double> reverse_delay_saved;
     std::optional<int> waypoint;
@@ -115,8 +99,8 @@ public:
     MoveAnimation(double duration, int total_distance = 0, bool loop = false,
                   bool lock_input = false, int start_position = 0, double delay = 0.0,
                   std::optional<double> reverse_delay = std::nullopt,
-                  std::optional<std::string> ease_in = std::nullopt,
-                  std::optional<std::string> ease_out = std::nullopt,
+                  std::optional<EaseType> ease_in = std::nullopt,
+                  std::optional<EaseType> ease_out = std::nullopt,
                   std::optional<int> waypoint = std::nullopt,
                   double waypoint_at = 0.5);
 
@@ -162,8 +146,8 @@ private:
     double final_size;
     double initial_size_saved;
     double final_size_saved;
-    std::optional<std::string> ease_in;
-    std::optional<std::string> ease_out;
+    std::optional<EaseType> ease_in;
+    std::optional<EaseType> ease_out;
     std::optional<double> reverse_delay;
     std::optional<double> reverse_delay_saved;
 
@@ -171,8 +155,8 @@ public:
     TextureResizeAnimation(double duration, double initial_size = 1.0, bool loop = false,
                           bool lock_input = false, double final_size = 0.0, double delay = 0.0,
                           std::optional<double> reverse_delay = std::nullopt,
-                          std::optional<std::string> ease_in = std::nullopt,
-                          std::optional<std::string> ease_out = std::nullopt);
+                          std::optional<EaseType> ease_in = std::nullopt,
+                          std::optional<EaseType> ease_out = std::nullopt);
 
     void restart() override;
 

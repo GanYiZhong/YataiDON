@@ -18,30 +18,32 @@ BaseAnimation::BaseAnimation(double duration, double delay, bool loop, bool lock
           }
       }
 
-double BaseAnimation::easeIn(double progress, const std::string &ease_type) {
-  if (ease_type == "quadratic") {
-    return progress * progress;
-  } else if (ease_type == "cubic") {
-    return progress * progress * progress;
-  } else if (ease_type == "exponential") {
-    return progress == 0 ? 0 : std::pow(2, 10 * (progress - 1));
+double BaseAnimation::easeIn(double progress, EaseType ease_type) {
+  switch (ease_type) {
+    case EaseType::Quadratic:
+      return progress * progress;
+    case EaseType::Cubic:
+      return progress * progress * progress;
+    case EaseType::Exponential:
+      return progress == 0 ? 0 : std::pow(2, 10 * (progress - 1));
   }
   return progress;
 }
 
-double BaseAnimation::easeOut(double progress, const std::string& ease_type) {
-    if (ease_type == "quadratic") {
+double BaseAnimation::easeOut(double progress, EaseType ease_type) {
+    switch (ease_type) {
+      case EaseType::Quadratic:
         return progress * (2 - progress);
-    } else if (ease_type == "cubic") {
+      case EaseType::Cubic:
         return 1 - std::pow(1 - progress, 3);
-    } else if (ease_type == "exponential") {
+      case EaseType::Exponential:
         return progress == 1 ? 1 : 1 - std::pow(2, -10 * progress);
     }
     return progress;
 }
 
-double BaseAnimation::applyEasing(double progress, const std::optional<std::string>& ease_in_opt,
-                  const std::optional<std::string>& ease_out_opt) {
+double BaseAnimation::applyEasing(double progress, const std::optional<EaseType>& ease_in_opt,
+                  const std::optional<EaseType>& ease_out_opt) {
     if (ease_in_opt.has_value()) {
         return easeIn(progress, ease_in_opt.value());
     } else if (ease_out_opt.has_value()) {
@@ -102,8 +104,8 @@ void BaseAnimation::reset() {
 
 FadeAnimation::FadeAnimation(double duration, double initial_opacity, bool loop,
               bool lock_input, double final_opacity, double delay,
-              std::optional<std::string> ease_in,
-              std::optional<std::string> ease_out,
+              std::optional<EaseType> ease_in,
+              std::optional<EaseType> ease_out,
               std::optional<double> reverse_delay)
     : BaseAnimation(duration, delay, loop, lock_input),
       initial_opacity(initial_opacity), final_opacity(final_opacity),
@@ -160,8 +162,8 @@ std::unique_ptr<BaseAnimation> FadeAnimation::copy() const {
 MoveAnimation::MoveAnimation(double duration, int total_distance, bool loop,
               bool lock_input, int start_position, double delay,
               std::optional<double> reverse_delay,
-              std::optional<std::string> ease_in,
-              std::optional<std::string> ease_out,
+              std::optional<EaseType> ease_in,
+              std::optional<EaseType> ease_out,
               std::optional<int> waypoint, double waypoint_at)
     : BaseAnimation(duration, delay, loop, lock_input),
       total_distance(total_distance), start_position(start_position),
@@ -297,8 +299,8 @@ std::unique_ptr<BaseAnimation> TextStretchAnimation::copy() const {
 TextureResizeAnimation::TextureResizeAnimation(double duration, double initial_size, bool loop,
                       bool lock_input, double final_size, double delay,
                       std::optional<double> reverse_delay,
-                      std::optional<std::string> ease_in,
-                      std::optional<std::string> ease_out)
+                      std::optional<EaseType> ease_in,
+                      std::optional<EaseType> ease_out)
     : BaseAnimation(duration, delay, loop, lock_input),
       initial_size(initial_size), final_size(final_size),
       initial_size_saved(initial_size), final_size_saved(final_size),
@@ -533,6 +535,15 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         return std::nullopt;
     };
 
+    auto get_ease_opt = [&](const char* key) -> std::optional<EaseType> {
+        auto str = get_string_opt(key);
+        if (!str.has_value()) return std::nullopt;
+        if (str == "quadratic") return EaseType::Quadratic;
+        if (str == "cubic") return EaseType::Cubic;
+        if (str == "exponential") return EaseType::Exponential;
+        throw std::runtime_error("Unknown ease type: " + str.value());
+    };
+
     double delay = get_double("delay", 0.0);
     bool loop = get_bool("loop", false);
     bool lock_input = get_bool("lock_input", false);
@@ -545,8 +556,8 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             lock_input,
             get_double("final_opacity", 0.0),
             delay,
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out"),
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out"),
             get_double_opt("reverse_delay")
         );
     } else if (type == "move") {
@@ -558,8 +569,8 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_int("start_position", 0),
             delay,
             get_double_opt("reverse_delay"),
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out"),
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out"),
             get_int_opt("waypoint"),
             get_double("waypoint_at", 0.5)
         );
@@ -594,8 +605,8 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_double("final_size", 0.0),
             delay,
             get_double_opt("reverse_delay"),
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out")
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out")
         );
     } else if (type == "sample") {
         // No sample-table data source exists anymore, so this always falls

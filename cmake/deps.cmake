@@ -477,6 +477,18 @@ if(NETWORK_ENABLED)
   FetchContent_MakeAvailable(cpr)
 endif()
 
+# miniz (ZIP reading, used for .osz extraction)
+set(AMALGAMATE_SOURCES ON CACHE BOOL "" FORCE)
+message(STATUS "Fetching miniz...")
+FetchContent_Declare(
+    miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG        3.0.0
+    GIT_SHALLOW    TRUE
+    PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=CMakeLists.txt -DOLD_VERSION=3.0 -P ${CMAKE_CURRENT_LIST_DIR}/patch_min_cmake_version.cmake
+)
+FetchContent_MakeAvailable(miniz)
+
 # RtAudio
 if(EMSCRIPTEN)
   add_library(rtaudio INTERFACE IMPORTED)

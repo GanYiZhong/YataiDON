@@ -87,10 +87,6 @@ include(cmake/codegen.cmake)
 
 ### Source files
 
-# miniz (vendored single-file ZIP library for .osz extraction)
-add_library(miniz STATIC src/libs/miniz/miniz.c)
-target_include_directories(miniz PUBLIC src/libs/miniz)
-
 file(GLOB_RECURSE CppFiles src/*.cpp)
 file(GLOB_RECURSE HeaderFiles
     src/*.h

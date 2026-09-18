@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <mutex>
 
-#include "../miniz/miniz.h"
+#include "miniz.h"
 #include "../md5.h"
 
 

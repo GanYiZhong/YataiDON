@@ -22,7 +22,7 @@ GenreBG::GenreBG(std::string& text_name, std::optional<ray::Color> color, Textur
         shader_loaded = true;
     }
 
-    stretch = new MoveAnimation(333, 20 * tex.screen_scale, false, false, 0, 0, 0, std::nullopt, "cubic");
+    stretch = new MoveAnimation(333, 20 * tex.screen_scale, false, false, 0, 0, 0, std::nullopt, EaseType::Cubic);
     scale = new TextureResizeAnimation(100, 0.9f, false, false, 1.0);
     move = new MoveAnimation(600, std::min((float)tex.screen_width, distance) * tex.screen_scale, false, false, 0, stretch->duration*1.5);
     fade = new FadeAnimation(100, 0.0, false, false, 1.0);

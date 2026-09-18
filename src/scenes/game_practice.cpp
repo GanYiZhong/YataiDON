@@ -275,7 +275,7 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
 
             double time_difference = bars[scrobble_index].hit_ms - bars[old_index].hit_ms;
             scrobble_move = std::make_unique<MoveAnimation>(400.0, (int)time_difference, false, false, 0, 0.0,
-                                                            std::nullopt, std::nullopt, std::string("quadratic"));
+                                                            std::nullopt, std::nullopt, EaseType::Quadratic);
             scrobble_move->start();
         }
     }

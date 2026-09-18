@@ -1,5 +1,5 @@
 #include "filesystem.h"
-#include "miniz/miniz.h"
+#include "miniz.h"
 #ifdef SUPPORT_FUMEN
 #include "optional/gen3.h"
 #include "optional/gen4.h"
