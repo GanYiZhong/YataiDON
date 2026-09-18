@@ -10,7 +10,7 @@
 namespace ray {
 #include <raymath.h>
 }
-extern "C" { void rlSetCullFace(int mode); void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); }
+extern "C" { void rlSetCullFace(int mode); void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); void rlColorMask(bool r, bool g, bool b, bool a); }
 static constexpr int RL_CULL_FACE_FRONT = 0;
 static constexpr int RL_CULL_FACE_BACK  = 1;
 
@@ -195,12 +195,8 @@ static void normalize_face_mesh_size(ray::Mesh& mesh, float target_size) {
 
 void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, bool normalize_face_scale) {
     ray::Model model = ray::LoadModel(model_path.string().c_str());
-    for (int m = 0; m < model.meshCount; m++) {
-        auto& mesh = model.meshes[m];
-        if (mesh.colors == nullptr) continue;
-        for (int v = 0; v < mesh.vertexCount * 4; v++) mesh.colors[v] = 255;
-        ray::UpdateMeshBuffer(mesh, 3, mesh.colors, mesh.vertexCount * 4, 0);
-    }
+    // The vertex colours stay as shipped: the main shader does not tint by them, and the black
+    // line pass reads its per-vertex thickness from the green channel.
 
     std::vector<int> recolor_indices, additive_indices, cutout_indices, blend_indices, twosided_indices;
     int face_material_index = -1;
@@ -243,7 +239,7 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
             }
         }
     }
-#if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
+#ifdef PLATFORM_ANDROID
     if (face_material_index != -1 && face_shader.id != 0)
         model.materials[face_material_index].shader = face_shader;
 #endif
@@ -260,7 +256,7 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     // that solid black; blending them would need back-to-front sorting. An alpha test gives
     // the cabinet's cutout look with plain depth writes.
     if (cutout_shader.id != 0)
-        for (int idx : cutout_indices) model.materials[idx].shader = cutout_shader;
+        for (int i = 0; i < model.materialCount; i++) model.materials[i].shader = cutout_shader;
 
     ray::Model glb_model = ray::LoadModel(anim_path.string().c_str());
     int anim_count = 0;
@@ -293,9 +289,6 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
     face_shader    = load_shader(nullptr, "shader/face.fs");
     cutout_shader  = load_shader(nullptr, "shader/cutout.fs");
     outline_shader = load_shader("shader/outline.vs", "shader/outline.fs");
-    int thickness_loc = ray::GetShaderLocation(outline_shader, "outlineThickness");
-    float thickness = 0.0035f;
-    ray::SetShaderValue(outline_shader, thickness_loc, &thickness, ray::SHADER_UNIFORM_FLOAT);
 
     if (outline_fxaa_shader.id == 0)
         use_render_textures = false;
@@ -602,11 +595,7 @@ void Chara3D::draw_outline(float x, float y) {
             bool is_face = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0);
             // additive glows (_AA_ADD) and alpha-blended sheets (_A_AB) have no silhouette to
             // outline; a hull under them is a black box seen through the transparent texels
-            bool is_soft = null_shader.id != 0 &&
-                (std::find(part_additive_indices[p].begin(), part_additive_indices[p].end(), i) != part_additive_indices[p].end() ||
-                 std::find(part_blend_indices[p].begin(), part_blend_indices[p].end(), i) != part_blend_indices[p].end() ||
-                 std::find(part_twosided_indices[p].begin(), part_twosided_indices[p].end(), i) != part_twosided_indices[p].end());
-            parts[p].materials[i].shader = (is_face || is_soft) ? null_shader : outline_shader;
+            parts[p].materials[i].shader = is_face ? null_shader : outline_shader;
         }
     }
 
@@ -618,13 +607,55 @@ void Chara3D::draw_outline(float x, float y) {
         parts[p].transform = rot;
     }
 
-    rlSetCullFace(RL_CULL_FACE_FRONT);
-    // scale is in 1280x720 virtual units; the camera maps the skin's virtual
-    // canvas to the window, so follow the skin resolution or the model
-    // shrinks relative to everything else on hi-res skins.
-    for (auto& part : parts)
-        ray::DrawModel(part, {x, y, 400.0f}, scale * draw_scale * tex.screen_scale, ray::WHITE);
-    rlSetCullFace(RL_CULL_FACE_BACK);
+    {
+        // Black line, drawn after the model: screen-space push along the view normal, a depth
+        // push back, facing test in the shader. 2.5 px at 720p, scaled with the output; the
+        // depth push keeps the line behind the surface it belongs to even on receding slopes.
+        // Three steps:
+        //  1. the line of the camera-facing vertices (the crease and cut-out lines);
+        //  2. the model's back faces written to the depth buffer only, so that step 3 can only
+        //     show up outside the model. An inside-out part (a single-sided glass dome, a head
+        //     shell with inward normals) has its near side culled in the model pass, and
+        //     without this the lines of everything behind that side would paint over it;
+        //  3. the line of the vertices facing away, which closes the silhouette where the
+        //     front rings carry no line weight (the body's rim by the drum head) and on coarse
+        //     small parts (the feet): it is behind the model everywhere but the overhang.
+        const float thickness_px = 2.5f * (float)ray::GetRenderHeight() / 720.0f;
+        float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push (model units); 0 = front faces, 1 = back faces
+        float size[2]  = {(float)ray::GetRenderWidth(), (float)ray::GetRenderHeight()};
+        if (outline_param_loc < 0) outline_param_loc = ray::GetShaderLocation(outline_shader, "outlineParam");
+        if (outline_size_loc < 0)  outline_size_loc  = ray::GetShaderLocation(outline_shader, "screenSize");
+        ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
+        ray::SetShaderValue(outline_shader, outline_size_loc, size, ray::SHADER_UNIFORM_VEC2);
+        // scale is in 1280x720 virtual units; the camera maps the skin's virtual
+        // canvas to the window, so follow the skin resolution or the model
+        // shrinks relative to everything else on hi-res skins.
+        const float draw_size = scale * draw_scale * tex.screen_scale;
+        rlDisableBackfaceCulling();
+        for (auto& part : parts)
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
+        rlEnableBackfaceCulling();
+
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = saved[p][i];
+        rlColorMask(false, false, false, false);
+        rlSetCullFace(RL_CULL_FACE_FRONT);
+        for (size_t p = 0; p < parts.size(); p++)
+            draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], part_twosided_indices[p], {x, y, 400.0f}, draw_size);
+        rlSetCullFace(RL_CULL_FACE_BACK);
+        rlColorMask(true, true, true, true);
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0) ? null_shader : outline_shader;
+
+        param[3] = 1.0f;
+        ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
+        rlDisableBackfaceCulling();
+        for (auto& part : parts)
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
+        rlEnableBackfaceCulling();
+    }
 
     for (size_t p = 0; p < parts.size(); p++) {
         parts[p].transform = saved_transform[p];
@@ -698,8 +729,8 @@ void Chara3D::draw(float x, float y, float scale_mul) {
         ray::ClearBackground(ray::BLANK);
         ray::BeginBlendMode(ray::BLEND_ALPHA);
         ray::BeginMode3D(cam3d);
-        draw_outline(x, y);
         draw_3d(x, y);
+        draw_outline(x, y);
         ray::EndMode3D();
         ray::EndBlendMode();
         ray::EndTextureMode();
