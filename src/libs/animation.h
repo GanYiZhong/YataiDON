@@ -12,6 +12,9 @@ enum class EaseType {
     Exponential
 };
 
+bool is_input_locked();
+void reset_input_lock();
+
 class BaseAnimation {
 protected:
     double delay;

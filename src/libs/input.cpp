@@ -1,4 +1,5 @@
 #include "input.h"
+#include "animation.h"
 #include "texture.h"
 #include <array>
 #include <unordered_set>
@@ -296,7 +297,7 @@ static bool SDLCALL touch_event_watch(void* /*userdata*/, SDL_Event* event) {
         return true;
     }
 #endif
-    if (global_data.input_locked) return 1;
+    if (is_input_locked()) return 1;
 
 #if defined(__linux__) && !defined(PLATFORM_ANDROID)
     if (event->type == SDL_EVENT_TEXT_INPUT && event->text.text) {
@@ -376,7 +377,7 @@ void poll_touch_once() {
 // Scan all keyboard keys once and push press/release events.
 // Used by the polling thread on desktop and called directly per-frame on web.
 void poll_keyboard_once() {
-    if (global_data.input_locked) return;
+    if (is_input_locked()) return;
     thread_local std::vector<int> local_pressed;
     thread_local std::vector<int> local_released;
     local_pressed.clear();

@@ -371,7 +371,7 @@ static void run_frame() {
         global_data.previous_screen = global_data.current_screen;
         L.current_screen = next_screen.value();
         global_data.current_screen = screens_to_string(L.current_screen);
-        global_data.input_locked = 0;
+        reset_input_lock();
     }
 
     if (global_data.config->general.touch_input) {

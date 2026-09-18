@@ -1,11 +1,22 @@
 #include "animation.h"
-#include "global_data.h"
 #include "rapidjson/error/en.h"
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 using std::runtime_error;
+
+namespace {
+    int input_lock_count = 0;
+}
+
+bool is_input_locked() {
+    return input_lock_count > 0;
+}
+
+void reset_input_lock() {
+    input_lock_count = 0;
+}
 
 BaseAnimation::BaseAnimation(double duration, double delay, bool loop, bool lock_input)
     : duration(duration), delay(delay), delay_saved(delay),
@@ -55,7 +66,7 @@ double BaseAnimation::applyEasing(double progress, const std::optional<EaseType>
 void BaseAnimation::update(double current_time_ms) {
     if (lock_input && is_finished && !unlocked) {
         unlocked = true;
-        global_data.input_locked--;
+        input_lock_count--;
     }
     if (loop && is_finished) {
         restart();
@@ -70,7 +81,7 @@ void BaseAnimation::restart() {
     if (is_started) {
         unlocked = false;
         if (lock_input) {
-            global_data.input_locked++;
+            input_lock_count++;
         }
     }
 }
@@ -85,7 +96,7 @@ void BaseAnimation::pause() {
     is_started = false;
     if (lock_input && !unlocked) {
         unlocked = true;
-        global_data.input_locked--;
+        input_lock_count--;
     }
 }
 
@@ -93,7 +104,7 @@ void BaseAnimation::unpause() {
     is_started = true;
     if (lock_input && unlocked) {
         unlocked = false;
-        global_data.input_locked++;
+        input_lock_count++;
     }
 }
 
@@ -474,9 +485,6 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         throw std::runtime_error("Animation requires a string 'type'");
     }
     std::string type = anim_obj["type"].GetString();
-    // "sample" derives its natural duration from its table window, so the key
-    // is optional there; every other type keeps requiring it (the old
-    // unconditional GetDouble() threw on absence, matching this).
     double duration = 0.0;
     if (anim_obj.HasMember("duration")) {
         if (!anim_obj["duration"].IsNumber()) {
@@ -484,10 +492,10 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         }
         duration = anim_obj["duration"].IsDouble() ? anim_obj["duration"].GetDouble()
                  : static_cast<double>(anim_obj["duration"].GetInt());
-        if (type != "sample" && duration <= 0.0) {
+        if (duration <= 0.0) {
             throw std::runtime_error("Animation of type '" + type + "' requires a positive duration");
         }
-    } else if (type != "sample") {
+    } else {
         throw std::runtime_error("Animation of type '" + type + "' requires duration");
     }
 
@@ -608,13 +616,6 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_ease_opt("ease_in"),
             get_ease_opt("ease_out")
         );
-    } else if (type == "sample") {
-        // No sample-table data source exists anymore, so this always falls
-        // back (the FAIL-SOFT path the type was designed with from the start).
-        if (anim_obj.HasMember("fallback")) {
-            return createAnimation(anim_obj["fallback"]);
-        }
-        throw std::runtime_error("Animation of type 'sample' has no 'fallback' to use");
     } else {
         throw std::runtime_error("Unknown animation type: " + type);
     }
@@ -667,9 +668,6 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
         throw;
     }
 
-    // temp_doc (and the pool allocator/Values it owns) is about to go out of
-    // scope; drop the now-dangling references instead of leaving them for a
-    // later parse_animations() call or destructor to touch.
     raw_anims.clear();
     allocator = nullptr;
 

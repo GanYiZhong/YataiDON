@@ -1,4 +1,5 @@
 #include "game_2p.h"
+#include "../libs/animation.h"
 #include "../libs/input.h"
 
 void Game2PScreen::init_tja(fs::path song) {
@@ -53,7 +54,7 @@ std::optional<Screens> Game2PScreen::update() {
     poll_pending_song();
     if (transition->is_finished()) {
         start_song(ms_from_start);
-        global_data.input_locked = 0;
+        reset_input_lock();
     }
     resync_song(current_time);
 

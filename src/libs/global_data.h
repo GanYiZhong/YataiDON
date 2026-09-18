@@ -219,7 +219,6 @@ struct GlobalData {
     int total_songs = 0;
     PlayerNum player_num = PlayerNum::P1;
     PlayerNum first_login_player = PlayerNum::P1;
-    int input_locked = 0;
     std::vector<SessionData> session_data = std::vector<SessionData>(3);
     std::vector<int> last_difficulty = std::vector<int>(3, -1);
     std::vector<fs::path> dan_folder = std::vector<fs::path>(3);

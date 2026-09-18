@@ -1,4 +1,5 @@
 #include "game_practice.h"
+#include "../libs/animation.h"
 #include "../libs/input.h"
 #include <cmath>
 
@@ -301,7 +302,7 @@ std::optional<Screens> PracticeGameScreen::update() {
     poll_pending_song();
     if (transition->is_finished()) {
         start_song(current_ms);
-        global_data.input_locked = 0;
+        reset_input_lock();
     }
 
     resync_song(current_ms);
