@@ -1307,8 +1307,10 @@ void Player::drumroll_counter_manager(double current_ms) {
     if (drumroll_counter.has_value()) {
         if (drumroll_counter->is_finished() && !is_drumroll) {
             drumroll_counter.reset();
-        } else {
+        } else if (is_drumroll) {
             drumroll_counter->update(current_ms, curr_drumroll_count);
+        } else {
+            drumroll_counter->update_animations(current_ms);
         }
     }
 }

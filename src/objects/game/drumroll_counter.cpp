@@ -25,6 +25,11 @@ void DrumrollCounter::update(double current_ms, int count) {
     update_count(count);
 }
 
+void DrumrollCounter::update_animations(double current_ms) {
+    fade->update(current_ms);
+    stretch->update(current_ms);
+}
+
 void DrumrollCounter::draw(float y) {
     tex.draw_texture(DRUMROLL_COUNTER::BUBBLE, {.y=y, .fade=fade->attribute});
     std::string counter = std::to_string(drumroll_count);

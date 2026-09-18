@@ -521,8 +521,11 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
 
                 fs::path tex_dir = folder / tex_name;
                 fs::path tex_file = folder / (tex_name + ".png");
+                // "file" lets several keys share one atlas PNG, distinguished by "crop".
+                bool file_override = m.value.IsObject() && m.value.HasMember("file") && m.value["file"].IsString();
+                if (file_override) tex_file = folder / m.value["file"].GetString();
 
-                if (fs::is_directory(tex_dir)) {
+                if (!file_override && fs::is_directory(tex_dir)) {
                     auto frames = sorted_frames(tex_dir);
                     pending.push_back({tex_id, tex_name, &m.value, cache_key,
                                        files.size(), frames.size(), true});

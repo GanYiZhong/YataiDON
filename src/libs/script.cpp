@@ -12,6 +12,15 @@
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
 
+static std::optional<EaseType> parse_ease_type(const sol::optional<std::string>& ease_str) {
+    if (!ease_str) return std::nullopt;
+    if (ease_str == "quadratic") return EaseType::Quadratic;
+    if (ease_str == "cubic") return EaseType::Cubic;
+    if (ease_str == "exponential") return EaseType::Exponential;
+    spdlog::error("Unknown ease type: {}", ease_str.value());
+    return std::nullopt;
+}
+
 static SessionData& current_session() {
     static SessionData fallback{};
     if (global_data.session_data.empty()) return fallback;
@@ -240,8 +249,8 @@ void ScriptManager::register_lua_bindings() {
         double delay = 0.0;
         bool loop = false;
         bool lock_input = false;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
         std::optional<double> reverse_delay = std::nullopt;
 
         if (params) {
@@ -252,11 +261,8 @@ void ScriptManager::register_lua_bindings() {
             loop = t["loop"].get_or(loop);
             lock_input = t["lock_input"].get_or(lock_input);
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
 
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
@@ -272,8 +278,8 @@ void ScriptManager::register_lua_bindings() {
         bool loop = false;
         bool lock_input = false;
         std::optional<double> reverse_delay = std::nullopt;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
 
         if (params) {
             sol::table t = params.value();
@@ -286,11 +292,8 @@ void ScriptManager::register_lua_bindings() {
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
         }
 
         return std::make_unique<MoveAnimation>(duration, total_distance, loop, lock_input, start_position, delay, reverse_delay, ease_in, ease_out);
@@ -349,8 +352,8 @@ void ScriptManager::register_lua_bindings() {
         bool loop = false;
         bool lock_input = false;
         std::optional<double> reverse_delay = std::nullopt;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
 
         if (params) {
             sol::table t = params.value();
@@ -363,11 +366,8 @@ void ScriptManager::register_lua_bindings() {
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
         }
 
         return std::make_unique<TextureResizeAnimation>(duration, initial_size, loop, lock_input, final_size, delay, reverse_delay, ease_in, ease_out);

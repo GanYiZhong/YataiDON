@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cmath>
-#include "../../libs/text.h"
+#include "../../../libs/text.h"
 #include "../../enums.h"
 #include "box_yellow.h"
 

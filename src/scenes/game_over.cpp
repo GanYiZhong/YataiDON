@@ -1,6 +1,6 @@
 #include "game_over.h"
-#include "../../libs/audio.h"
-#include "../../libs/global_data.h"
+#include "../libs/audio.h"
+#include "../libs/global_data.h"
 
 void GameOverScreen::on_screen_start() {
     Screen::on_screen_start();

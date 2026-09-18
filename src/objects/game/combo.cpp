@@ -71,7 +71,7 @@ void Combo::draw(float y) {
         return tex.textures.find((uint32_t)id) != tex.textures.end();
     };
     TexID digit_tex = COMBO::COUNTER;
-    if (tiers && gold) {
+    if (gold) {
         digit_tex = have(COMBO::COUNTER_GOLD) ? COMBO::COUNTER_GOLD
                   : have(COMBO::COUNTER_100)  ? COMBO::COUNTER_100
                   : COMBO::COUNTER;

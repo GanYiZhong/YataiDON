@@ -478,7 +478,6 @@ if(NETWORK_ENABLED)
 endif()
 
 # miniz (ZIP reading, used for .osz extraction)
-set(AMALGAMATE_SOURCES ON CACHE BOOL "" FORCE)
 message(STATUS "Fetching miniz...")
 FetchContent_Declare(
     miniz
