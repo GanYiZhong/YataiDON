@@ -241,9 +241,8 @@ const SkinInfo& DanGameScreen::dan_exam_info() {
 
 int DanGameScreen::get_exam_progress(const Exam& exam) {
     Player* p = players[0].get();
-    float gauge_pct = dan_gauge ? dan_gauge->get_length() : 0.0f;
 
-    if (exam.type == "gauge")        return (int)gauge_pct;
+    if (exam.type == "gauge")        return dan_gauge ? dan_gauge->get_percent() : 0;
     if (exam.type == "judgeperfect") return p->get_good();
     if (exam.type == "judgegood")    return p->get_ok();
     if (exam.type == "judgebad")     return p->get_bad();

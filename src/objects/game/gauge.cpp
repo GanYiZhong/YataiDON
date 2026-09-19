@@ -9,10 +9,10 @@ Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
                  : this->difficulty <= (int)Difficulty::HARD   ? 7000
                                                               : 8000;
     const GaugeTable& table_row = table[this->difficulty][std::clamp(level - 1, 0, 9)];
-    const float denom = std::max(1, total_notes) * table_row.soul_percent;
-    good_points = (denom > 0.0f) ? (int)std::ceil(1000000.0f / denom) : 0;
-    ok_points   = (int)std::round(good_points * table_row.ok_multiplier);
-    bad_points  = (int)std::round(good_points * table_row.bad_multiplier);
+    const double denom = std::max(1, total_notes) * (double)table_row.soul_percent;
+    good_points = (denom > 0.0) ? 1'000'000.0 / denom : 0;
+    ok_points   = good_points * table_row.ok_multiplier;
+    bad_points  = good_points * table_row.bad_multiplier;
     points = 0;
 
     if (this->difficulty == (int)Difficulty::EASY)      string_diff = "_easy";
@@ -66,23 +66,29 @@ Gauge Gauge::dan(int total_notes, PlayerNum player_num) {
     return g;
 }
 
+void Gauge::apply_points_clamped(double delta) {
+    previous_points = points;
+    points = std::clamp(points + delta, 0.0, (double)max_points);
+    if (std::abs(points - max_points) < POINTS_EPS) points = max_points;
+    if (std::abs(points - clear_points) < POINTS_EPS) points = clear_points;
+}
+
 void Gauge::add_good() {
     if (gauge_update_anim) gauge_update_anim->start();
-    previous_points = points;
-    points = std::max(0, std::min(max_points, points + good_points));
+    apply_points_clamped(good_points);
 }
 
 void Gauge::add_ok() {
     if (gauge_update_anim) gauge_update_anim->start();
-    previous_points = points;
-    points = std::max(0, std::min(max_points, points + ok_points));
+    apply_points_clamped(ok_points);
 }
 
 void Gauge::add_bad() {
-    previous_points = points;
-    points = std::max(0, std::min(max_points, points + bad_points));
+    apply_points_clamped(bad_points);
 
-    if (previous_points == max_points && points < max_points) {
+    //this comparison is safe because apply_points_clamped snaps points onto max_points when within POINTS_EPS
+    const bool was_full = previous_points >= max_points;
+    if (was_full && points < max_points) {
         if (rainbow_fade_in.has_value() && rainbow_fade_in.value()) rainbow_fade_in.value()->pause();
         rainbow_fade_in.reset();
         rainbow_start_ms = -1.0;
@@ -117,8 +123,11 @@ void Gauge::draw(float y) {
 
     const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
     const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
-    int gauge_length_int = points * bar_units / max_points;
-    int previous_length_int = previous_points * bar_units / max_points;
+
+    // explicit floor: points is now double, so the truncation would otherwise be an implicit narrowing
+    int gauge_length_int = (int)std::floor(points * bar_units / max_points);
+    int previous_length_int = (int)std::floor(previous_points * bar_units / max_points);
+
     int clear_point = std::clamp(clear_points * bar_units / max_points, 1, bar_units);
     const float bar_width = t_bar->width;
 
@@ -224,8 +233,11 @@ void Gauge::draw_dan() {
 
     const SkinInfo* cells_cfg = tex.skin_entry("gauge_cells");
     const int bar_units = (cells_cfg && cells_cfg->x > 0) ? (int)std::lround(cells_cfg->x) : 87;
-    const int gauge_length_int    = points * bar_units / max_points;
-    const int previous_length_int = previous_points * bar_units / max_points;
+
+    // explicit floor: points is now double, so the truncation would otherwise be an implicit narrowing
+    const int gauge_length_int    = (int)std::floor(points * bar_units / max_points);
+    const int previous_length_int = (int)std::floor(previous_points * bar_units / max_points);
+
     const float bar_width = bar_id->width;
 
     const bool cell_fade_in = tex.options[SCO::GAUGE_CELL_FADE_IN];

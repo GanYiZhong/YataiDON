@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "../../libs/global_data.h"
 #include "../../libs/animation.h"
 
@@ -23,18 +25,24 @@ public:
     bool get_is_clear() const { return points >= clear_points; }
     bool get_is_rainbow() const { return points >= max_points; }
     bool is_dan() const { return dan_mode; }
-    float get_length() const { return (float)points / max_points * 100;}
+    float get_length() const { return (float)(points / max_points * 100);}
+
+    // exam threshold check: floor like the arcade and use POINTS_EPS to absorb
+    // double accumulation. computed before any narrowing to float.
+    int get_percent() const { return (int)std::floor((points + POINTS_EPS) / max_points * 100.0); }
 
 private:
     void draw_dan();
+    void apply_points_clamped(double delta);
     bool dan_mode = false;
-    int good_points;
-    int ok_points;
-    int bad_points;
-    int points = 0;
+    double good_points;
+    double ok_points;
+    double bad_points;
+    double points = 0;
     int max_points = 10000;
     int clear_points = 8000;
     int points_per_bar = 200;
+    static constexpr double POINTS_EPS = 1e-6;
 
     std::string string_diff;
     PlayerNum player_num;
@@ -45,7 +53,7 @@ private:
     float rainbow_frac = 0.0f;
     bool anims_loaded = false;
     int difficulty;
-    int previous_points = 0;
+    double previous_points = 0;
     static constexpr float max_length = 100.0f;
 
     // Textures resolved once in the constructor (string_diff/player_num never change
