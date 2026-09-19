@@ -1,7 +1,9 @@
 """Generate src/libs/han_fold_table.h (usage: python tools/gen_han_fold.py [out.h]): code point -> canonical (Japanese shinjitai) form.
 Sources: OpenCC STCharacters.txt (simplified -> traditional, first candidate) and
 JPShinjitaiCharacters.txt (shinjitai -> kyujitai variants, reversed here)."""
-import os, sys
+import os
+import sys
+
 here = os.path.dirname(os.path.abspath(__file__))
 D = os.path.join(here, 'opencc_data')
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', 'src', 'libs', 'han_fold_table.h')
@@ -49,8 +51,7 @@ with open(out, 'w', encoding='utf-8', newline='\n') as fh:
     fh.write('#pragma once\n#include <cstdint>\n#include <cstddef>\n\n')
     fh.write('struct HanFoldPair { uint32_t from, to; };\n')
     fh.write('static constexpr HanFoldPair HAN_FOLD_TABLE[] = {\n')
-    for i in range(0, len(pairs), 8):
-        fh.write('    ' + ' '.join('{0x%04X,0x%04X},' % p for p in pairs[i:i+8]) + '\n')
+    fh.writelines('    ' + ' '.join('{{0x{:04X},0x{:04X}}},'.format(*p) for p in pairs[i:i+8]) + '\n' for i in range(0, len(pairs), 8))
     fh.write('};\n')
     fh.write('static constexpr size_t HAN_FOLD_TABLE_SIZE = sizeof(HAN_FOLD_TABLE) / sizeof(HAN_FOLD_TABLE[0]);\n')
 print(len(pairs), 'entries ->', out)

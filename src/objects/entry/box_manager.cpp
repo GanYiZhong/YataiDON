@@ -1,8 +1,5 @@
 ﻿#include "box_manager.h"
 #include "../../libs/global_data.h"
-#include "../enums.h"          // GENRE_MAP / GenreIndex — see dan_library_available()
-
-#include <fstream>
 
 static constexpr int ENTRY_FADE_OUT_ANIM_ID = 9;
 

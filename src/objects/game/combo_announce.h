@@ -2,8 +2,7 @@
 
 #include "../../libs/animation.h"
 #include "../../libs/global_data.h"
-
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class ComboAnnounce {
 private:

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -82,7 +81,7 @@ std::string test_encodings(const std::filesystem::path& file_path) {
     return "shift-jis";
 }
 
-TJAParser::TJAParser(const std::filesystem::path& path, int start_delay, PlayerNum player_num)
+TJAParser::TJAParser(const std::filesystem::path& path, int start_delay, int player_num)
     : file_path(path), start_ms(static_cast<double>(start_delay)), current_ms(static_cast<double>(start_delay)), player_num(player_num) {
 
     encoding = test_encodings(file_path);
@@ -661,19 +660,19 @@ std::vector<std::vector<std::string>> TJAParser::data_to_notes(int diff) {
         }
 
         if (note_start != -1) {
-            if (player_num == PlayerNum::P1 && p1_start != -1) {
+            if (player_num == 1 && p1_start != -1) {
                 note_start = p1_start;
-            } else if (player_num == PlayerNum::P2 && p2_start != -1) {
+            } else if (player_num == 2 && p2_start != -1) {
                 note_start = p2_start;
             }
         } else {
-            if (player_num == PlayerNum::P1 && p1_start != -1) {
+            if (player_num == 1 && p1_start != -1) {
                 note_start = p1_start;
-            } else if (player_num == PlayerNum::P2 && p2_start != -1) {
+            } else if (player_num == 2 && p2_start != -1) {
                 note_start = p2_start;
-            } else if (player_num == PlayerNum::ALL && p1_start != -1) {
+            } else if (player_num == 0 && p1_start != -1) {
                 note_start = p1_start;
-            } else if (player_num == PlayerNum::ALL && p2_start != -1) {
+            } else if (player_num == 0 && p2_start != -1) {
                 note_start = p2_start;
             }
         }

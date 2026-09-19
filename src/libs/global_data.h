@@ -3,8 +3,7 @@
 #include <cmath>
 
 #include "config.h"
-#include "ray.h"
-#include "parsers/tja.h"
+#include "ray.h" // IWYU pragma: keep
 
 namespace fs = std::filesystem;
 
@@ -12,6 +11,15 @@ namespace ScoreMethod {
     const std::string GEN3 = "gen3";
     const std::string SHINUCHI = "shinuchi";
 }
+
+enum class PlayerNum {
+    ALL = 0,
+    P1 = 1,
+    P2 = 2,
+    TWO_PLAYER = 3,
+    DAN = 4,
+    AI = 5
+};
 
 enum class Difficulty {
     BACK = -3,

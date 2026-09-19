@@ -1,6 +1,5 @@
 #include "script.h"
 
-#include <string_view>
 #include <cstring>
 #include <algorithm>
 #include "global_data.h"
@@ -670,7 +669,7 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
             else if (p == "music")    preset = VolumePreset::MUSIC;
             else if (p == "voice")    preset = VolumePreset::VOICE;
             else if (p == "hitsound") preset = VolumePreset::HITSOUND;
-        else if (p == "attract_mode") preset = VolumePreset::ATTRACT_MODE;
+            else if (p == "attract_mode") preset = VolumePreset::ATTRACT_MODE;
         }
         audio.set_sound_loop(name, loop.value_or(false));
         audio.play_sound(name, preset);

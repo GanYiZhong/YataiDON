@@ -1,7 +1,13 @@
 #pragma once
 
-#include "global_data.h"
+#include <atomic>
+#include <mutex>
+#include <thread>
 #include <unordered_set>
+#include <vector>
+
+#include "ray.h" // IWYU pragma: keep
+#include "global_data.h"
 
 extern std::atomic<bool> input_thread_running;
 extern std::thread input_thread;

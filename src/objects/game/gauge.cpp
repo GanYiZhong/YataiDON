@@ -1,6 +1,5 @@
 #include "gauge.h"
 #include <cmath>
-#include "../../libs/texture.h"
 
 Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     : player_num(player_num) {

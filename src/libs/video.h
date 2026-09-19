@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include "ray.h"
+#include "ray.h" // IWYU pragma: keep
 #include "av.h"
 
 namespace fs = std::filesystem;

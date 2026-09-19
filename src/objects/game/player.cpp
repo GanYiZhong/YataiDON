@@ -1662,7 +1662,7 @@ void Player::draw_modifiers(float y) {
         int slot = 0;
         for (TextureObject* id : badges) {
             const float gx = grid->x + (slot % cols) * grid->width;
-            const float gy = grid->y + (slot / cols) * grid->height;
+            const float gy = grid->y + ((float)slot / cols) * grid->height;
             float by = y + gy;
             if (is_2p) {
                 float cover_h = (float)t_lane_score_cover->y2[0];

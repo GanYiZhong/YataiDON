@@ -6,9 +6,9 @@
 #include "modifier.h"
 #include "ura_switch.h"
 #include "diff_sort.h"
+#include "../../libs/texture.h"
 
 class SongSelectScript;
-struct TextureObject;
 
 class SongSelectPlayer {
 public:

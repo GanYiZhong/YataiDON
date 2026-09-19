@@ -1,5 +1,4 @@
 #include "drumroll_counter.h"
-#include "../../libs/texture.h"
 
 static constexpr int DRUMROLL_COUNTER_FADE_ANIM_ID = 8;
 static constexpr int DRUMROLL_COUNTER_STRETCH_ANIM_ID = 9;

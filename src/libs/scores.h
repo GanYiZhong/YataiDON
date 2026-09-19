@@ -1,6 +1,7 @@
 #pragma once
 
 #include "global_data.h"
+#include "parsers/tja.h"
 #include <chrono>
 #include <sqlite3.h>
 #include <mutex>

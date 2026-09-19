@@ -1,5 +1,4 @@
 #include "fc_animation.h"
-#include "../../libs/texture.h"
 #include "../../libs/audio.h"
 
 FCAnimation::FCAnimation(bool is_2p, bool donderful)

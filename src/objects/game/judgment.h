@@ -3,7 +3,7 @@
 #include "../enums.h"
 #include "../../libs/animation.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class Judgment {
 private:

@@ -1,5 +1,4 @@
 #include "note_arc.h"
-#include "../../libs/texture.h"
 #include <cmath>
 
 std::unordered_map<NoteArc::CacheKey, std::vector<std::pair<int, int>>, NoteArc::CacheKeyHash> NoteArc::_arc_points_cache;

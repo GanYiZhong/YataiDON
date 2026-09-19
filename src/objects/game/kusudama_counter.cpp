@@ -1,5 +1,4 @@
 #include "kusudama_counter.h"
-#include "../../libs/texture.h"
 
 KusudamaCounter::KusudamaCounter(int total)
     : balloon_total(total), balloon_count(0), is_popped(false) {

@@ -3,7 +3,7 @@
 #include "../../libs/animation.h"
 #include "../../libs/ray.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class SearchBox {
 private:

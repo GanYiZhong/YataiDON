@@ -1,5 +1,4 @@
 #include "fail_animation.h"
-#include "../../libs/texture.h"
 #include "../../libs/audio.h"
 
 FailAnimation::FailAnimation(bool is_2p)

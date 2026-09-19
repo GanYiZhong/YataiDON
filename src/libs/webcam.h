@@ -1,6 +1,6 @@
 #pragma once
 #include <SDL3/SDL.h>
-#include "ray.h"
+#include "ray.h" // IWYU pragma: keep
 #include <optional>
 
 class WebCamera {

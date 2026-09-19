@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../libs/script.h"
-#include "../../libs/global_data.h"
+#include "../../libs/global_data.h" // IWYU pragma: keep
 #include <vector>
 #include <unordered_map>
 

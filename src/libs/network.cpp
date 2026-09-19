@@ -2,6 +2,7 @@
 #include "scores.h"
 #include "color_utils.h"
 #include "global_data.h"
+#include "parsers/tja.h"
 #include "sha256.h"
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>

@@ -1,8 +1,7 @@
 #pragma once
 
+#include "../../libs/texture.h"
 #include "../../libs/ray.h"
-
-struct TextureObject;
 
 class JudgeCounter {
 private:

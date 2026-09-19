@@ -1,9 +1,8 @@
 #pragma once
 
 #include "../../libs/animation.h"
+#include "../../libs/texture.h"
 #include "../enums.h"
-
-struct TextureObject;
 
 class BranchIndicator {
 private:

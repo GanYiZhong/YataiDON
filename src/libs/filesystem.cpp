@@ -1,5 +1,5 @@
 #include "filesystem.h"
-#include "miniz.h"
+#include "miniz.h" // IWYU pragma: keep
 #ifdef SUPPORT_FUMEN
 #include "optional/gen3.h"
 #include "optional/gen4.h"
@@ -10,7 +10,6 @@
 #include <spdlog/spdlog.h>
 #ifndef _WIN32
     #include <unistd.h>
-    #include <climits>
 #endif
 
 #ifdef YATAIDON_PLATFORM_IOS

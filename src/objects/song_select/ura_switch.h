@@ -2,7 +2,7 @@
 
 #include "../../libs/animation.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class UraSwitchAnimation {
 private:

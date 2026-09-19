@@ -1,5 +1,4 @@
 #include "combo.h"
-#include "../../libs/texture.h"
 #include "../../libs/global_data.h"
 #include <cmath>
 #include <stdexcept>
@@ -69,7 +68,7 @@ void Combo::draw(float y) {
     if (combo < 3) return;
 
     std::string counter = std::to_string(combo);
-    
+
     const bool tiers  = tex.options[SCO::COMBO_COLOR_TIERS];
     const bool gold   = combo >= 100;
     const bool silver = tiers && combo >= 50 && combo < 100;

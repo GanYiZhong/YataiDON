@@ -1,5 +1,4 @@
 #include "fireworks.h"
-#include "../../libs/texture.h"
 #include <algorithm>
 
 static constexpr int GOGO_EXPLOSION_ANIM_ID = 23;

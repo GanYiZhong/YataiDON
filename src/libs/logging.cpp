@@ -10,7 +10,6 @@
 #include <spdlog/sinks/android_sink.h>
 #endif
 #include <algorithm>
-#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstdint>

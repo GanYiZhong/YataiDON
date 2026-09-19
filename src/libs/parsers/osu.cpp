@@ -1,7 +1,7 @@
 #include "osu.h"
+#include "../md5.h"
 #include <fstream>
 #include <sstream>
-#include <cmath>
 #include <algorithm>
 
 std::vector<std::string> OsuParser::read_file_lines(const fs::path& path) {

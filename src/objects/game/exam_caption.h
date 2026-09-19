@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../libs/text.h"
+#include "../../libs/global_data.h"
 
 #include <map>
 #include <memory>

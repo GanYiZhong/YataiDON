@@ -4,6 +4,7 @@
 #ifdef SUPPORT_FUMEN
 #include "optional/fumen.h"
 #endif
+#include "global_data.h"
 #include "parsers/osu.h"
 #include "parsers/tja.h"
 

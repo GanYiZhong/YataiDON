@@ -1,5 +1,4 @@
 #include "drum_hit_effect.h"
-#include "../../libs/texture.h"
 
 DrumHitEffect::DrumHitEffect(DrumType type, Side side)
             : type(type), side(side) {

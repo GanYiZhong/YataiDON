@@ -188,9 +188,6 @@ private:
     TextureObject* lane_icon_tex_id = nullptr;
     TextureObject* note_tex_ids[10] = {};
 
-    // Textures resolved once in the constructor (after the owning screen's
-    // load_screen_textures() has already run), instead of calling tex.get_texture()
-    // every frame from draw()/draw_practice()/draw_overlays()/draw_modifiers().
     void init_player_textures();
 
     TextureObject* t_lane_background = nullptr;

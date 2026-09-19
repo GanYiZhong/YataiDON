@@ -1,5 +1,4 @@
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <rlgl.h>
 #if defined(PLATFORM_ANDROID) || defined(YATAIDON_PLATFORM_IOS)
@@ -53,9 +52,6 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
-
-namespace fs = std::filesystem;
-
 
 void draw_outer_border(int screen_width, int screen_height, ray::Color last_color) {
     DrawRectangle(-screen_width, 0, screen_width, screen_height, last_color);

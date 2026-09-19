@@ -5,7 +5,6 @@
 #include <string>
 
 #include "../../libs/audio.h"
-#include "../../libs/global_data.h"
 #include "../../libs/screen.h"
 #include "../../libs/text.h"
 #include "../../libs/texture.h"

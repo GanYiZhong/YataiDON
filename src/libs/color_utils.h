@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 #include <string>
-#include "ray.h"
+#include "ray.h" // IWYU pragma: keep
 
 inline ray::Color parse_hex_color(const std::string& input) {
     std::string color = input;

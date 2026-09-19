@@ -27,11 +27,11 @@ SongParser::SongParser(const fs::path& path, int start_delay, PlayerNum player_n
     else if (ext == ".bin")
         impl = FumenParser(path, start_delay);
     else if (ext == ".tja")
-        impl = TJAParser(path, start_delay, player_num);
+        impl = TJAParser(path, start_delay, static_cast<int>(player_num));
     else {
         spdlog::warn("SongParser: unrecognized chart extension '{}' for {} -- treating as TJA",
                      ext, path.string());
-        impl = TJAParser(path, start_delay, player_num);
+        impl = TJAParser(path, start_delay, static_cast<int>(player_num));
     }
 #else
     if (ext == ".osu")
@@ -40,7 +40,7 @@ SongParser::SongParser(const fs::path& path, int start_delay, PlayerNum player_n
         if (ext != ".tja")
             spdlog::warn("SongParser: unrecognized chart extension '{}' for {} -- treating as TJA",
                          ext, path.string());
-        impl = TJAParser(path, start_delay, player_num);
+        impl = TJAParser(path, start_delay, static_cast<int>(player_num));
     }
 #endif
     sync();

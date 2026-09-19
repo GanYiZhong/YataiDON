@@ -2,7 +2,7 @@
 
 #include "../../../libs/scores.h"
 
-struct TextureObject;
+#include "../../../libs/texture.h"
 
 class ScoreHistory {
 public:

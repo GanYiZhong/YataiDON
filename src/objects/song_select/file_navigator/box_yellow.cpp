@@ -1,5 +1,4 @@
 #include "box_yellow.h"
-#include "../../../libs/texture.h"
 
 YellowBox::YellowBox()
 {

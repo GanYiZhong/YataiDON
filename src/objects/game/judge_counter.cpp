@@ -1,4 +1,3 @@
-#include "../../libs/texture.h"
 #include "judge_counter.h"
 #include <cmath>
 

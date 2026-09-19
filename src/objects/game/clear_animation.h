@@ -1,8 +1,7 @@
 #pragma once
 
 #include "../../libs/animation.h"
-
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class ClearAnimation {
 private:

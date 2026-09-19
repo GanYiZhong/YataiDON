@@ -1,9 +1,7 @@
 #pragma once
 
 #include "../../libs/animation.h"
-#include "../../libs/ray.h"
-
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class Combo {
 private:

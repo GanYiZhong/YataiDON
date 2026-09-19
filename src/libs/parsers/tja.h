@@ -1,7 +1,6 @@
 #pragma once
 
 #include <spdlog/spdlog.h>
-#include "../md5.h"
 #include <cstddef>
 #include <deque>
 #include <filesystem>
@@ -14,15 +13,6 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-
-enum class PlayerNum {
-    ALL = 0,
-    P1 = 1,
-    P2 = 2,
-    TWO_PLAYER = 3,
-    DAN = 4,
-    AI = 5
-};
 
 struct Modifiers {
     bool auto_play = false;
@@ -262,7 +252,7 @@ public:
 
     TJAParser() = default;
 
-    TJAParser(const std::filesystem::path& path, int start_delay = 0, PlayerNum player_num = PlayerNum::ALL);
+    TJAParser(const std::filesystem::path& path, int start_delay = 0, int player_num = 0);
 
     std::filesystem::path file_path;
     TJAMetadata metadata;
@@ -283,7 +273,7 @@ private:
     double start_ms;
     double current_ms;
     NoteList master_notes;
-    PlayerNum player_num;
+    int player_num;
     std::string encoding;
     std::vector<std::string> data;
     std::deque<NoteList> branch_m;

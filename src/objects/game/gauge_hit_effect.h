@@ -4,7 +4,7 @@
 #include "../../libs/parsers/tja.h"
 #include "../../libs/ray.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class GaugeHitEffect {
 private:

@@ -2,7 +2,6 @@
 
 #include "texture.h"
 #include <sol/sol.hpp>
-#include <chrono>
 #include <spdlog/spdlog.h>
 
 class LuaScript {

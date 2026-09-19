@@ -1,4 +1,5 @@
 #include "fumen.h"
+#include "../md5.h"
 #include <algorithm>
 #include <fstream>
 

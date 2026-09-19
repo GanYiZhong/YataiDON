@@ -1,5 +1,4 @@
 #include "lane_hit_effect.h"
-#include "../../libs/texture.h"
 #include <spdlog/spdlog.h>
 
 LaneHitEffect::LaneHitEffect(DrumType type, Judgments judgment)

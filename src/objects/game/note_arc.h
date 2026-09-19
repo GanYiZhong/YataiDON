@@ -3,7 +3,7 @@
 #include "../../libs/global_data.h"
 #include "../../libs/parsers/tja.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class NoteArc {
 private:

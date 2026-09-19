@@ -5,9 +5,7 @@
 #ifdef SUPPORT_FUMEN
 #include "optional/nus3bank.h"
 #include "optional/nub.h"
-#include "optional/gen4.h"
 #endif
-#include "texture.h"
 #include "filesystem.h"
 #include <chrono>
 #include <thread>

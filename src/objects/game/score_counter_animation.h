@@ -3,7 +3,7 @@
 #include "../../libs/global_data.h"
 #include "../../libs/animation.h"
 
-struct TextureObject;
+#include "../../libs/texture.h"
 
 class ScoreCounterAnimation {
 private:

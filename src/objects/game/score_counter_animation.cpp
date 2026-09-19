@@ -1,5 +1,4 @@
 #include "score_counter_animation.h"
-#include "../../libs/texture.h"
 #include <cmath>
 
 ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, bool is_2p) : counter(counter) {

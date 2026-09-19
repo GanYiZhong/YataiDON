@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../libs/global_data.h"
+#include "../../libs/parsers/tja.h"
 #include "../../libs/scores.h"
 #include "../../libs/text.h"
 #include <unordered_map>

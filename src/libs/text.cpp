@@ -1,6 +1,5 @@
 #include "text.h"
 #include "han_fold_table.h"
-#include <chrono>
 #include <vector>
 #include <cmath>
 #include <cstdlib>
