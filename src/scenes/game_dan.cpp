@@ -140,7 +140,7 @@ void DanGameScreen::init_dan() {
     exam_song_failed.assign(sd.selected_dan_exam.size(), {false, false, false});
     dan_info_cache.reset();
     song_max_combo = 0;
-    dan_gauge.emplace(Gauge::dan(total_notes, global_data.player_num));
+    dan_gauge.emplace(Gauge::dan(sd.selected_dan, total_notes, global_data.player_num));
 
     // Create player for first song
     const auto& first = sd.selected_dan[0];

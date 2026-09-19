@@ -11,10 +11,11 @@ class Gauge {
 public:
 
     Gauge(int total_notes, int difficulty, int level, PlayerNum player_num);
-    // Dan course gauge: one bar across the whole course, no clear zone, filled by every
-    // note (good 1, ok 1/2, bad -2 per note out of total_notes), drawn from game/gauge_dan
-    // at the positions its texture.json gives (not relative to a lane).
-    static Gauge dan(int total_notes, PlayerNum player_num);
+    // Dan course gauge: one bar across the whole course, no clear zone, drawn from
+    // game/gauge_dan at the positions its texture.json gives (not relative to a lane).
+    // Rates come from one effective row for the course: the harmonic mean of the songs
+    // soul percentages, ok/bad averaged. total_notes is the combined count of all songs.
+    static Gauge dan(const std::vector<DanSongEntry>& songs, int total_notes, PlayerNum player_num);
 
     void add_good();
     void add_ok();

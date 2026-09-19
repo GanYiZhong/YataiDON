@@ -53,16 +53,34 @@ Gauge::Gauge(int total_notes, int difficulty, int level, PlayerNum player_num)
     t_clear_dark = tex.get_texture("gauge/clear_dark_" + global_data.config->general.language);
 }
 
-Gauge Gauge::dan(int total_notes, PlayerNum player_num) {
-    Gauge g(total_notes, (int)Difficulty::ONI, 10, player_num);
+Gauge Gauge::dan(const std::vector<DanSongEntry>& songs, int total_notes, PlayerNum player_num) {
+    // a missing LEVEL in the tja arrives as 0. treat it as oni 10 like player does
+    auto diff_of  = [](const DanSongEntry& s) { return s.level <= 0 ? (int)Difficulty::ONI : s.difficulty; };
+    auto level_of = [](const DanSongEntry& s) { return s.level <= 0 ? 10 : s.level; };
+
+    const DanSongEntry& first = songs.at(0);
+    Gauge g(total_notes, diff_of(first), level_of(first), player_num);
     g.dan_mode     = true;
     g.string_diff  = "";
-    g.max_points   = std::max(1, total_notes) * 40;   // all-good fills it exactly
-    g.clear_points = g.max_points;                     // no norma: clear == full
-    g.good_points  = 40;
-    g.ok_points    = 20;
-    g.bad_points   = -80;
-    g.points = g.previous_points = 0;
+    g.clear_points = g.max_points;   // no norma zone, the course bar is full or it isn't
+
+    // one rate for the whole course. harmonic mean of the songs soul percentages is what
+    // the arcade does when it breaks the gauge into thirds. ok/bad just averaged
+    GaugeTable row{0.0, 0.0, 0.0};
+    double inv_sum = 0.0;
+    for (const DanSongEntry& s : songs) {
+        const int d = std::clamp(diff_of(s), 0, (int)Difficulty::ONI);
+        const GaugeTable& r = g.table[d][std::clamp(level_of(s) - 1, 0, 9)];
+        inv_sum            += 1.0 / r.soul_percent;
+        row.ok_multiplier  += r.ok_multiplier  / songs.size();
+        row.bad_multiplier += r.bad_multiplier / songs.size();
+    }
+    row.soul_percent = songs.size() / inv_sum;
+
+    const double denom = std::max(1, total_notes) * row.soul_percent;
+    g.good_points = (denom > 0.0) ? 1'000'000.0 / denom : 0;
+    g.ok_points   = g.good_points * row.ok_multiplier;
+    g.bad_points  = g.good_points * row.bad_multiplier;
     return g;
 }
 
