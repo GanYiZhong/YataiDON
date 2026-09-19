@@ -13,6 +13,18 @@ Judgment::Judgment(Judgments type, bool big)
     fade_animation_2->start();
     fade_animation_1->start();
     texture_animation->start();
+
+    if (type == Judgments::GOOD) {
+        t_effect = tex.get_texture(big ? "hit_effect/hit_effect_good_big" : "hit_effect/hit_effect_good");
+        t_outer_effect = tex.get_texture(big ? "hit_effect/outer_good_big" : "hit_effect/outer_good");
+        t_text = tex.get_texture("hit_effect/judge_good");
+    } else if (type == Judgments::OK) {
+        t_effect = tex.get_texture(big ? "hit_effect/hit_effect_ok_big" : "hit_effect/hit_effect_ok");
+        t_outer_effect = tex.get_texture(big ? "hit_effect/outer_ok_big" : "hit_effect/outer_ok");
+        t_text = tex.get_texture("hit_effect/judge_ok");
+    } else if (type == Judgments::BAD) {
+        t_text = tex.get_texture("hit_effect/judge_bad");
+    }
 }
 
 void Judgment::update(double current_ms) {
@@ -29,45 +41,14 @@ void Judgment::update(double current_ms) {
 }
 
 void Judgment::draw_effect(float judge_x, float judge_y) {
-    int index = static_cast<int>(texture_animation->attribute);
-    float hit_fade = fade_animation_1->attribute;
     float fade = fade_animation_2->attribute;
-
-    if (type == Judgments::GOOD) {
-        if (big) {
-            tex.draw_texture(HIT_EFFECT::HIT_EFFECT_GOOD_BIG, {.x=judge_x, .y=judge_y, .fade=fade});
-        } else {
-            tex.draw_texture(HIT_EFFECT::HIT_EFFECT_GOOD, {.x=judge_x, .y=judge_y, .fade=fade});
-        }
-    }
-    else if (type == Judgments::OK) {
-        if (big) {
-            tex.draw_texture(HIT_EFFECT::HIT_EFFECT_OK_BIG, {.x=judge_x, .y=judge_y, .fade=fade});
-        } else {
-            tex.draw_texture(HIT_EFFECT::HIT_EFFECT_OK, {.x=judge_x, .y=judge_y, .fade=fade});
-        }
-    }
+    tex.draw_texture(t_effect, {.x=judge_x, .y=judge_y, .fade=fade});
 }
 
 void Judgment::draw_outer_effect(float judge_x, float judge_y) {
     int index = static_cast<int>(texture_animation->attribute);
     float hit_fade = fade_animation_1->attribute;
-    float fade = fade_animation_2->attribute;
-
-    if (type == Judgments::GOOD) {
-        if (big) {
-            tex.draw_texture(HIT_EFFECT::OUTER_GOOD_BIG,{.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
-        } else {
-            tex.draw_texture(HIT_EFFECT::OUTER_GOOD, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
-        }
-    }
-    else if (type == Judgments::OK) {
-        if (big) {
-            tex.draw_texture(HIT_EFFECT::OUTER_OK_BIG, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
-        } else {
-            tex.draw_texture(HIT_EFFECT::OUTER_OK, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
-        }
-    }
+    tex.draw_texture(t_outer_effect, {.frame=index, .x=judge_x, .y=judge_y, .fade=hit_fade, .blend=ray::BLEND_ADDITIVE});
 }
 
 void Judgment::draw_text(float judge_x, float judge_y) {
@@ -76,13 +57,9 @@ void Judgment::draw_text(float judge_x, float judge_y) {
     float fade = fade_animation_2->attribute;
 
     if (type == Judgments::GOOD) {
-        tex.draw_texture(HIT_EFFECT::JUDGE_GOOD, {.frame=index, .x=judge_x, .y=y + judge_y, .fade=fade});
-    }
-    else if (type == Judgments::OK) {
-        tex.draw_texture(HIT_EFFECT::JUDGE_OK, {.x=judge_x, .y=y + judge_y, .fade=fade});
-    }
-    else if (type == Judgments::BAD) {
-        tex.draw_texture(HIT_EFFECT::JUDGE_BAD, {.x=judge_x, .y=y + judge_y, .fade=fade});
+        tex.draw_texture(t_text, {.frame=index, .x=judge_x, .y=y + judge_y, .fade=fade});
+    } else {
+        tex.draw_texture(t_text, {.x=judge_x, .y=y + judge_y, .fade=fade});
     }
 }
 

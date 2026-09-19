@@ -50,6 +50,13 @@ ComboAnnounce::ComboAnnounce(int combo, double current_ms, PlayerNum player_num)
         throw std::runtime_error("combo announce fade animation missing or of unexpected type");
     }
     fade->start();
+
+    const std::string suffix = std::to_string(static_cast<int>(player_num)) + "p";
+    t_announce_bg = tex.get_texture("combo/announce_bg_" + suffix);
+    t_announce_digit = tex.get_texture("combo/announce_digit_" + suffix);
+    t_announce_text = tex.get_texture("combo/announce_text");
+    t_announce_number = tex.get_texture("combo/announce_number");
+    t_announce_add = tex.get_texture("combo/announce_add");
 }
 
 void ComboAnnounce::update(double current_ms) {
@@ -81,7 +88,7 @@ void ComboAnnounce::draw(float y) {
     float fade_value = is_finished ? fade->attribute : 1 - fade->attribute;
 
     const std::string suffix = std::to_string(static_cast<int>(player_num)) + "p";
-    tex.draw_texture(tex.get_enum("combo/announce_bg_" + suffix),
+    tex.draw_texture(t_announce_bg,
                      {.y = y, .fade = fade_value});
 
     const std::string digit_name = "combo/announce_digit_" + suffix;
@@ -89,7 +96,7 @@ void ComboAnnounce::draw(float y) {
         const std::string number = std::to_string(combo);
         const int n = static_cast<int>(number.size());
         const Layout lay = layout(n);
-        const uint32_t digit_id = static_cast<uint32_t>(tex.get_enum(digit_name));
+        TextureObject* digit_id = t_announce_digit;
         const float dw = CELL * lay.sx;
 
         for (int i = 0; i < n; i++) {
@@ -103,7 +110,7 @@ void ComboAnnounce::draw(float y) {
             });
         }
 
-        tex.draw_texture(COMBO::ANNOUNCE_TEXT, {
+        tex.draw_texture(t_announce_text, {
             .x  = lay.textmc_x + lay.sx * TEXT_DX,
             .y  = y,
             .x2 = TEXT_W * (lay.sx - 1.0f),
@@ -119,20 +126,20 @@ void ComboAnnounce::draw(float y) {
         float hundreds_offset = tex.skin_config[SC::COMBO_ANNOUNCE_HUNDREDS_OFFSET].x;
 
         if (combo % 1000 == 0) {
-            tex.draw_texture(COMBO::ANNOUNCE_NUMBER, {.frame = thousands - 1, .x = tex.skin_config[SC::COMBO_ANNOUNCE_NUMBER_THOUSANDS_X].x, .y = y, .fade = fade_value});
-            tex.draw_texture(COMBO::ANNOUNCE_ADD, {.frame = 0, .x = tex.skin_config[SC::COMBO_ANNOUNCE_ADD_X].x, .y = y, .fade = fade_value});
+            tex.draw_texture(t_announce_number, {.frame = thousands - 1, .x = tex.skin_config[SC::COMBO_ANNOUNCE_NUMBER_THOUSANDS_X].x, .y = y, .fade = fade_value});
+            tex.draw_texture(t_announce_add, {.frame = 0, .x = tex.skin_config[SC::COMBO_ANNOUNCE_ADD_X].x, .y = y, .fade = fade_value});
         } else {
             if (thousands <= 5) {
-                tex.draw_texture(COMBO::ANNOUNCE_ADD, {.frame = thousands, .x = tex.skin_config[SC::COMBO_ANNOUNCE_THOUSANDS_ADD_X].x + thousands_offset, .y = y, .fade = fade_value});
+                tex.draw_texture(t_announce_add, {.frame = thousands, .x = tex.skin_config[SC::COMBO_ANNOUNCE_THOUSANDS_ADD_X].x + thousands_offset, .y = y, .fade = fade_value});
             }
             if (remaining_hundreds > 0) {
-                tex.draw_texture(COMBO::ANNOUNCE_NUMBER, {.frame = remaining_hundreds - 1, .x = hundreds_offset, .y = y, .fade = fade_value});
+                tex.draw_texture(t_announce_number, {.frame = remaining_hundreds - 1, .x = hundreds_offset, .y = y, .fade = fade_value});
             }
         }
         float text_offset = tex.skin_config[SC::COMBO_ANNOUNCE_TEXT_OFFSET].x;
-        tex.draw_texture(COMBO::ANNOUNCE_TEXT, {.x = -text_offset / 2, .y = y, .fade = fade_value});
+        tex.draw_texture(t_announce_text, {.x = -text_offset / 2, .y = y, .fade = fade_value});
     } else if (combo >= 100) {
-        tex.draw_texture(COMBO::ANNOUNCE_NUMBER, {.frame = combo / 100 - 1, .x = 0, .y = y, .fade = fade_value});
-        tex.draw_texture(COMBO::ANNOUNCE_TEXT, {.x = 0, .y = y, .fade = fade_value});
+        tex.draw_texture(t_announce_number, {.frame = combo / 100 - 1, .x = 0, .y = y, .fade = fade_value});
+        tex.draw_texture(t_announce_text, {.x = 0, .y = y, .fade = fade_value});
     }
 }

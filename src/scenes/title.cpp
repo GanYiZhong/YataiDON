@@ -17,9 +17,6 @@ void TitleScreen::on_screen_start() {
 void TitleScreen::load_videos() {
     op_video_list.clear();
     attract_video_list.clear();
-    // Videos has no inheritance mechanism of its own (unlike Graphics) — resolve each
-    // subfolder against the child skin first, falling back to the parent's (see
-    // screen.parent in skin_config.json / resolve_skin_path in filesystem.h).
     fs::path op_path = resolve_skin_path("Videos/op_videos");
     if (fs::exists(op_path)) {
         for (const auto& entry : fs::recursive_directory_iterator(op_path)) {
@@ -45,10 +42,7 @@ void TitleScreen::reset_attract_objects() {
     op_video.reset();
     attract_video.reset();
     warning_board.reset();
-    attract_camera.reset();
-    camera_cloud.reset();
-    bana_advert_1.reset();
-    bana_advert_2.reset();
+    attract_scene.reset();
 }
 
 Screens TitleScreen::on_screen_end(Screens next_screen) {
@@ -99,22 +93,13 @@ void TitleScreen::scene_manager(double current_ms) {
             state = TitleState::ATTRACT_CAMERA;
         }
     } else if (state == TitleState::ATTRACT_CAMERA) {
-        if (!attract_camera.has_value()) {
-            attract_camera.emplace();
-            bana_advert_1.emplace();
-            bana_advert_2.emplace();
-            camera_cloud.emplace();
+        if (!attract_scene.has_value()) {
+            attract_scene.emplace();
         }
-        attract_camera->update(current_ms);
-        bana_advert_1->update(current_ms);
-        bana_advert_2->update(current_ms);
-        camera_cloud->update(current_ms);
-        if (attract_camera->is_finished()) {
-            attract_camera.reset();
+        attract_scene->update(current_ms);
+        if (attract_scene->is_finished()) {
+            attract_scene.reset();
             state = TitleState::OP_VIDEO;
-            bana_advert_1.reset();
-            bana_advert_2.reset();
-            camera_cloud.reset();
         }
     }
 }
@@ -144,18 +129,14 @@ void TitleScreen::draw() {
     if (state == TitleState::OP_VIDEO && op_video) {
         op_video->draw();
     } else if (state == TitleState::WARNING && warning_board) {
-        tex.draw_texture(WARNING::BACKGROUND);
         warning_board->draw();
     } else if (state == TitleState::ATTRACT_VIDEO && attract_video) {
         attract_video->draw();
-    } else if (state == TitleState::ATTRACT_CAMERA && attract_camera) {
-        attract_camera->draw();
-        camera_cloud->draw();
-        bana_advert_1->draw(33, 136);
-        bana_advert_2->draw(1023, 136);
+    } else if (state == TitleState::ATTRACT_CAMERA && attract_scene) {
+        attract_scene->draw();
     }
 
-    tex.draw_texture(MOVIE::BACKGROUND, {.fade=fade_out->attribute});
+    ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height, ray::Fade(ray::WHITE, fade_out->attribute));
     coin_overlay.draw();
     allnet_indicator.draw();
     entry_overlay.draw(tex.skin_config[SC::ENTRY_OVERLAY_TITLE].x, tex.skin_config[SC::ENTRY_OVERLAY_TITLE].y);

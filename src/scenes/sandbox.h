@@ -11,7 +11,7 @@ public:
         virtual void reset(double ms) = 0;
         virtual void update(double ms) = 0;
         virtual void draw() = 0;
-        virtual uint32_t anchor_texture_id() = 0;  // texture whose skin position becomes the viewport center
+        virtual TextureObject* anchor_texture_id() = 0;  // texture whose skin position becomes the viewport center
         virtual void on_space(double ms) {}
         virtual void on_tab(double ms) {}
         virtual std::vector<std::string> debug_lines() { return {}; }

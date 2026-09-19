@@ -26,6 +26,13 @@ FailAnimation::FailAnimation(bool is_2p)
     bachio_down->start();
 
     audio.play_sound("fail", VolumePreset::SOUND);
+
+    t_fail = tex.get_texture("ending_anim/fail");
+    t_bachio_boom = tex.get_texture("ending_anim/bachio_boom");
+    t_bachio_l_in = tex.get_texture("ending_anim/bachio_l_in");
+    t_bachio_l_fall = tex.get_texture("ending_anim/bachio_l_fall");
+    t_bachio_r_in = tex.get_texture("ending_anim/bachio_r_in");
+    t_bachio_r_fall = tex.get_texture("ending_anim/bachio_r_fall");
 }
 
 void FailAnimation::update(double current_ms) {
@@ -48,12 +55,12 @@ void FailAnimation::update(double current_ms) {
 }
 
 void FailAnimation::draw() {
-    tex.draw_texture(ENDING_ANIM::FAIL, {
+    tex.draw_texture(t_fail, {
         .fade = (float)(text_fade_in->attribute),
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_l_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_l_in : t_bachio_l_fall, {
         .frame = frame,
         .x = (float)(-bachio_move_out->attribute - (bachio_up->attribute / 2)),
         .y = (float)(bachio_down->attribute - bachio_up->attribute),
@@ -61,7 +68,7 @@ void FailAnimation::draw() {
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_r_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_r_in : t_bachio_r_fall, {
         .frame = frame,
         .x = (float)(bachio_move_out->attribute + (bachio_up->attribute / 2)),
         .y = (float)(bachio_down->attribute - bachio_up->attribute),
@@ -69,7 +76,7 @@ void FailAnimation::draw() {
         .index = (int)is_2p
     });
 
-    tex.draw_texture(ENDING_ANIM::BACHIO_BOOM, {
+    tex.draw_texture(t_bachio_boom, {
         .scale = (float)(bachio_boom_scale->attribute),
         .center = true,
         .y = (is_2p * tex.skin_config[SC::OFFSET_2P].y),
@@ -77,7 +84,7 @@ void FailAnimation::draw() {
         .index = 0
     });
 
-    tex.draw_texture(ENDING_ANIM::BACHIO_BOOM, {
+    tex.draw_texture(t_bachio_boom, {
         .scale = (float)(bachio_boom_scale->attribute),
         .center = true,
         .y = (is_2p * tex.skin_config[SC::OFFSET_2P].y),

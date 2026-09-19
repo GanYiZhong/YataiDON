@@ -29,3 +29,5 @@ private:
     int m_width  = 0;
     int m_height = 0;
 };
+
+extern WebCamera webcam;

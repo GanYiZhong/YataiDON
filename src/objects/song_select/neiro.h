@@ -23,6 +23,15 @@ private:
 
     void load_sound();
 
+    // Textures resolved once in the constructor, after load_screen_textures() has run,
+    // instead of calling tex.get_texture() every frame from draw().
+    TextureObject* t_background = nullptr;
+    TextureObject* t_player_p = nullptr;
+    TextureObject* t_divisor = nullptr;
+    TextureObject* t_music_note = nullptr;
+    TextureObject* t_blue_arrow = nullptr;
+    TextureObject* t_counter = nullptr;
+
 public:
     const std::vector<std::string>& lua_names() const { return sounds; }
     int lua_index() const { return selected_sound; }

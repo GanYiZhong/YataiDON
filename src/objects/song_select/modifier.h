@@ -3,6 +3,7 @@
 #include "../../libs/global_data.h"
 #include "../../libs/scores.h"
 #include "../../libs/text.h"
+#include <unordered_map>
 
 class ModifierSelector {
 private:
@@ -57,6 +58,22 @@ private:
     std::unique_ptr<OutlinedText> make_text(const std::string& str);
     void start_text_animation(int direction);
     void draw_animated_text(const std::unique_ptr<OutlinedText>& text_primary, const std::unique_ptr<OutlinedText>& text_secondary, float x, float y, bool should_animate);
+
+    // Textures resolved once in the constructor, after load_screen_textures() has run,
+    // instead of calling tex.get_texture() every frame from draw().
+    TextureObject* t_top = nullptr;
+    TextureObject* t_player_p = nullptr;
+    TextureObject* t_bottom = nullptr;
+    TextureObject* t_background = nullptr;
+    TextureObject* t_mod_bg = nullptr;
+    TextureObject* t_mod_bg_highlight = nullptr;
+    TextureObject* t_mod_box = nullptr;
+    TextureObject* t_mod_yonbai = nullptr;
+    TextureObject* t_mod_sanbai = nullptr;
+    TextureObject* t_mod_detarame = nullptr;
+    TextureObject* t_blue_arrow = nullptr;
+    // TEX_MAP value (e.g. "mod_auto") -> resolved icon, one per row's fixed mod_name.
+    std::unordered_map<std::string, TextureObject*> t_mod_icons;
 
 public:
     struct ModRow {

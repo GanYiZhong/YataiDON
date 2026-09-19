@@ -1,14 +1,13 @@
 #include "../../scenes/sandbox.h"
 #include "../song_select/dan_transition.h"
 #include "../song_select/ura_switch.h"
-#include "texture_ids_generated.h"
 
 struct DanTransitionFixture : public SandboxScreen::Fixture {
     std::optional<DanTransition> active;
 
     DanTransitionFixture() { name = "DanTransition"; screen = "song_select"; }
 
-    uint32_t anchor_texture_id() override { return DAN_TRANSITION::BACKGROUND; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("dan_transition/background"); }
 
     void reset(double) override { active.emplace(); }
     void on_space(double) override {
@@ -34,7 +33,7 @@ struct UraSwitchFixture : public SandboxScreen::Fixture {
 
     UraSwitchFixture() { name = "UraSwitch"; screen = "song_select"; }
 
-    uint32_t anchor_texture_id() override { return DIFF_SELECT::URA_SWITCH; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("diff_select/ura_switch"); }
 
     void reset(double) override { active.emplace(); backwards = false; }
     void on_space(double) override {

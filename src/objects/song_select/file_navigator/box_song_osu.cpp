@@ -14,6 +14,14 @@ SongBoxOsu::SongBoxOsu(const fs::path& path, const BoxDef& box_def, SongParser p
     is_favorite = false;
     diff_fade_in = (FadeAnimation*)tex.get_animation(12);
     refresh_scores();
+
+    load_textures();
+}
+
+void SongBoxOsu::load_textures() {
+    SongBox::load_textures();
+    t_favorite_1p = tex.get_texture("yellow_box/favorite_1p");
+    t_favorite_2p = tex.get_texture("yellow_box/favorite_2p");
 }
 
 void SongBoxOsu::draw_closed() {
@@ -33,11 +41,11 @@ void SongBoxOsu::draw_closed() {
 void SongBoxOsu::draw_open() {
     float bx = box_x();
     float by = box_y();
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_LEFT,  {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM,       {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_RIGHT, {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_RIGHT,        {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_TOP_RIGHT,    {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
+    tex.draw_texture(t_shadow_bottom_left,  {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
+    tex.draw_texture(t_shadow_bottom,       {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
+    tex.draw_texture(t_shadow_bottom_right, {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
+    tex.draw_texture(t_shadow_right,        {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
+    tex.draw_texture(t_shadow_top_right,    {.x=bx, .y=by, .fade=open_fade->attribute, .index=1});
     if (yellow_box.has_value())
         yellow_box->draw(1.0f, by);
 
@@ -53,21 +61,21 @@ void SongBoxOsu::draw_open() {
         bpm_text->draw({.x = tex.skin_config[SC::SONG_BOX_BPM].x, .y = tex.skin_config[SC::SONG_BOX_BPM].y, .fade=open_fade->attribute});
 
     if (is_favorite)
-        tex.draw_texture(tex.get_enum("yellow_box/favorite_" + std::to_string((int)global_data.player_num) + "p"), {.fade=open_fade->attribute});
+        tex.draw_texture(global_data.player_num == PlayerNum::P2 ? t_favorite_2p : t_favorite_1p, {.fade=open_fade->attribute});
 
     for (int i = 0; i < 4; i++) {
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY_BAR,        {.frame=i, .x=i*offset, .fade=open_fade->attribute});
+        tex.draw_texture(t_difficulty_bar,        {.frame=i, .x=i*offset, .fade=open_fade->attribute});
         if (!parser.metadata.course_data.count(i))
-            tex.draw_texture(YELLOW_BOX::DIFFICULTY_BAR_SHADOW, {.frame=i, .x=i*offset, .fade=std::min((float)open_fade->attribute, 0.25f)});
+            tex.draw_texture(t_difficulty_bar_shadow, {.frame=i, .x=i*offset, .fade=std::min((float)open_fade->attribute, 0.25f)});
     }
 
     float offset_y = tex.skin_config[SC::YB_DIFF_OFFSET].y;
     for (const auto& [diff, course] : parser.metadata.course_data) {
         if (Difficulty(diff) >= Difficulty::URA) continue;
         for (int j = 0; j < course.level; j++)
-            tex.draw_texture(YELLOW_BOX::STAR, {.x=diff*offset, .y=j*offset_y, .fade=open_fade->attribute});
+            tex.draw_texture(t_star, {.x=diff*offset, .y=j*offset_y, .fade=open_fade->attribute});
         if (course.is_branching && ((int)(get_current_ms() / 1000)) % 2 == 0)
-            tex.draw_texture(YELLOW_BOX::BRANCH_INDICATOR, {.x=diff*offset, .fade=open_fade->attribute});
+            tex.draw_texture(t_branch_indicator, {.x=diff*offset, .fade=open_fade->attribute});
     }
     draw_text();
 }

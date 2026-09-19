@@ -3,6 +3,8 @@
 #include "../../libs/global_data.h"
 #include "../../libs/parsers/tja.h"
 
+struct TextureObject;
+
 class NoteArc {
 private:
 
@@ -49,6 +51,8 @@ private:
     float control_y;
     float x_i;
     float y_i;
+    TextureObject* t_note = nullptr;
+    TextureObject* t_rainbow_mask = nullptr;
 public:
     NoteType note_type;
     bool is_big;

@@ -17,6 +17,13 @@ private:
     FadeAnimation* fade;
     MoveAnimation* move_left;
     MoveAnimation* move_right;
+
+    // Fixed-path textures resolved once in the constructor instead of calling
+    // tex.get_texture() every frame from draw()/draw_anim()/draw_exit_anim().
+    TextureObject* t_folder_background_edge = nullptr;
+    TextureObject* t_folder_background = nullptr;
+    TextureObject* t_folder_background_folder_edge = nullptr;
+    TextureObject* t_folder_background_folder = nullptr;
 public:
     GenreBG(std::string& text_name, std::optional<ray::Color> color, TextureIndex texture_index, float distance);
     void update(double current_ms, FolderBox* box);

@@ -10,6 +10,12 @@ protected:
     ConfigRef       config_ref;
     std::unique_ptr<OutlinedText>   name_text;
 
+    TextureObject* t_overlay = nullptr;
+    TextureObject* t_title = nullptr;
+    TextureObject* t_title_highlight = nullptr;
+    TextureObject* t_button_on = nullptr;
+    TextureObject* t_button_off = nullptr;
+
     void draw_base() const;
 
 public:

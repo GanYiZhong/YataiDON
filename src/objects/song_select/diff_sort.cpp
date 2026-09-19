@@ -58,6 +58,37 @@ DiffSortSelect::DiffSortSelect(Statistics statistics, int prev_diff, int prev_le
 
     audio.play_sound("voice_diff_sort_enter", VolumePreset::VOICE);
 
+    std::string player_num_str = std::to_string((int)global_data.player_num);
+    t_stat_bg = tex.get_texture("diff_sort/stat_bg_" + player_num_str + "p");
+    t_stat_overlay = tex.get_texture("diff_sort/stat_overlay");
+    t_stat_diff = tex.get_texture("diff_sort/stat_diff");
+    t_stat_starx = tex.get_texture("diff_sort/stat_starx");
+    t_stat_prev = tex.get_texture("diff_sort/stat_prev");
+    t_stat_num_star = tex.get_texture("diff_sort/stat_num_star");
+    t_stat_num = tex.get_texture("diff_sort/stat_num");
+    t_stat_num_small = tex.get_texture("diff_sort/stat_num_small");
+    t_background = tex.get_texture("diff_sort/background");
+    t_box_highlight = tex.get_texture("diff_sort/box_highlight");
+    t_box_text_highlight = tex.get_texture("diff_sort/box_text_highlight");
+    t_box = tex.get_texture("diff_sort/box");
+    t_box_text = tex.get_texture("diff_sort/box_text");
+    t_back_outline = tex.get_texture("diff_sort/back_outline");
+    t_box_outline = tex.get_texture("diff_sort/box_outline");
+    t_box_diff = tex.get_texture("diff_sort/box_diff");
+    t_star_select_prompt = tex.get_texture("diff_sort/star_select_prompt");
+    t_star_select_text = tex.get_texture("diff_sort/star_select_text");
+    t_star_limit = tex.get_texture("diff_sort/star_limit");
+    t_level_box = tex.get_texture("diff_sort/level_box");
+    t_diff = tex.get_texture("diff_sort/diff");
+    t_star_num = tex.get_texture("diff_sort/star_num");
+    t_star = tex.get_texture("diff_sort/star");
+    t_small_box_highlight = tex.get_texture("diff_sort/small_box_highlight");
+    t_small_box_text_highlight = tex.get_texture("diff_sort/small_box_text_highlight");
+    t_small_box_outline = tex.get_texture("diff_sort/small_box_outline");
+    t_small_box = tex.get_texture("diff_sort/small_box");
+    t_small_box_text = tex.get_texture("diff_sort/small_box_text");
+    t_pongos = tex.get_texture("diff_sort/pongos");
+    t_arrow = tex.get_texture("diff_sort/arrow");
 }
 
 void DiffSortSelect::one_menu_sort_refresh_song_num() {
@@ -199,16 +230,15 @@ void DiffSortSelect::input_right() {
 }
 
 void DiffSortSelect::draw_statistics() {
-    std::string player_num_str = std::to_string((int)global_data.player_num);
-    tex.draw_texture(tex.get_enum("diff_sort/stat_bg_" + player_num_str + "p"));
-    tex.draw_texture(DIFF_SORT::STAT_OVERLAY);
-    tex.draw_texture(DIFF_SORT::STAT_DIFF, {.frame=std::min(selected_box, 4)});
+    tex.draw_texture(t_stat_bg);
+    tex.draw_texture(t_stat_overlay);
+    tex.draw_texture(t_stat_diff, {.frame=std::min(selected_box, 4)});
 
     if (in_level_select || selected_box == 5) {
-        tex.draw_texture(DIFF_SORT::STAT_STARX);
+        tex.draw_texture(t_stat_starx);
         std::string counter;
         if (selected_box == 5) {
-            tex.draw_texture(DIFF_SORT::STAT_PREV);
+            tex.draw_texture(t_stat_prev);
             counter = std::to_string(prev_level);
         } else {
             counter = std::to_string(selected_level);
@@ -217,7 +247,7 @@ void DiffSortSelect::draw_statistics() {
         float total_width = counter.size() * margin;
         for (size_t i = 0; i < counter.size(); i++) {
             int digit = counter[i] - '0';
-            tex.draw_texture(DIFF_SORT::STAT_NUM_STAR, {.frame=digit, .x=tex.skin_config[SC::DIFF_SORT_STAT_NUM_STAR].x-(counter.size() - i) * margin, .y=tex.skin_config[SC::DIFF_SORT_STAT_NUM_STAR].y});
+            tex.draw_texture(t_stat_num_star, {.frame=digit, .x=tex.skin_config[SC::DIFF_SORT_STAT_NUM_STAR].x-(counter.size() - i) * margin, .y=tex.skin_config[SC::DIFF_SORT_STAT_NUM_STAR].y});
         }
 
         counter = std::to_string(statistics[selected_box][selected_level].total);
@@ -226,7 +256,7 @@ void DiffSortSelect::draw_statistics() {
         total_width = counter.size() * margin;
         for (size_t i = 0; i < counter.size(); i++) {
             int digit = counter[i] - '0';
-            tex.draw_texture(DIFF_SORT::STAT_NUM, {.frame=digit, .x=-(total_width/2)+(i*margin)});
+            tex.draw_texture(t_stat_num, {.frame=digit, .x=-(total_width/2)+(i*margin)});
         }
 
         for (int j = 0; j < 2; j++) {
@@ -242,7 +272,7 @@ void DiffSortSelect::draw_statistics() {
 
             for (int i = 0; i < (int)counter.size(); i++) {
                 int digit = counter[i] - '0';
-                tex.draw_texture(DIFF_SORT::STAT_NUM_SMALL, {.frame=digit, .x=-(total_width / 2) + (i * margin), .index=j});
+                tex.draw_texture(t_stat_num_small, {.frame=digit, .x=-(total_width / 2) + (i * margin), .index=j});
             }
         }
 
@@ -267,7 +297,7 @@ void DiffSortSelect::draw_statistics() {
 
             for (int i = 0; i < (int)counter.size(); i++) {
                 int digit = counter[i] - '0';
-                tex.draw_texture(DIFF_SORT::STAT_NUM_STAR, {.frame=digit, .x=-(total_width / 2) + (i * margin), .index=j+1});
+                tex.draw_texture(t_stat_num_star, {.frame=digit, .x=-(total_width / 2) + (i * margin), .index=j+1});
             }
         }
     } else {
@@ -276,7 +306,7 @@ void DiffSortSelect::draw_statistics() {
         float total_width = counter.size() * margin;
         for (size_t i = 0; i < counter.size(); i++) {
             int digit = counter[i] - '0';
-            tex.draw_texture(DIFF_SORT::STAT_NUM, {.frame=digit, .x=-(total_width/2)+(i*margin)});
+            tex.draw_texture(t_stat_num, {.frame=digit, .x=-(total_width/2)+(i*margin)});
         }
 
         for (int j = 0; j < 2; j++) {
@@ -285,7 +315,7 @@ void DiffSortSelect::draw_statistics() {
             total_width = counter.size() * margin;
             for (size_t i = 0; i < counter.size(); i++) {
                 int digit = counter[i] - '0';
-                tex.draw_texture(DIFF_SORT::STAT_NUM_SMALL, {.frame=digit, .x=-(total_width/2)+(i*margin), .index=j});
+                tex.draw_texture(t_stat_num_small, {.frame=digit, .x=-(total_width/2)+(i*margin), .index=j});
             }
         }
 
@@ -299,36 +329,36 @@ void DiffSortSelect::draw_statistics() {
             total_width = counter.size() * margin;
             for (size_t i = 0; i < counter.size(); i++) {
                 int digit = counter[i] - '0';
-                tex.draw_texture(DIFF_SORT::STAT_NUM_STAR, {.frame=digit, .x=-(total_width/2)+(i*margin), .index=j+1});
+                tex.draw_texture(t_stat_num_star, {.frame=digit, .x=-(total_width/2)+(i*margin), .index=j+1});
             }
         }
     }
 }
 
 void DiffSortSelect::draw_diff_select() {
-    tex.draw_texture(DIFF_SORT::BACKGROUND, {.scale=(float)bg_resize->attribute, .center=true});
+    tex.draw_texture(t_background, {.scale=(float)bg_resize->attribute, .center=true});
 
-    tex.draw_texture(tex.get_enum("diff_sort/back_" + global_data.config->general.language), {.fade=diff_fade_in->attribute});
+    tex.draw_texture(tex.get_texture("diff_sort/back_" + global_data.config->general.language), {.fade=diff_fade_in->attribute});
     float offset = tex.skin_config[SC::DIFF_SORT_OFFSET].x;
     for (size_t i = 0; i < num_boxes; i++) {
         if (i == selected_box) {
-            tex.draw_texture(DIFF_SORT::BOX_HIGHLIGHT, {.x=(offset*i), .fade=diff_fade_in->attribute});
-            tex.draw_texture(DIFF_SORT::BOX_TEXT_HIGHLIGHT, {.frame=(int)i, .x=(offset*i), .fade=diff_fade_in->attribute});
+            tex.draw_texture(t_box_highlight, {.x=(offset*i), .fade=diff_fade_in->attribute});
+            tex.draw_texture(t_box_text_highlight, {.frame=(int)i, .x=(offset*i), .fade=diff_fade_in->attribute});
         } else {
-            tex.draw_texture(DIFF_SORT::BOX, {.x=(offset*i), .fade=diff_fade_in->attribute});
-            tex.draw_texture(DIFF_SORT::BOX_TEXT, {.frame=(int)i, .x=(offset*i), .fade=diff_fade_in->attribute});
+            tex.draw_texture(t_box, {.x=(offset*i), .fade=diff_fade_in->attribute});
+            tex.draw_texture(t_box_text, {.frame=(int)i, .x=(offset*i), .fade=diff_fade_in->attribute});
         }
     }
 
     if (selected_box == -1) {
-        tex.draw_texture(DIFF_SORT::BACK_OUTLINE, {.fade=box_flicker->attribute});
+        tex.draw_texture(t_back_outline, {.fade=box_flicker->attribute});
     } else {
-        tex.draw_texture(DIFF_SORT::BOX_OUTLINE, {.x=(offset*selected_box), .fade=box_flicker->attribute});
+        tex.draw_texture(t_box_outline, {.x=(offset*selected_box), .fade=box_flicker->attribute});
     }
 
     for (size_t i = 0; i < num_boxes; i++) {
         if (i < 5) {
-            tex.draw_texture(DIFF_SORT::BOX_DIFF, {.frame=(int)i, .x=(offset*i)});
+            tex.draw_texture(t_box_diff, {.frame=(int)i, .x=(offset*i)});
         }
     }
     if (selected_box != -1 && selected_box != num_boxes - 1) {
@@ -337,42 +367,41 @@ void DiffSortSelect::draw_diff_select() {
 }
 
 void DiffSortSelect::draw_level_select() {
-    tex.draw_texture(DIFF_SORT::BACKGROUND, {.scale=(float)bg_resize->attribute, .center=true});
+    tex.draw_texture(t_background, {.scale=(float)bg_resize->attribute, .center=true});
     if (confirmation) {
-        tex.draw_texture(DIFF_SORT::STAR_SELECT_PROMPT);
+        tex.draw_texture(t_star_select_prompt);
     } else {
-        tex.draw_texture(DIFF_SORT::STAR_SELECT_TEXT, {.fade=diff_fade_in->attribute});
+        tex.draw_texture(t_star_select_text, {.fade=diff_fade_in->attribute});
     }
-    tex.draw_texture(DIFF_SORT::STAR_LIMIT, {.frame=selected_box, .fade=diff_fade_in->attribute});
-    tex.draw_texture(DIFF_SORT::LEVEL_BOX, {.fade=diff_fade_in->attribute});
-    tex.draw_texture(DIFF_SORT::DIFF, {.frame=selected_box, .fade=diff_fade_in->attribute});
-    tex.draw_texture(DIFF_SORT::STAR_NUM, {.frame=selected_level, .fade=diff_fade_in->attribute});
+    tex.draw_texture(t_star_limit, {.frame=selected_box, .fade=diff_fade_in->attribute});
+    tex.draw_texture(t_level_box, {.fade=diff_fade_in->attribute});
+    tex.draw_texture(t_diff, {.frame=selected_box, .fade=diff_fade_in->attribute});
+    tex.draw_texture(t_star_num, {.frame=selected_level, .fade=diff_fade_in->attribute});
     for (size_t i = 0; i < selected_level; i++) {
-        tex.draw_texture(DIFF_SORT::STAR, {.x=(float)(i * tex.skin_config[SC::DIFF_SORT_STAR_SPACING].x), .fade=diff_fade_in->attribute});
+        tex.draw_texture(t_star, {.x=(float)(i * tex.skin_config[SC::DIFF_SORT_STAR_SPACING].x), .fade=diff_fade_in->attribute});
     }
 
     if (confirmation) {
-        TextureObject* texture = tex.textures[DIFF_SORT::LEVEL_BOX].get();
-        ray::DrawRectangle(texture->x[0], texture->y[0], texture->x2[0], texture->y2[0], ray::Fade(ray::BLACK, 0.5));
+        ray::DrawRectangle(t_level_box->x[0], t_level_box->y[0], t_level_box->x2[0], t_level_box->y2[0], ray::Fade(ray::BLACK, 0.5));
         float y = -bounce_up_1->attribute + bounce_down_1->attribute - bounce_up_2->attribute + bounce_down_2->attribute;
         float offset = tex.skin_config[SC::DIFF_SORT_OFFSET_2].x;
         for (size_t i = 0; i < 3; i++) {
             if (i == confirm_index) {
-                tex.draw_texture(DIFF_SORT::SMALL_BOX_HIGHLIGHT, {.x=(i*offset), .y=y});
-                tex.draw_texture(DIFF_SORT::SMALL_BOX_TEXT_HIGHLIGHT, {.frame=(int)i, .x=(i*offset), .y=y});
-                tex.draw_texture(DIFF_SORT::SMALL_BOX_OUTLINE, {.x=(i*offset), .y=y, .fade=box_flicker->attribute});
+                tex.draw_texture(t_small_box_highlight, {.x=(i*offset), .y=y});
+                tex.draw_texture(t_small_box_text_highlight, {.frame=(int)i, .x=(i*offset), .y=y});
+                tex.draw_texture(t_small_box_outline, {.x=(i*offset), .y=y, .fade=box_flicker->attribute});
             } else {
-                tex.draw_texture(DIFF_SORT::SMALL_BOX, {.x=(i*offset), .y=y});
-                tex.draw_texture(DIFF_SORT::SMALL_BOX_TEXT, {.frame=(int)i, .x=(i*offset), .y=y});
+                tex.draw_texture(t_small_box, {.x=(i*offset), .y=y});
+                tex.draw_texture(t_small_box_text, {.frame=(int)i, .x=(i*offset), .y=y});
             }
         }
     } else {
-        tex.draw_texture(DIFF_SORT::PONGOS);
+        tex.draw_texture(t_pongos);
         if (selected_level != 1) {
-            tex.draw_texture(DIFF_SORT::ARROW, {.x=(float)-blue_arrow_move->attribute, .fade=blue_arrow_fade->attribute, .index=0});
+            tex.draw_texture(t_arrow, {.x=(float)-blue_arrow_move->attribute, .fade=blue_arrow_fade->attribute, .index=0});
         }
         if (selected_level != limits[selected_box]) {
-            tex.draw_texture(DIFF_SORT::ARROW, {.mirror=Mirror::HORIZONTAL, .x=(float)blue_arrow_move->attribute, .fade=blue_arrow_fade->attribute, .index=1});
+            tex.draw_texture(t_arrow, {.mirror=Mirror::HORIZONTAL, .x=(float)blue_arrow_move->attribute, .fade=blue_arrow_fade->attribute, .index=1});
         }
     }
     draw_statistics();

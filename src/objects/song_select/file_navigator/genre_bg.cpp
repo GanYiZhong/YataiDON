@@ -32,6 +32,11 @@ GenreBG::GenreBG(std::string& text_name, std::optional<ray::Color> color, Textur
     fade->start();
     move_left  = nullptr;
     move_right = nullptr;
+
+    t_folder_background_edge = tex.get_texture("box/folder_background_edge");
+    t_folder_background = tex.get_texture("box/folder_background");
+    t_folder_background_folder_edge = tex.get_texture("box/folder_background_folder_edge");
+    t_folder_background_folder = tex.get_texture("box/folder_background_folder");
 }
 
 void GenreBG::exit(float left_position, float right_position, FolderBox* center_box) {
@@ -94,7 +99,7 @@ void GenreBG::draw_anim(FolderBox* box) {
     if (box == nullptr) return;
     float s = (float)scale->attribute;
     float offset = 5 * s;
-    float edge_width = tex.textures[BOX::FOLDER_BACKGROUND_EDGE]->width * s;
+    float edge_width = t_folder_background_edge->width * s;
 
     float center = (box->left_bound + box->right_bound) / 2.0f;
     float half_width = (box->right_bound - box->left_bound) / 2.0f;
@@ -106,14 +111,14 @@ void GenreBG::draw_anim(FolderBox* box) {
     float end_position   = exiting ? base_end   + (float)move_right->attribute : base_end + (float)move->attribute;
 
     if (shader_loaded) ray::BeginShaderMode(shader);
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+    tex.draw_texture(t_folder_background_edge, {
         .frame=(int)texture_index, .scale=s, .center=true, .mirror=Mirror::HORIZONTAL,
         .x=start_position - offset,
         .y=-(float)stretch->attribute * s,
         .y2=(float)stretch->attribute * s,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND, {
+    tex.draw_texture(t_folder_background, {
         .frame=(int)texture_index, .scale=s, .center=true,
         .x=start_position + edge_width - offset,
         .y=-(float)stretch->attribute * s,
@@ -121,7 +126,7 @@ void GenreBG::draw_anim(FolderBox* box) {
         .y2=(float)stretch->attribute * s,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+    tex.draw_texture(t_folder_background_edge, {
         .frame=(int)texture_index, .scale=s, .center=true,
         .x=end_position - edge_width + offset,
         .y=-(float)stretch->attribute * s,
@@ -129,10 +134,10 @@ void GenreBG::draw_anim(FolderBox* box) {
         .fade=fade->attribute
     });
 
-    float edge_width_top = tex.textures[BOX::FOLDER_BACKGROUND_FOLDER_EDGE]->width * s;
+    float edge_width_top = t_folder_background_folder_edge->width * s;
     float dest_width = std::min(tex.skin_config[SC::GENRE_BG_TITLE].width, name->width) * s;
 
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index, .scale=s, .center=true,
         .mirror=Mirror::HORIZONTAL,
         .x=center - dest_width / 2 - edge_width_top,
@@ -140,7 +145,7 @@ void GenreBG::draw_anim(FolderBox* box) {
         .y2=(float)stretch->attribute * s,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER, {
+    tex.draw_texture(t_folder_background_folder, {
         .frame=(int)texture_index, .scale=s, .center=true,
         .x=center - dest_width / 2,
         .y=-(float)stretch->attribute * s,
@@ -148,7 +153,7 @@ void GenreBG::draw_anim(FolderBox* box) {
         .y2=(float)stretch->attribute * s,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index, .scale=s, .center=true,
         .x=center + dest_width / 2,
         .y=-(float)stretch->attribute * s,
@@ -170,46 +175,46 @@ void GenreBG::draw_anim(FolderBox* box) {
 void GenreBG::draw_exit_anim(float start_position, float end_position, FolderBox* box) {
     float s = (float)scale->attribute;
     float offset = 5 * s;
-    float edge_width = tex.textures[BOX::FOLDER_BACKGROUND_EDGE]->width * s;
+    float edge_width = t_folder_background_edge->width * s;
 
     float anim_start = (float)move_left->attribute;
     float anim_end   = (float)move_right->attribute;
 
     if (shader_loaded) ray::BeginShaderMode(shader);
 
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+    tex.draw_texture(t_folder_background_edge, {
         .frame=(int)texture_index, .scale=s, .mirror=Mirror::HORIZONTAL,
         .x=anim_start - offset,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND, {
+    tex.draw_texture(t_folder_background, {
         .frame=(int)texture_index, .scale=s,
         .x=anim_start + edge_width - offset,
         .x2=anim_end - anim_start - edge_width - offset,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+    tex.draw_texture(t_folder_background_edge, {
         .frame=(int)texture_index, .scale=s,
         .x=anim_end - edge_width + offset,
         .fade=fade->attribute
     });
 
-    float edge_width_top = tex.textures[BOX::FOLDER_BACKGROUND_FOLDER_EDGE]->width;
+    float edge_width_top = t_folder_background_folder_edge->width;
     float dest_width = std::min(tex.skin_config[SC::GENRE_BG_TITLE].width, name->width);
     float center = tex.skin_config[SC::GENRE_BG_CENTER_X].x;
 
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index, .mirror=Mirror::HORIZONTAL,
         .x=center - dest_width / 2 - edge_width_top,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER, {
+    tex.draw_texture(t_folder_background_folder, {
         .frame=(int)texture_index,
         .x=center - dest_width / 2,
         .x2=dest_width,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index,
         .x=center + dest_width / 2,
         .fade=fade->attribute
@@ -235,7 +240,7 @@ void GenreBG::draw(float start_position, float end_position, FolderBox* folder) 
         return;
     }
 
-    float edge_width_top = tex.textures[BOX::FOLDER_BACKGROUND_FOLDER_EDGE]->width;
+    float edge_width_top = t_folder_background_folder_edge->width;
     float dest_width = std::min(tex.skin_config[SC::GENRE_BG_TITLE].width, name->width);
     float center = tex.skin_config[SC::GENRE_BG_CENTER_X].x;
 
@@ -258,51 +263,51 @@ void GenreBG::draw(float start_position, float end_position, FolderBox* folder) 
         float offset = 5;
         float draw_end_l   = std::min(bg_end_pos, screen_width);
         if (draw_start_l < draw_end_l) {
-            float edge_width = tex.textures[BOX::FOLDER_BACKGROUND_EDGE]->width;
+            float edge_width = t_folder_background_edge->width;
             if (bg_end_pos < screen_width) {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND, {.frame=(int)texture_index, .x=draw_start_l, .x2=draw_end_l - edge_width + offset, .fade=fade->attribute});
-                tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {.frame=(int)texture_index, .x=draw_end_l - edge_width + offset, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background, {.frame=(int)texture_index, .x=draw_start_l, .x2=draw_end_l - edge_width + offset, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background_edge, {.frame=(int)texture_index, .x=draw_end_l - edge_width + offset, .fade=fade->attribute});
             } else {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND, {.frame=(int)texture_index, .x=draw_start_l, .x2=draw_end_l, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background, {.frame=(int)texture_index, .x=draw_start_l, .x2=draw_end_l, .fade=fade->attribute});
             }
         }
 
         float draw_start_r = std::max(bg_start_pos, 0.f);
         float draw_end_r   = screen_width;
         if (draw_start_r < draw_end_r) {
-            float edge_width = tex.textures[BOX::FOLDER_BACKGROUND_EDGE]->width;
+            float edge_width = t_folder_background_edge->width;
             if (bg_start_pos > 0) {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND, {.frame=(int)texture_index, .x=draw_start_r + edge_width - offset, .x2=draw_end_r, .fade=fade->attribute});
-                tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {.frame=(int)texture_index, .mirror=Mirror::HORIZONTAL, .x=draw_start_r - offset, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background, {.frame=(int)texture_index, .x=draw_start_r + edge_width - offset, .x2=draw_end_r, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background_edge, {.frame=(int)texture_index, .mirror=Mirror::HORIZONTAL, .x=draw_start_r - offset, .fade=fade->attribute});
             } else {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND, {.frame=(int)texture_index, .x=draw_start_r, .x2=draw_end_r, .fade=fade->attribute});
+                tex.draw_texture(t_folder_background, {.frame=(int)texture_index, .x=draw_start_r, .x2=draw_end_r, .fade=fade->attribute});
             }
         }
     } else {
         // Normal case — clamp to screen
         float offset = 5;
-        float edge_width = tex.textures[BOX::FOLDER_BACKGROUND_EDGE]->width;
+        float edge_width = t_folder_background_edge->width;
         float draw_start = std::max(bg_start_pos, 0.f);
         float draw_end   = std::min(bg_end_pos,   screen_width);
         if (draw_start < draw_end) {
             float fill_start = draw_start;
             float fill_end   = draw_end;
             if (bg_start_pos > 0) {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+                tex.draw_texture(t_folder_background_edge, {
                     .frame=(int)texture_index, .mirror=Mirror::HORIZONTAL,
                     .x=draw_start - offset, .fade=fade->attribute
                 });
                 fill_start = draw_start + edge_width - offset;
             }
             if (bg_end_pos < screen_width) {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND_EDGE, {
+                tex.draw_texture(t_folder_background_edge, {
                     .frame=(int)texture_index,
                     .x=draw_end - edge_width + offset, .fade=fade->attribute
                 });
                 fill_end = draw_end - edge_width + offset;
             }
             if (fill_start < fill_end) {
-                tex.draw_texture(BOX::FOLDER_BACKGROUND, {
+                tex.draw_texture(t_folder_background, {
                     .frame=(int)texture_index, .x=fill_start, .x2=fill_end - fill_start, .fade=fade->attribute
                 });
             }
@@ -317,18 +322,18 @@ void GenreBG::draw(float start_position, float end_position, FolderBox* folder) 
         return;
     }
 
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index, .mirror=Mirror::HORIZONTAL,
         .x=center - dest_width / 2 - edge_width_top,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER, {
+    tex.draw_texture(t_folder_background_folder, {
         .frame=(int)texture_index,
         .x=center - dest_width / 2,
         .x2=dest_width,
         .fade=fade->attribute
     });
-    tex.draw_texture(BOX::FOLDER_BACKGROUND_FOLDER_EDGE, {
+    tex.draw_texture(t_folder_background_folder_edge, {
         .frame=(int)texture_index,
         .x=center + dest_width / 2,
         .fade=fade->attribute

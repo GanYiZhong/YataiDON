@@ -66,6 +66,12 @@ public:
 
     std::vector<RemoteScore> fetch_scores(const std::string& access_code);
 
+    // Blocks until any in-flight request finishes (bounded by its cpr::Timeout).
+    // Call before process exit so nothing is left running past main() -- an
+    // async request whose future outlives the process can touch already-
+    // destroyed globals (spdlog, etc.) during static teardown.
+    void shutdown();
+
 private:
     void check_heartbeat();
 
@@ -78,6 +84,8 @@ private:
 
     std::optional<cpr::AsyncResponse> pending_song_jump;
     std::optional<std::string> song_jump_result;
+
+    std::optional<cpr::AsyncResponse> pending_score_submit;
 #endif
 };
 

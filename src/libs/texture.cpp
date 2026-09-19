@@ -23,15 +23,15 @@ inline double json_member(const Value& o, const char* key, double fallback) {
 }
 
 // Two screens can share a subset name (e.g. both have a "notes" folder), in which
-// case they resolve to the very same TexID and the very same textures[] entry
-// (see tools/gen_textures.py). Refcount by TexID so unload_folder() only actually
-// drops a texture once every screen/subset that loaded it has unloaded it.
-std::unordered_map<uint32_t, int>& tex_id_refcount() {
-    static std::unordered_map<uint32_t, int> refcount;
+// case they resolve to the very same "subset/name" key and the very same textures[]
+// entry. Refcount by key so unload_folder() only actually drops a texture once
+// every screen/subset that loaded it has unloaded it.
+std::unordered_map<std::string, int>& tex_id_refcount() {
+    static std::unordered_map<std::string, int> refcount;
     return refcount;
 }
-std::unordered_map<std::string, std::unordered_set<uint32_t>>& subset_loaded_ids() {
-    static std::unordered_map<std::string, std::unordered_set<uint32_t>> ids;
+std::unordered_map<std::string, std::unordered_set<std::string>>& subset_loaded_ids() {
+    static std::unordered_map<std::string, std::unordered_set<std::string>> ids;
     return ids;
 }
 
@@ -462,18 +462,18 @@ std::unordered_set<std::string> overridden_names(const fs::path& child_folder) {
 }
 
 void TextureWrapper::load_folder(const std::string& screen_name, const std::string& subset) {
-    // Subset leaf name is the key used in tex_id_map (e.g. "notes_nijiiro" from "game/notes_nijiiro")
+    // Subset leaf name is the key prefix used in textures[] (e.g. "notes_nijiiro" from "game/notes_nijiiro")
     const std::string subset_key = fs::path(subset).filename().string();
     const std::string dedup_key = screen_name + "/" + subset_key;
 
     if (loaded_subsets.count(dedup_key)) return;
 
     int loaded_count = 0;
-    std::unordered_set<uint32_t> ids_this_call;
+    std::unordered_set<std::string> ids_this_call;
 
     // A texture.json entry whose PNG(s) still have to be read off disk.
     struct PendingTex {
-        uint32_t id;
+        std::string id;
         std::string name;
         const Value* mapping;
         std::string cache_key;
@@ -499,13 +499,7 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
 
                 if (skip && skip->count(tex_name)) continue;
 
-                std::string map_key = subset_key + "/" + tex_name;
-                auto id_it = tex_id_map.find(map_key);
-                if (id_it == tex_id_map.end()) {
-                    spdlog::warn("Texture {} has no generated TexID - skipping", map_key);
-                    continue;
-                }
-                uint32_t tex_id = static_cast<uint32_t>(id_it->second);
+                std::string tex_id = subset_key + "/" + tex_name;
 
                 std::string cache_key = (folder / tex_name).string();
                 auto cit = cache.find(cache_key);
@@ -620,7 +614,7 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
     } else {
         loaded_subsets.insert(dedup_key);
         subset_loaded_ids()[dedup_key] = ids_this_call;
-        for (uint32_t id : ids_this_call) ++tex_id_refcount()[id];
+        for (const std::string& id : ids_this_call) ++tex_id_refcount()[id];
     }
 }
 
@@ -631,12 +625,12 @@ void TextureWrapper::unload_folder(const std::string& screen_name, const std::st
     if (!loaded_subsets.count(dedup_key)) return;
 
     // A subset name can be shared by several screens (they resolve to the same
-    // TexIDs, see tools/gen_textures.py), so only drop a texture once every
+    // "subset/name" keys), so only drop a texture once every
     // screen/subset that loaded it has also unloaded it.
     auto& refcount = tex_id_refcount();
     auto ids_it = subset_loaded_ids().find(dedup_key);
     if (ids_it != subset_loaded_ids().end()) {
-        for (uint32_t id : ids_it->second) {
+        for (const std::string& id : ids_it->second) {
             auto rc_it = refcount.find(id);
             if (rc_it == refcount.end()) continue;
             if (--rc_it->second <= 0) {
@@ -703,34 +697,26 @@ std::vector<std::string> TextureWrapper::language_variants(const std::string& na
     return out;
 }
 
-TexID TextureWrapper::get_enum(const std::string& name) {
-    const auto variants = language_variants(name);
-    // first variant that is known and loaded, else the first that is known at all
-    for (const auto& v : variants) {
-        auto it = tex_id_map.find(v);
-        if (it != tex_id_map.end() && textures.find(static_cast<uint32_t>(it->second)) != textures.end()) return it->second;
-    }
-    for (const auto& v : variants) {
-        auto it = tex_id_map.find(v);
-        if (it != tex_id_map.end()) return it->second;
+TextureObject* TextureWrapper::get_texture(const std::string& name) {
+    // first variant that is actually loaded, else fall back to the warning placeholder
+    for (const auto& v : language_variants(name)) {
+        auto it = textures.find(v);
+        if (it != textures.end()) return it->second.get();
     }
     spdlog::warn("Texture not found: {}", name);
-    return TexID::KIDOU__WARNING;
+    auto it = textures.find("kidou/warning");
+    return it != textures.end() ? it->second.get() : nullptr;
 }
 
 bool TextureWrapper::has_texture(const std::string& name) {
     for (const auto& v : language_variants(name)) {
-        auto it = tex_id_map.find(v);
-        if (it != tex_id_map.end() && textures.find(static_cast<uint32_t>(it->second)) != textures.end()) return true;
+        if (textures.find(v) != textures.end()) return true;
     }
     return false;
 }
 
-void TextureWrapper::draw_texture(uint32_t id, const DrawTextureParams& params) {
-    auto it = textures.find(id);
-    if (it == textures.end()) return;
-
-    TextureObject* tex_obj = it->second.get();
+void TextureWrapper::draw_texture(TextureObject* tex_obj, const DrawTextureParams& params) {
+    if (!tex_obj) return;
 
     const float mirror_x = (params.mirror == Mirror::HORIZONTAL) ? -1.0f : 1.0f;
     const float mirror_y = (params.mirror == Mirror::VERTICAL) ? -1.0f : 1.0f;

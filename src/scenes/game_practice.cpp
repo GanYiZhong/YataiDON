@@ -3,8 +3,47 @@
 #include "../libs/input.h"
 #include <cmath>
 
+void PracticeGameScreen::init_practice_textures() {
+    for (int t = 0; t <= 9; ++t) {
+        std::string name = "notes/" + std::to_string(t);
+        t_notes[t] = tex.has_texture(name) ? tex.get_texture(name) : nullptr;
+    }
+    t_notes_0 = tex.get_texture("notes/0");
+    t_notes_8 = tex.get_texture("notes/8");
+    t_notes_9 = tex.get_texture("notes/9");
+    t_notes_10 = tex.get_texture("notes/10");
+    t_drumroll_big_tail = tex.get_texture("notes/drumroll_big_tail");
+    t_drumroll_tail = tex.get_texture("notes/drumroll_tail");
+    t_moji = tex.get_texture("notes/moji");
+    t_moji_drumroll_mid = tex.get_texture("notes/moji_drumroll_mid");
+
+    t_large_drum = tex.get_texture("practice/large_drum");
+    t_pause_don = tex.get_texture("practice/pause_don");
+    t_pause_kat = tex.get_texture("practice/pause_kat");
+    t_resume_don = tex.get_texture("practice/resume_don");
+    t_skip_l_kat = tex.get_texture("practice/skip_l_kat");
+    t_skip_r_kat = tex.get_texture("practice/skip_r_kat");
+    t_menu_don = tex.get_texture("practice/menu_don");
+    t_speed_r_kat = tex.get_texture("practice/speed_r_kat");
+    t_speed_l_kat = tex.get_texture("practice/speed_l_kat");
+    t_playing = tex.get_texture("practice/playing");
+    t_progress_bar_bg = tex.get_texture("practice/progress_bar_bg");
+    t_progress_bar = tex.get_texture("practice/progress_bar");
+    t_gogo_marker = tex.get_texture("practice/gogo_marker");
+    t_bar_count = tex.get_texture("practice/bar_count");
+    t_bar_divider = tex.get_texture("practice/bar_divider");
+    t_bar_count_bar = tex.get_texture("practice/bar_count_bar");
+    t_song_tempo = tex.get_texture("practice/song_tempo");
+    t_dot = tex.get_texture("practice/dot");
+    t_multiplier = tex.get_texture("practice/multiplier");
+    t_bar_label = tex.get_texture("practice/bar_label");
+    t_paused = tex.get_texture("practice/paused");
+}
+
 void PracticeGameScreen::on_screen_start() {
     GameScreen::on_screen_start();
+    init_practice_textures();
+    menu.init_textures();
     pause_don_anim   = (TextureResizeAnimation*)tex.get_animation(67, true);
     pause_kat_anim   = (TextureResizeAnimation*)tex.get_animation(67, true);
     resume_don_anim  = (TextureResizeAnimation*)tex.get_animation(67, true);
@@ -350,8 +389,8 @@ void PracticeGameScreen::draw_bar_scrobble(const Note& bar, double current_ms) c
     float x = get_scrobble_position_x(bar, current_ms);
     float y_off = (float)((bar.hit_ms - current_ms) * (bar.bpm / 240000.0f * bar.scroll_y * ((tex.screen_width - JudgePos::X) / tex.screen_width) * tex.screen_width));
     float angle = (y_off != 0) ? std::atan2(bar.scroll_y, bar.scroll_x) * 180.0f / PI : 0.0f;
-    tex.draw_texture(NOTES::_0, {.frame = bar.is_branch_start,
-                                  .x = x + tex.skin_config[SC::MOJI_DRUMROLL].x - tex.textures[NOTES::_9]->width / 2.0f,
+    tex.draw_texture(t_notes_0, {.frame = bar.is_branch_start,
+                                  .x = x + tex.skin_config[SC::MOJI_DRUMROLL].x - t_notes_9->width / 2.0f,
                                   .y = y_off + tex.skin_config[SC::MOJI_DRUMROLL].y + (184 * tex.screen_scale),
                                   .rotation = angle});
 }
@@ -372,16 +411,15 @@ void PracticeGameScreen::draw_drumroll_scrobble(const Note& head, double current
     float y_pos = tex.skin_config[SC::NOTES].y + (184 * tex.screen_scale);
     float moji_y = tex.skin_config[SC::MOJI].y + (184 * tex.screen_scale);
     if (head.display) {
-        tex.draw_texture(NOTES::_8, {.color = color, .frame = is_big, .x = start_pos, .y = y_pos, .x2 = length + tex.skin_config[SC::DRUMROLL_WIDTH_OFFSET].width});
-        if (is_big) tex.draw_texture(NOTES::DRUMROLL_BIG_TAIL, {.color = color, .x = end_pos, .y = y_pos});
-        else        tex.draw_texture(NOTES::DRUMROLL_TAIL,     {.color = color, .x = end_pos, .y = y_pos});
-        TexID head_tex = tex_id_map.count("notes/" + std::to_string((int)head.type))
-                         ? tex.get_enum("notes/" + std::to_string((int)head.type)) : TexID(0);
-        tex.draw_texture(head_tex, {.color = color, .x = start_pos - tex.textures[NOTES::_9]->width / 2.0f, .y = y_pos});
+        tex.draw_texture(t_notes_8, {.color = color, .frame = is_big, .x = start_pos, .y = y_pos, .x2 = length + tex.skin_config[SC::DRUMROLL_WIDTH_OFFSET].width});
+        if (is_big) tex.draw_texture(t_drumroll_big_tail, {.color = color, .x = end_pos, .y = y_pos});
+        else        tex.draw_texture(t_drumroll_tail,     {.color = color, .x = end_pos, .y = y_pos});
+        TextureObject* head_tex = t_notes[(int)head.type];
+        tex.draw_texture(head_tex, {.color = color, .x = start_pos - t_notes_9->width / 2.0f, .y = y_pos});
     }
-    tex.draw_texture(NOTES::MOJI_DRUMROLL_MID, {.x = start_pos, .y = moji_y, .x2 = length});
-    tex.draw_texture(NOTES::MOJI, {.frame = head.moji, .x = start_pos - tex.textures[NOTES::MOJI]->width / 2.0f, .y = moji_y});
-    tex.draw_texture(NOTES::MOJI, {.frame = tail->moji, .x = end_pos  - tex.textures[NOTES::MOJI]->width / 2.0f, .y = moji_y});
+    tex.draw_texture(t_moji_drumroll_mid, {.x = start_pos, .y = moji_y, .x2 = length});
+    tex.draw_texture(t_moji, {.frame = head.moji, .x = start_pos - t_moji->width / 2.0f, .y = moji_y});
+    tex.draw_texture(t_moji, {.frame = tail->moji, .x = end_pos  - t_moji->width / 2.0f, .y = moji_y});
 }
 
 void PracticeGameScreen::draw_balloon_scrobble(const Note& head, double current_ms) const {
@@ -400,13 +438,12 @@ void PracticeGameScreen::draw_balloon_scrobble(const Note& head, double current_
     else if (current_ms >= head.hit_ms) position = pause_pos;
     else                                position = start_pos;
     if (head.display) {
-        TexID head_tex = tex_id_map.count("notes/" + std::to_string((int)head.type))
-                         ? tex.get_enum("notes/" + std::to_string((int)head.type)) : TexID(0);
-        tex.draw_texture(head_tex, {.x = position - offset - tex.textures[NOTES::_9]->width / 2.0f, .y = y_pos});
-        tex.draw_texture(NOTES::_10, {.x = position - offset + tex.textures[NOTES::_10]->width - tex.textures[NOTES::_9]->width / 2.0f, .y = y_pos});
+        TextureObject* head_tex = t_notes[(int)head.type];
+        tex.draw_texture(head_tex, {.x = position - offset - t_notes_9->width / 2.0f, .y = y_pos});
+        tex.draw_texture(t_notes_10, {.x = position - offset + t_notes_10->width - t_notes_9->width / 2.0f, .y = y_pos});
     }
     float moji_y = tex.skin_config[SC::MOJI].y + (184 * tex.screen_scale);
-    tex.draw_texture(NOTES::MOJI, {.frame = head.moji, .x = position - tex.textures[NOTES::MOJI]->width / 2.0f, .y = moji_y});
+    tex.draw_texture(t_moji, {.frame = head.moji, .x = position - t_moji->width / 2.0f, .y = moji_y});
 }
 
 void PracticeGameScreen::draw_notes_scrobble(double current_ms) const {
@@ -431,12 +468,11 @@ void PracticeGameScreen::draw_notes_scrobble(double current_ms) const {
         } else {
             if (note.display) {
                 float x = get_scrobble_position_x(note, current_ms);
-                TexID note_tex = tex_id_map.count("notes/" + std::to_string((int)note.type))
-                                 ? tex.get_enum("notes/" + std::to_string((int)note.type)) : TexID(0);
-                tex.draw_texture(note_tex, {.center = true, .x = x - tex.textures[NOTES::_9]->width / 2.0f, .y = tex.skin_config[SC::NOTES].y + y});
+                TextureObject* note_tex = t_notes[(int)note.type];
+                tex.draw_texture(note_tex, {.center = true, .x = x - t_notes_9->width / 2.0f, .y = tex.skin_config[SC::NOTES].y + y});
             }
-            float moji_x = get_scrobble_position_x(note, current_ms) - tex.textures[NOTES::MOJI]->width / 2.0f;
-            tex.draw_texture(NOTES::MOJI, {.frame = note.moji, .x = moji_x, .y = tex.skin_config[SC::MOJI].y + y});
+            float moji_x = get_scrobble_position_x(note, current_ms) - t_moji->width / 2.0f;
+            tex.draw_texture(t_moji, {.frame = note.moji, .x = moji_x, .y = tex.skin_config[SC::MOJI].y + y});
         }
     }
 
@@ -444,12 +480,12 @@ void PracticeGameScreen::draw_notes_scrobble(double current_ms) const {
 
     if (!bars.empty() && scrobble_index < (int)bars.size()) {
         std::string bar_str = std::to_string(scrobble_index + 1);
-        float dw = tex.textures[PRACTICE::BAR_COUNT_BAR]->x2[0];
+        float dw = t_bar_count_bar->x2[0];
         float x  = get_scrobble_position_x(bars[scrobble_index], current_ms) + 4 * tex.screen_scale;
         float y  = tex.skin_config[SC::NOTES].y + 184 * tex.screen_scale
-                   + tex.textures[PRACTICE::BAR_COUNT_BAR]->y2[0] + 2 * tex.screen_scale;
+                   + t_bar_count_bar->y2[0] + 2 * tex.screen_scale;
         for (int i = 0; i < (int)bar_str.size(); i++)
-            tex.draw_texture(PRACTICE::BAR_COUNT_BAR, {.frame = bar_str[i] - '0', .x = x + i * dw, .y = y});
+            tex.draw_texture(t_bar_count_bar, {.frame = bar_str[i] - '0', .x = x + i * dw, .y = y});
     }
 }
 
@@ -475,32 +511,32 @@ void PracticeGameScreen::draw() {
         players[0]->draw_overlays(184 * tex.screen_scale, mask_shader);
     }
 
-    tex.draw_texture(PRACTICE::LARGE_DRUM, {.index = 0});
-    tex.draw_texture(PRACTICE::LARGE_DRUM, {.index = 1});
+    tex.draw_texture(t_large_drum, {.index = 0});
+    tex.draw_texture(t_large_drum, {.index = 1});
 
     int other_idx = (global_data.player_num == PlayerNum::P1) ? 1 : 0;
     int player_idx = (global_data.player_num == PlayerNum::P1) ? 0 : 1;
     if (!paused) {
-        tex.draw_texture(PRACTICE::PAUSE_DON, {.scale = pause_don_anim  ? (float)pause_don_anim->attribute  : 1.0f, .center = true, .index = other_idx});
-        tex.draw_texture(PRACTICE::PAUSE_KAT, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2});
-        tex.draw_texture(PRACTICE::PAUSE_KAT, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2 + 1});
+        tex.draw_texture(t_pause_don, {.scale = pause_don_anim  ? (float)pause_don_anim->attribute  : 1.0f, .center = true, .index = other_idx});
+        tex.draw_texture(t_pause_kat, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2});
+        tex.draw_texture(t_pause_kat, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2 + 1});
     } else {
-        tex.draw_texture(PRACTICE::RESUME_DON,  {.scale = resume_don_anim  ? (float)resume_don_anim->attribute  : 1.0f, .center = true, .index = player_idx});
-        tex.draw_texture(PRACTICE::SKIP_L_KAT,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
-        tex.draw_texture(PRACTICE::SKIP_R_KAT,  {.scale = skip_r_kat_anim  ? (float)skip_r_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2 + 1});
-        tex.draw_texture(PRACTICE::MENU_DON,    {.scale = menu_don_anim    ? (float)menu_don_anim->attribute    : 1.0f, .center = true, .index = other_idx});
-        tex.draw_texture(PRACTICE::SPEED_R_KAT, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
-        tex.draw_texture(PRACTICE::SPEED_L_KAT, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
+        tex.draw_texture(t_resume_don,  {.scale = resume_don_anim  ? (float)resume_don_anim->attribute  : 1.0f, .center = true, .index = player_idx});
+        tex.draw_texture(t_skip_l_kat,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
+        tex.draw_texture(t_skip_r_kat,  {.scale = skip_r_kat_anim  ? (float)skip_r_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2 + 1});
+        tex.draw_texture(t_menu_don,    {.scale = menu_don_anim    ? (float)menu_don_anim->attribute    : 1.0f, .center = true, .index = other_idx});
+        tex.draw_texture(t_speed_r_kat, {.scale = speed_l_kat_anim ? (float)speed_l_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2});
+        tex.draw_texture(t_speed_l_kat, {.scale = speed_r_kat_anim ? (float)speed_r_kat_anim->attribute : 1.0f, .center = true, .index = other_idx * 2 + 1});
     }
 
     if (!paused) {
-        tex.draw_texture(PRACTICE::PLAYING, {.fade = 0.5, .index = (int)global_data.player_num - 1});
+        tex.draw_texture(t_playing, {.fade = 0.5, .index = (int)global_data.player_num - 1});
     }
     // lyric stays at its normal position but on top of the large drums
     if (!players.empty()) players[0]->draw_lyric(184 * tex.screen_scale);
 
     // Progress bar
-    tex.draw_texture(PRACTICE::PROGRESS_BAR_BG, {});
+    tex.draw_texture(t_progress_bar_bg, {});
     float progress;
     if (paused && !bars.empty()) {
         double raw = scrobble_time + scrobble_move->attribute - bars[0].hit_ms;
@@ -511,14 +547,14 @@ void PracticeGameScreen::draw() {
         progress = players.empty() ? 0.0f : (float)std::min(ms_from_start / players[0]->end_time, 1.0);
     }
     float bar_width = tex.skin_config[SC::PRACTICE_PROGRESS_BAR_WIDTH].width;
-    tex.draw_texture(PRACTICE::PROGRESS_BAR, {.x2 = progress * bar_width});
+    tex.draw_texture(t_progress_bar, {.x2 = progress * bar_width});
 
     if (!bars.empty()) {
         double first_bar_time = bars[0].hit_ms;
         double total_time = players.empty() ? 1.0 : players[0]->end_time;
         for (double marker : markers) {
             float mx = (float)((marker - first_bar_time) / total_time) * bar_width;
-            tex.draw_texture(PRACTICE::GOGO_MARKER, {.x = mx});
+            tex.draw_texture(t_gogo_marker, {.x = mx});
         }
     }
 
@@ -536,11 +572,11 @@ void PracticeGameScreen::draw() {
         }
         int total_bars = (int)bars.size();
 
-        float dw   = tex.textures[PRACTICE::BAR_COUNT]->x2[0];
-        float divw = tex.textures[PRACTICE::BAR_DIVIDER]->x2[0];
-        float dh   = tex.textures[PRACTICE::BAR_COUNT]->y2[0];
-        float pb_y = tex.textures[PRACTICE::PROGRESS_BAR_BG]->y[0];
-        float pb_h = tex.textures[PRACTICE::PROGRESS_BAR_BG]->y2[0];
+        float dw   = t_bar_count->x2[0];
+        float divw = t_bar_divider->x2[0];
+        float dh   = t_bar_count->y2[0];
+        float pb_y = t_progress_bar_bg->y[0];
+        float pb_h = t_progress_bar_bg->y2[0];
         float digit_y = pb_y + (pb_h - dh) * 0.5f;
 
         std::string cur_str = std::to_string(current_bar);
@@ -548,28 +584,28 @@ void PracticeGameScreen::draw() {
         int d1 = song_speed / 10;
         int d2 = song_speed % 10;
 
-        tex.draw_texture(PRACTICE::SONG_TEMPO, {});
-        tex.draw_texture(PRACTICE::DOT, {});
-        tex.draw_texture(PRACTICE::MULTIPLIER, {});
-        tex.draw_texture(PRACTICE::BAR_LABEL, {});
+        tex.draw_texture(t_song_tempo, {});
+        tex.draw_texture(t_dot, {});
+        tex.draw_texture(t_multiplier, {});
+        tex.draw_texture(t_bar_label, {});
 
-        float st_right  = tex.textures[PRACTICE::SONG_TEMPO]->x[0] + tex.textures[PRACTICE::SONG_TEMPO]->x2[0];
-        float dot_right = tex.textures[PRACTICE::DOT]->x[0] + tex.textures[PRACTICE::DOT]->x2[0];
-        float lbl_right = tex.textures[PRACTICE::BAR_LABEL]->x[0] + tex.textures[PRACTICE::BAR_LABEL]->x2[0];
+        float st_right  = t_song_tempo->x[0] + t_song_tempo->x2[0];
+        float dot_right = t_dot->x[0] + t_dot->x2[0];
+        float lbl_right = t_bar_label->x[0] + t_bar_label->x2[0];
 
-        tex.draw_texture(PRACTICE::BAR_COUNT, {.frame = d1, .x = st_right - 4 * tex.screen_scale, .y = digit_y});
-        tex.draw_texture(PRACTICE::BAR_COUNT, {.frame = d2, .x = dot_right - 4 * tex.screen_scale, .y = digit_y});
+        tex.draw_texture(t_bar_count, {.frame = d1, .x = st_right - 4 * tex.screen_scale, .y = digit_y});
+        tex.draw_texture(t_bar_count, {.frame = d2, .x = dot_right - 4 * tex.screen_scale, .y = digit_y});
 
         for (int i = 0; i < (int)cur_str.size(); i++)
-            tex.draw_texture(PRACTICE::BAR_COUNT, {.frame = cur_str[i] - '0', .x = lbl_right + i * dw, .y = digit_y});
+            tex.draw_texture(t_bar_count, {.frame = cur_str[i] - '0', .x = lbl_right + i * dw, .y = digit_y});
         float div_x = lbl_right + (float)cur_str.size() * dw;
-        tex.draw_texture(PRACTICE::BAR_DIVIDER, {.x = div_x, .y = digit_y});
+        tex.draw_texture(t_bar_divider, {.x = div_x, .y = digit_y});
         for (int i = 0; i < (int)tot_str.size(); i++)
-            tex.draw_texture(PRACTICE::BAR_COUNT, {.frame = tot_str[i] - '0', .x = div_x + divw + i * dw, .y = digit_y});
+            tex.draw_texture(t_bar_count, {.frame = tot_str[i] - '0', .x = div_x + divw + i * dw, .y = digit_y});
     }
 
     if (paused) {
-        tex.draw_texture(PRACTICE::PAUSED, {.fade = 0.5});
+        tex.draw_texture(t_paused, {.fade = 0.5});
         if (menu.open) {
             if (menu.dialog != PracticeMenu::Dialog::NONE) menu.draw_dialog();
             else                                           menu.draw();

@@ -34,6 +34,25 @@ public:
     const char* lua_kind() const override { return "folder"; }
 
 protected:
+    // Textures resolved once in the constructor, after the song-select screen's
+    // load_screen_textures() has already run, instead of calling tex.get_texture()
+    // every frame from draw_closed()/draw_open_bg()/draw_open_fg().
+    // t_shadow_*/t_folder_texture*/t_genre_overlay/t_diff_overlay come from BaseBox -
+    // same texture names, already resolved there, no need to shadow them here.
+    TextureObject* t_folder_clip = nullptr;
+    TextureObject* t_crown_dfc = nullptr;
+    TextureObject* t_crown_fc = nullptr;
+    TextureObject* t_crown_clear = nullptr;
+    TextureObject* t_folder_top_edge = nullptr;
+    TextureObject* t_folder_top = nullptr;
+    TextureObject* t_genre_overlay_large = nullptr;
+    TextureObject* t_diff_overlay_large = nullptr;
+    TextureObject* t_song_count_back = nullptr;
+    TextureObject* t_song_count_num = nullptr;
+    TextureObject* t_song_count_songs = nullptr;
+    TextureObject* t_folder_graphic = nullptr;
+    TextureObject* t_folder_text = nullptr;
+    void load_textures() override;
     void draw_open_bg(float fade);
     void draw_open_fg(float fade);
     void draw_closed() override;

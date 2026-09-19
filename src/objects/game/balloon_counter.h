@@ -2,6 +2,8 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class BalloonCounter {
 private:
     int balloon_count;
@@ -10,6 +12,9 @@ private:
     bool is_2p;
     TextStretchAnimation* stretch;
     FadeAnimation* fade;
+    TextureObject* t_pop = nullptr;
+    TextureObject* t_bubble = nullptr;
+    TextureObject* t_counter = nullptr;
 public:
     BalloonCounter(int count, bool is_2p);
 

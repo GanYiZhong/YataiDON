@@ -29,6 +29,9 @@ void SettingsScreen::on_screen_start() {
     allnet_indicator = AllNetIcon();
     username_on_entry = scores_manager.player_1_data.username;
 
+    t_background = tex.get_texture("background/background");
+    t_footer = tex.get_texture("background/footer");
+
     audio.play_sound("bgm", VolumePreset::MUSIC);
     screen_init = true;
 }
@@ -100,9 +103,9 @@ std::optional<Screens> SettingsScreen::update() {
 }
 
 void SettingsScreen::draw() {
-    tex.draw_texture(BACKGROUND::BACKGROUND);
+    tex.draw_texture(t_background);
     box_manager->draw();
-    tex.draw_texture(BACKGROUND::FOOTER);
+    tex.draw_texture(t_footer);
     indicator->draw(tex.skin_config[SC::SONG_SELECT_INDICATOR].x,
                     tex.skin_config[SC::SONG_SELECT_INDICATOR].y);
     coin_overlay->draw();

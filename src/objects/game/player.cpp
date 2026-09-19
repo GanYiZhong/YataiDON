@@ -34,16 +34,17 @@ Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param
     , combo_display(combo, 0)
     , score_counter(0, is_2p)
 {
+    init_player_textures();
     reset_chart();
     don_hitsound = "hitsound_don_" + std::to_string((int)player_num) + "p";
     kat_hitsound = "hitsound_kat_" + std::to_string((int)player_num) + "p";
 
     std::string pnum = std::to_string((int)player_num);
-    lane_cover_tex_id = tex.get_enum("lane/" + pnum + "p_lane_cover");
-    lane_icon_tex_id  = tex.get_enum("lane/" + pnum + "p_icon");
+    lane_cover_tex_id = tex.get_texture("lane/" + pnum + "p_lane_cover");
+    lane_icon_tex_id  = tex.get_texture("lane/" + pnum + "p_icon");
     for (int t = 1; t <= 9; ++t) {
-        auto it = tex_id_map.find("notes/" + std::to_string(t));
-        note_tex_ids[t] = (it != tex_id_map.end()) ? it->second : TexID(0);
+        std::string name = "notes/" + std::to_string(t);
+        note_tex_ids[t] = tex.has_texture(name) ? tex.get_texture(name) : nullptr;
     }
 
     if (parser.has_value() && !parser->metadata.course_data.empty()) {
@@ -68,6 +69,56 @@ Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param
     if (global_data.config->general.judge_counter && !is_2p) {
         judge_counter = JudgeCounter();
     }
+}
+
+void Player::init_player_textures() {
+    t_lane_background = tex.get_texture("lane/lane_background");
+    t_ai_lane_background = tex.get_texture("lane/ai_lane_background");
+    t_lane_hit_circle = tex.get_texture("lane/lane_hit_circle");
+    t_dan_lane_cover = tex.get_texture("lane/dan_lane_cover");
+    t_drum = tex.get_texture("lane/drum");
+    t_lane_difficulty = tex.get_texture("lane/lane_difficulty");
+    t_timer = tex.get_texture("lane/timer");
+    t_auto_icon = tex.get_texture("lane/auto_icon_" + global_data.config->general.language);
+    t_lane_score_cover = tex.get_texture("lane/lane_score_cover");
+    t_mod_shinuchi = tex.has_texture("lane/mod_shinuchi") ? tex.get_texture("lane/mod_shinuchi") : nullptr;
+
+    t_notes_0 = tex.get_texture("notes/0");
+    t_notes_8 = tex.get_texture("notes/8");
+    t_notes_9 = tex.get_texture("notes/9");
+    t_notes_10 = tex.get_texture("notes/10");
+    t_moji = tex.get_texture("notes/moji");
+    t_moji_drumroll_mid = tex.get_texture("notes/moji_drumroll_mid");
+    t_drumroll_big_tail = tex.get_texture("notes/drumroll_big_tail");
+    t_drumroll_tail = tex.get_texture("notes/drumroll_tail");
+
+    // Badge for the current speed: the cabinet has one per value (x1.1 .. x4);
+    // fall back to the three coarse tiers when the skin does not ship them.
+    // modifiers/score_method are fixed for this Player's lifetime, so the whole
+    // badge set is resolved once here instead of every frame from draw_modifiers().
+    auto speed_badge = [&]() -> std::optional<TextureObject*> {
+        if (modifiers.speed <= 10) return std::nullopt;
+        static const std::pair<int, const char*> labels[] = {
+            {11, "x1_1"}, {12, "x1_2"}, {13, "x1_3"}, {14, "x1_4"}, {15, "x1_5"}, {16, "x1_6"},
+            {17, "x1_7"}, {18, "x1_8"}, {19, "x1_9"}, {20, "x2"},   {25, "x2_5"}, {30, "x3"},
+            {35, "x3_5"}, {40, "x4"}};
+        const char* label = labels[0].second;
+        for (const auto& [v, l] : labels) if (modifiers.speed >= v) label = l;
+        std::string name = std::string("lane/mod_speed_") + label;
+        if (tex.has_texture(name)) return tex.get_texture(name);
+        if (modifiers.speed >= 40 && tex.has_texture("lane/mod_yonbai")) return tex.get_texture("lane/mod_yonbai");
+        if (modifiers.speed >= 30 && tex.has_texture("lane/mod_sanbai")) return tex.get_texture("lane/mod_sanbai");
+        if (tex.has_texture("lane/mod_baisaku")) return tex.get_texture("lane/mod_baisaku");
+        return std::nullopt;
+    };
+
+    // Cabinet order: speed, doron, abekobe, random.
+    t_badges.clear();
+    if (auto sb = speed_badge()) t_badges.push_back(*sb);
+    if (modifiers.display && tex.has_texture("lane/mod_doron")) t_badges.push_back(tex.get_texture("lane/mod_doron"));
+    if (modifiers.inverse && tex.has_texture("lane/mod_abekobe")) t_badges.push_back(tex.get_texture("lane/mod_abekobe"));
+    if (modifiers.random == 2 && tex.has_texture("lane/mod_detarame")) t_badges.push_back(tex.get_texture("lane/mod_detarame"));
+    else if (modifiers.random == 1 && tex.has_texture("lane/mod_kimagure")) t_badges.push_back(tex.get_texture("lane/mod_kimagure"));
 }
 
 ResultData Player::get_result_score() {
@@ -450,8 +501,8 @@ void Player::update(double ms_from_start, double current_ms, std::optional<Backg
 }
 
 void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shader) {
-    tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
-    if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
+    tex.draw_texture(t_lane_background, {.y=y});
+    if (player_num == PlayerNum::AI) tex.draw_texture(t_ai_lane_background, {.y=y});
     if (branch_indicator.has_value()) {
         branch_indicator->draw(y);
     }
@@ -466,7 +517,7 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
     }
-    tex.draw_texture(LANE::LANE_HIT_CIRCLE, {.x = judge_x, .y = y + judge_y});
+    tex.draw_texture(t_lane_hit_circle, {.x = judge_x, .y = y + judge_y});
 
     if (gogo_time.has_value()) {
         gogo_time->draw(judge_x, y + judge_y);
@@ -480,7 +531,7 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
         anim.draw_effect(judge_x, y + judge_y);
     }
     {
-        int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
+        int scissor_x = virtual_to_screen_x(static_cast<float>(lane_cover_tex_id->x2[0]));
         int win_w = ray::GetScreenWidth();
         ray::BeginScissorMode(scissor_x, 0, win_w - scissor_x, ray::GetScreenHeight());
         draw_notes(ms_from_start, y);
@@ -503,8 +554,8 @@ void Player::draw(double ms_from_start, float x, float y, ray::Shader& mask_shad
 
 void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& mask_shader, bool draw_notes_on) {
     practice_lyric = true;
-    tex.draw_texture(LANE::LANE_BACKGROUND, {.y=y});
-    if (player_num == PlayerNum::AI) tex.draw_texture(LANE::AI_LANE_BACKGROUND, {.y=y});
+    tex.draw_texture(t_lane_background, {.y=y});
+    if (player_num == PlayerNum::AI) tex.draw_texture(t_ai_lane_background, {.y=y});
     if (branch_indicator.has_value()) {
         branch_indicator->draw(y);
     }
@@ -519,7 +570,7 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
     }
-    tex.draw_texture(LANE::LANE_HIT_CIRCLE, {.x = judge_x, .y = y + judge_y});
+    tex.draw_texture(t_lane_hit_circle, {.x = judge_x, .y = y + judge_y});
 
     if (gogo_time.has_value()) {
         gogo_time->draw(judge_x, y + judge_y);
@@ -534,7 +585,7 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
     }
 
     if (draw_notes_on) {
-        int scissor_x = virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0]));
+        int scissor_x = virtual_to_screen_x(static_cast<float>(lane_cover_tex_id->x2[0]));
         int win_w = ray::GetScreenWidth();
         ray::BeginScissorMode(scissor_x, 0, win_w - scissor_x, ray::GetScreenHeight());
         draw_notes(ms_from_start, y);
@@ -553,7 +604,7 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
 }
 
 void Player::get_load_time(Note& note) {
-    int note_half_w = tex.textures[NOTES::_9]->width / 2;
+    int note_half_w = t_notes_9->width / 2;
     float travel_distance = tex.screen_width - JudgePos::X;
     float base_pixels_per_ms = (note.bpm / 240000 * abs(note.scroll_x) * travel_distance);
     if (base_pixels_per_ms == 0) {
@@ -1422,7 +1473,7 @@ void Player::draw_bar(double current_ms, float y, const Note& bar) {
     } else {
         angle = 0;
     }
-    tex.draw_texture(NOTES::_0, {.frame=bar.is_branch_start, .x=x_position+tex.skin_config[SC::MOJI_DRUMROLL].x - (tex.textures[NOTES::_9]->width/2.0f), .y=y_position+tex.skin_config[SC::MOJI_DRUMROLL].y, .rotation=angle});
+    tex.draw_texture(t_notes_0, {.frame=bar.is_branch_start, .x=x_position+tex.skin_config[SC::MOJI_DRUMROLL].x - (t_notes_9->width/2.0f), .y=y_position+tex.skin_config[SC::MOJI_DRUMROLL].y, .rotation=angle});
 }
 
 void Player::draw_drumroll(double current_ms, float y, const Note& head, int current_eighth, bool moji_pass) {
@@ -1450,20 +1501,20 @@ void Player::draw_drumroll(double current_ms, float y, const Note& head, int cur
     end_position += judge_x;
     float moji_y = y + tex.skin_config[SC::MOJI].y;
     if (moji_pass) {
-        tex.draw_texture(NOTES::MOJI_DRUMROLL_MID, {.x=start_position, .y=moji_y+judge_y, .x2=length});
-        tex.draw_texture(NOTES::MOJI, {.frame=head.moji, .x=start_position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y+judge_y});
-        tex.draw_texture(NOTES::MOJI, {.frame=tail.moji, .x=end_position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y+judge_y});
+        tex.draw_texture(t_moji_drumroll_mid, {.x=start_position, .y=moji_y+judge_y, .x2=length});
+        tex.draw_texture(t_moji, {.frame=head.moji, .x=start_position - (t_moji->width/2.0f), .y=moji_y+judge_y});
+        tex.draw_texture(t_moji, {.frame=tail.moji, .x=end_position - (t_moji->width/2.0f), .y=moji_y+judge_y});
         return;
     }
 
     if (head.display) {
-        tex.draw_texture(NOTES::_8, {.color=color, .frame=is_big, .x=start_position, .y=y_pos, .x2=length+tex.skin_config[SC::DRUMROLL_WIDTH_OFFSET].width});
+        tex.draw_texture(t_notes_8, {.color=color, .frame=is_big, .x=start_position, .y=y_pos, .x2=length+tex.skin_config[SC::DRUMROLL_WIDTH_OFFSET].width});
         if (is_big) {
-            tex.draw_texture(NOTES::DRUMROLL_BIG_TAIL, {.color=color, .x=end_position, .y=y_pos});
+            tex.draw_texture(t_drumroll_big_tail, {.color=color, .x=end_position, .y=y_pos});
         } else {
-            tex.draw_texture(NOTES::DRUMROLL_TAIL, {.color=color, .x=end_position, .y=y_pos});
+            tex.draw_texture(t_drumroll_tail, {.color=color, .x=end_position, .y=y_pos});
         }
-        tex.draw_texture(note_tex_ids[(int)head.type], {.color=color, .frame=current_eighth % 2, .x=start_position - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos+judge_y});
+        tex.draw_texture(note_tex_ids[(int)head.type], {.color=color, .frame=current_eighth % 2, .x=start_position - t_notes_9->width/2.0f, .y=y_pos+judge_y});
     }
 }
 
@@ -1499,12 +1550,12 @@ void Player::draw_balloon(double current_ms, float y, const Note& head, int curr
         position = start_position;
     }
     if (moji_pass) {
-        tex.draw_texture(NOTES::MOJI, {.frame=head.moji, .x=position - (tex.textures[NOTES::MOJI]->width/2.0f), .y=moji_y});
+        tex.draw_texture(t_moji, {.frame=head.moji, .x=position - (t_moji->width/2.0f), .y=moji_y});
         return;
     }
     if (head.display) {
-        tex.draw_texture(note_tex_ids[(int)head.type], {.frame=current_eighth % 2, .x=position-offset - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos});
-        tex.draw_texture(NOTES::_10, {.frame=current_eighth % 2, .x=position-offset+tex.textures[NOTES::_10]->width - tex.textures[NOTES::_9]->width/2.0f, .y=y_pos});
+        tex.draw_texture(note_tex_ids[(int)head.type], {.frame=current_eighth % 2, .x=position-offset - t_notes_9->width/2.0f, .y=y_pos});
+        tex.draw_texture(t_notes_10, {.frame=current_eighth % 2, .x=position-offset+t_notes_10->width - t_notes_9->width/2.0f, .y=y_pos});
     }
 }
 
@@ -1563,7 +1614,7 @@ void Player::draw_notes(double current_ms, float y) {
         } else if (note.type == NoteType::BALLOON_HEAD) {
             draw_balloon(current_ms, y, note, current_eighth, false);
         } else if (note.display) {
-            tex.draw_texture(note_tex_ids[(int)note.type], {.frame=current_eighth % 2, .center=true, .x=pos->first - (tex.textures[NOTES::_9]->width/2.0f), .y=pos->second+tex.skin_config[SC::NOTES].y});
+            tex.draw_texture(note_tex_ids[(int)note.type], {.frame=current_eighth % 2, .center=true, .x=pos->first - (t_notes_9->width/2.0f), .y=pos->second+tex.skin_config[SC::NOTES].y});
         }
     }
 
@@ -1578,7 +1629,7 @@ void Player::draw_notes(double current_ms, float y) {
         } else if (note.type == NoteType::BALLOON_HEAD) {
             draw_balloon(current_ms, y, note, current_eighth, true);
         } else {
-            tex.draw_texture(NOTES::MOJI, {.frame=note.moji, .x=pos->first - (tex.textures[NOTES::MOJI]->width/2.0f), .y=tex.skin_config[SC::MOJI].y + pos->second});
+            tex.draw_texture(t_moji, {.frame=note.moji, .x=pos->first - (t_moji->width/2.0f), .y=tex.skin_config[SC::MOJI].y + pos->second});
         }
     }
 }
@@ -1587,73 +1638,50 @@ void Player::draw_song_timer(double current_ms, float y) {
     float progress = current_ms / end_time;
     float width = tex.skin_config[SC::SONG_TIMER].width * std::max(std::min(progress, 1.0f), 0.0f);
     ray::DrawRectangle(tex.skin_config[SC::SONG_TIMER].x, y + tex.skin_config[SC::SONG_TIMER].y, width, tex.skin_config[SC::SONG_TIMER].height, ray::Color(0, 255, 158, 255));
-    tex.draw_texture(LANE::TIMER, {.y=y});
+    tex.draw_texture(t_timer, {.y=y});
 }
 
 void Player::draw_modifiers(float y) {
-    auto icon_y = [&](uint32_t id) {
+    auto icon_y = [&](TextureObject* id) {
         if (!is_2p) return y;
-        float cover_h = (float)tex.textures[LANE::LANE_SCORE_COVER]->y2[0];
-        float json_y  = (float)tex.textures[id]->y[0];
-        float icon_h  = (float)tex.textures[id]->y2[0];
+        float cover_h = (float)t_lane_score_cover->y2[0];
+        float json_y  = (float)id->y[0];
+        float icon_h  = (float)id->y2[0];
         return y + tex.skin_config[SC::SCORE_COUNTER_2P_Y_OFFSET].y
                  + cover_h - icon_h - 2.0f * json_y;
     };
-    auto has = [&](uint32_t id) { return tex.textures.find(id) != tex.textures.end(); };
 
-    // Badge for the current speed: the cabinet has one per value (x1.1 .. x4);
-    // fall back to the three coarse tiers when the skin does not ship them.
-    auto speed_badge = [&]() -> std::optional<uint32_t> {
-        if (modifiers.speed <= 10) return std::nullopt;
-        static const std::pair<int, const char*> labels[] = {
-            {11, "x1_1"}, {12, "x1_2"}, {13, "x1_3"}, {14, "x1_4"}, {15, "x1_5"}, {16, "x1_6"},
-            {17, "x1_7"}, {18, "x1_8"}, {19, "x1_9"}, {20, "x2"},   {25, "x2_5"}, {30, "x3"},
-            {35, "x3_5"}, {40, "x4"}};
-        const char* label = labels[0].second;
-        for (const auto& [v, l] : labels) if (modifiers.speed >= v) label = l;
-        uint32_t id = tex.get_enum(std::string("lane/mod_speed_") + label);
-        if (has(id)) return id;
-        if (modifiers.speed >= 40) return (uint32_t)LANE::MOD_YONBAI;
-        if (modifiers.speed >= 30) return (uint32_t)LANE::MOD_SANBAI;
-        return (uint32_t)LANE::MOD_BAISAKU;
-    };
-
-    // Cabinet order: speed, doron, abekobe, random.
-    std::vector<uint32_t> badges;
-    if (auto sb = speed_badge()) badges.push_back(*sb);
-    if (modifiers.display) badges.push_back(LANE::MOD_DORON);
-    if (modifiers.inverse) badges.push_back(LANE::MOD_ABEKOBE);
-    if (modifiers.random == 2) badges.push_back(LANE::MOD_DETARAME);
-    else if (modifiers.random == 1) badges.push_back(LANE::MOD_KIMAGURE);
+    // t_badges/t_mod_shinuchi are resolved once in init_player_textures() (modifiers
+    // and score_method are fixed for this Player's lifetime).
+    const std::vector<TextureObject*>& badges = t_badges;
 
     const SkinInfo* grid = tex.skin_entry("mod_badge_grid");
     if (grid && grid->width > 0) {
         // Sequential slots on the skin's grid (columns in font_size, default 3).
         const int cols = grid->font_size > 0 ? grid->font_size : 3;
         int slot = 0;
-        for (uint32_t id : badges) {
-            if (!has(id)) continue;
+        for (TextureObject* id : badges) {
             const float gx = grid->x + (slot % cols) * grid->width;
             const float gy = grid->y + (slot / cols) * grid->height;
             float by = y + gy;
             if (is_2p) {
-                float cover_h = (float)tex.textures[LANE::LANE_SCORE_COVER]->y2[0];
-                float icon_h  = (float)tex.textures[id]->y2[0];
+                float cover_h = (float)t_lane_score_cover->y2[0];
+                float icon_h  = (float)id->y2[0];
                 by = y + tex.skin_config[SC::SCORE_COUNTER_2P_Y_OFFSET].y + cover_h - icon_h - 2.0f * gy;
             }
-            tex.draw_texture(id, {.x = gx - (float)tex.textures[id]->x[0], .y = by - (float)tex.textures[id]->y[0]});
+            tex.draw_texture(id, {.x = gx - (float)id->x[0], .y = by - (float)id->y[0]});
             slot++;
         }
-        if (score_method == ScoreMethod::SHINUCHI && has(LANE::MOD_SHINUCHI))
-            tex.draw_texture(LANE::MOD_SHINUCHI, {.y = icon_y(LANE::MOD_SHINUCHI)});
+        if (score_method == ScoreMethod::SHINUCHI && t_mod_shinuchi)
+            tex.draw_texture(t_mod_shinuchi, {.y = icon_y(t_mod_shinuchi)});
         return;
     }
 
-    if (score_method == ScoreMethod::SHINUCHI) {
-        tex.draw_texture(LANE::MOD_SHINUCHI, {.y=icon_y(LANE::MOD_SHINUCHI)});
+    if (score_method == ScoreMethod::SHINUCHI && t_mod_shinuchi) {
+        tex.draw_texture(t_mod_shinuchi, {.y=icon_y(t_mod_shinuchi)});
     }
-    for (uint32_t id : badges) {
-        if (has(id)) tex.draw_texture(id, {.y = icon_y(id)});
+    for (TextureObject* id : badges) {
+        tex.draw_texture(id, {.y = icon_y(id)});
     }
 }
 
@@ -1666,12 +1694,12 @@ void Player::draw_lane_cover(float y) {
         }
     }
     tex.draw_texture(lane_cover_tex_id, {.y=y});
-    if (is_dan) tex.draw_texture(LANE::DAN_LANE_COVER, {.y=y});
+    if (is_dan) tex.draw_texture(t_dan_lane_cover, {.y=y});
 }
 
 
 void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
-    tex.draw_texture(LANE::DRUM, {.y=y});
+    tex.draw_texture(t_drum, {.y=y});
     if (ending_anim.has_value()) {
         if (ending_background && ending_background->wants_ending())
             ending_background->draw_ending(player_num);
@@ -1696,14 +1724,14 @@ void Player::draw_overlays(float y, const ray::Shader& mask_shader) {
     tex.draw_texture(lane_icon_tex_id, {.y=y, .index=is_2p});
     int frame = is_dan ? 6 : difficulty;
     int index = is_dan ? 0 : is_2p;
-    tex.draw_texture(LANE::LANE_DIFFICULTY, {.frame=frame, .y=y, .index=index});
+    tex.draw_texture(t_lane_difficulty, {.frame=frame, .y=y, .index=index});
     draw_modifiers(y);
     if (judge_counter.has_value()) {
         judge_counter->draw();
     }
 
     if (modifiers.auto_play) {
-        tex.draw_texture(tex.get_enum("lane/auto_icon_" + global_data.config->general.language), {.y=y, .index=is_2p});
+        tex.draw_texture(t_auto_icon, {.y=y, .index=is_2p});
     } else {
         if (is_2p) {
             nameplate.draw(tex.skin_config[SC::GAME_NAMEPLATE_2P].x, y + tex.skin_config[SC::GAME_NAMEPLATE_2P].y);

@@ -21,6 +21,8 @@ BaseBox::BaseBox(const fs::path& path, const BoxDef& box_def)
     move = std::make_unique<MoveAnimation>(133, 0, false, false, 0, 0.0, std::nullopt, std::nullopt, EaseType::Cubic);
     move->start();
 
+    load_textures();
+
     fade_in(100);
 }
 
@@ -62,6 +64,20 @@ void BaseBox::reset() {
     yellow_box_opened = false;
     open_anim->reset();
     open_fade->reset();
+    load_textures();
+}
+
+void BaseBox::load_textures() {
+    t_shadow_bottom_left  = tex.get_texture("yellow_box/shadow_bottom_left");
+    t_shadow_bottom       = tex.get_texture("yellow_box/shadow_bottom");
+    t_shadow_bottom_right = tex.get_texture("yellow_box/shadow_bottom_right");
+    t_shadow_right        = tex.get_texture("yellow_box/shadow_right");
+    t_shadow_top_right    = tex.get_texture("yellow_box/shadow_top_right");
+    t_folder_texture_left  = tex.get_texture("box/folder_texture_left");
+    t_folder_texture       = tex.get_texture("box/folder_texture");
+    t_folder_texture_right = tex.get_texture("box/folder_texture_right");
+    t_genre_overlay = tex.get_texture("box/genre_overlay");
+    t_diff_overlay  = tex.get_texture("box/diff_overlay");
 }
 
 void BaseBox::expand_box() {
@@ -139,7 +155,7 @@ void BaseBox::update(double current_time) {
         right_bound = yellow_box->right_distance;
     } else {
         left_bound = position;
-        right_bound = position + (float)(tex.textures[BOX::FOLDER_TEXTURE_LEFT]->width) + (float)(tex.textures[BOX::FOLDER_TEXTURE_RIGHT]->width) + (tex.skin_config[SC::SONG_BOX_BG].width);
+        right_bound = position + (float)(t_folder_texture_left->width) + (float)(t_folder_texture_right->width) + (tex.skin_config[SC::SONG_BOX_BG].width);
     }
 }
 
@@ -147,26 +163,26 @@ void BaseBox::draw_closed() {
     float bx = box_x();
     float by = box_y();
 
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_LEFT,  {.x=bx, .y=by, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM,       {.x=bx, .y=by, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_RIGHT, {.x=bx, .y=by, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_RIGHT,        {.x=bx, .y=by, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_TOP_RIGHT,    {.x=bx, .y=by, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom_left,  {.x=bx, .y=by, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom,       {.x=bx, .y=by, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom_right, {.x=bx, .y=by, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_right,        {.x=bx, .y=by, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_top_right,    {.x=bx, .y=by, .fade=fade->attribute, .index=0});
 
     if (shader_loaded && texture_index == TextureIndex::NONE)
         ray::BeginShaderMode(shader);
 
-    tex.draw_texture(BOX::FOLDER_TEXTURE_LEFT,  {.frame=(int)texture_index, .x=bx, .y=by, .fade=fade->attribute});
-    tex.draw_texture(BOX::FOLDER_TEXTURE,       {.frame=(int)texture_index, .x=bx, .y=by, .x2=tex.skin_config[SC::SONG_BOX_BG].width, .fade=fade->attribute});
-    tex.draw_texture(BOX::FOLDER_TEXTURE_RIGHT, {.frame=(int)texture_index, .x=bx, .y=by, .fade=fade->attribute});
+    tex.draw_texture(t_folder_texture_left,  {.frame=(int)texture_index, .x=bx, .y=by, .fade=fade->attribute});
+    tex.draw_texture(t_folder_texture,       {.frame=(int)texture_index, .x=bx, .y=by, .x2=tex.skin_config[SC::SONG_BOX_BG].width, .fade=fade->attribute});
+    tex.draw_texture(t_folder_texture_right, {.frame=(int)texture_index, .x=bx, .y=by, .fade=fade->attribute});
 
     if (shader_loaded && texture_index == TextureIndex::NONE)
         ray::EndShaderMode();
 
     if (texture_index == TextureIndex::DEFAULT)
-        tex.draw_texture(BOX::GENRE_OVERLAY, {.x=bx, .y=by, .fade=fade->attribute});
+        tex.draw_texture(t_genre_overlay, {.x=bx, .y=by, .fade=fade->attribute});
     if (genre_index == GenreIndex::DIFFICULTY)
-        tex.draw_texture(BOX::DIFF_OVERLAY,  {.x=bx, .y=by, .fade=fade->attribute});
+        tex.draw_texture(t_diff_overlay,  {.x=bx, .y=by, .fade=fade->attribute});
 }
 
 void BaseBox::draw_open() {

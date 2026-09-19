@@ -22,6 +22,8 @@ GogoTime::GogoTime() {
 
     fire_resize->start();
     fire_change->start();
+
+    t_fire = tex.get_texture("gogo_time/fire");
 }
 
 void GogoTime::update(double current_ms) {
@@ -30,7 +32,7 @@ void GogoTime::update(double current_ms) {
 }
 
 void GogoTime::draw(float judge_x, float judge_y) {
-    tex.draw_texture(GOGO_TIME::FIRE, {
+    tex.draw_texture(t_fire, {
         .frame = (int)fire_change->attribute,
         .scale = (float)(fire_resize->attribute),
         .center = true,

@@ -11,6 +11,11 @@ public:
     const char* lua_kind() const override { return "back"; }
 
 protected:
+    TextureObject* t_back_text = nullptr;
+    TextureObject* t_back_text_highlight = nullptr;
+    TextureObject* t_back_graphic = nullptr;
+
     void draw_closed() override;
     void draw_open() override;
+    void load_textures() override;
 };

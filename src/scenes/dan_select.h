@@ -40,6 +40,10 @@ public:
 
     double last_moved = 0;
 
+    TextureObject* t_cursor = nullptr;
+    TextureObject* t_arrow_r = nullptr;
+    TextureObject* t_arrow_l = nullptr;
+
     void init(const std::vector<fs::path>& song_paths);
 
     void begin_init(const std::vector<fs::path>& song_paths);
@@ -133,6 +137,24 @@ private:
     bool   timer_fired     = false;
     double screen_start_ms = 0;
     double intro_ms        = 0;
+
+    // Textures resolved once in on_screen_start(), after load_screen_textures() has run.
+    void init_dan_select_textures();
+
+    TextureObject* t_global_bg = nullptr;
+    TextureObject* t_global_bg_header = nullptr;
+    TextureObject* t_global_bg_footer = nullptr;
+    TextureObject* t_global_footer = nullptr;
+    TextureObject* t_global_dan_select = nullptr;
+    TextureObject* t_confirm_bg = nullptr;
+    TextureObject* t_confirm_text = nullptr;
+    TextureObject* t_confirm_selection_box = nullptr;
+    TextureObject* t_confirm_selection_box_highlight = nullptr;
+    TextureObject* t_confirm_selection_box_outline = nullptr;
+    TextureObject* t_confirm_yes = nullptr;
+    TextureObject* t_confirm_no = nullptr;
+    TextureObject* t_confirm_option = nullptr;
+    TextureObject* t_confirm_option_highlight = nullptr;
 
     static constexpr double SCAN_TIMEOUT_MS = 20000.0;
     bool   scan_ready      = false;

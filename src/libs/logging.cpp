@@ -13,9 +13,13 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <exception>
 #include <vector>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #if !defined(__ANDROID__) && !defined(YATAIDON_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
 #include <cpptrace/cpptrace.hpp>
 #endif
@@ -142,24 +146,37 @@ void signal_handler(int signal) {
 }
 
 #ifndef _WIN32
-// NOTE: spdlog::critical()/log_stacktrace() below are not async-signal-safe
-// (heap allocation, mutexes, ostringstream); a crash inside malloc or while
-// the logger's mutex is held can deadlock or re-fault here instead of
-// producing a trace. A fully signal-safe handler needs cpptrace's raw
-// write()-based trace API instead -- left as-is for now since that's a
-// larger rework than this pass covers. SA_ONSTACK below at least keeps
-// stack-overflow crashes from silently vanishing.
-static void crash_signal_handler(int sig) {
-    const char* name = "Unknown signal";
-    switch (sig) {
-        case SIGSEGV: name = "SIGSEGV (Segmentation fault)"; break;
-        case SIGABRT: name = "SIGABRT (Abort)"; break;
-        case SIGFPE:  name = "SIGFPE (Floating point exception)"; break;
-        case SIGILL:  name = "SIGILL (Illegal instruction)"; break;
+static void write_hex(int fd, std::uintptr_t value) {
+    char buf[2 + sizeof(value) * 2];
+    buf[0] = '0';
+    buf[1] = 'x';
+    for (std::size_t i = 0; i < sizeof(value) * 2; i++) {
+        int nibble = (value >> (4 * (sizeof(value) * 2 - 1 - i))) & 0xF;
+        buf[2 + i] = nibble < 10 ? char('0' + nibble) : char('a' + nibble - 10);
     }
-    spdlog::critical("Crash: {}", name);
-    log_stacktrace();
-    std::_Exit(1);
+    (void)!write(fd, buf, sizeof(buf));
+}
+
+static void crash_signal_handler(int sig) {
+    const char* name = "Unknown signal\n";
+    switch (sig) {
+        case SIGSEGV: name = "Crash: SIGSEGV (Segmentation fault)\n"; break;
+        case SIGABRT: name = "Crash: SIGABRT (Abort)\n"; break;
+        case SIGFPE:  name = "Crash: SIGFPE (Floating point exception)\n"; break;
+        case SIGILL:  name = "Crash: SIGILL (Illegal instruction)\n"; break;
+    }
+    (void)!write(STDERR_FILENO, name, strlen(name));
+#if !defined(__ANDROID__) && !defined(YATAIDON_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+    // Raw addresses only -- symbolizing (resolve()) allocates and is not
+    // signal-safe. Pipe these through addr2line/cpptrace offline.
+    cpptrace::frame_ptr frames[64];
+    std::size_t count = cpptrace::safe_generate_raw_trace(frames, 64);
+    for (std::size_t i = 0; i < count; i++) {
+        write_hex(STDERR_FILENO, frames[i]);
+        (void)!write(STDERR_FILENO, "\n", 1);
+    }
+#endif
+    _exit(1);
 }
 #endif
 

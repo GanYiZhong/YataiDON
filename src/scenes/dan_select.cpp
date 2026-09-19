@@ -284,6 +284,10 @@ void DanNavigator::publish(std::vector<DanBoxData>&& data) {
 }
 
 void DanNavigator::begin_init(const std::vector<fs::path>& song_paths) {
+    t_cursor  = tex.has_texture("box/cursor")  ? tex.get_texture("box/cursor")  : nullptr;
+    t_arrow_r = tex.has_texture("box/arrow_r") ? tex.get_texture("box/arrow_r") : nullptr;
+    t_arrow_l = tex.has_texture("box/arrow_l") ? tex.get_texture("box/arrow_l") : nullptr;
+
     abort_init();
     boxes.clear();
     selected_index = 0;
@@ -497,25 +501,42 @@ void DanNavigator::draw() {
         paint_ok = false;
     }
 
-    if (tex.has_texture("box/cursor"))
-        tex.draw_texture(tex.get_enum("box/cursor"),
-                         {.x = pos, .fade = dan_cursor_alpha(now)});
+    if (t_cursor)
+        tex.draw_texture(t_cursor, {.x = pos, .fade = dan_cursor_alpha(now)});
 
     if (last_moved <= 0) return;
     const double af = (now - last_moved) * 0.06;
     if (af < 0.0 || af > 60.0) return;
     const float drift = (float)(af / 60.0 * 10.0);
     const float aa = (af <= 30.0) ? 1.0f : (float)(1.0 - (af - 30.0) / 30.0);
-    if (tex.has_texture("box/arrow_r"))
-        tex.draw_texture(tex.get_enum("box/arrow_r"), {.x = pos + drift, .fade = aa});
-    if (tex.has_texture("box/arrow_l"))
-        tex.draw_texture(tex.get_enum("box/arrow_l"), {.x = pos - drift, .fade = aa});
+    if (t_arrow_r)
+        tex.draw_texture(t_arrow_r, {.x = pos + drift, .fade = aa});
+    if (t_arrow_l)
+        tex.draw_texture(t_arrow_l, {.x = pos - drift, .fade = aa});
 }
 
 // ─── DanSelectScreen ─────────────────────────────────────────────────────────
 
+void DanSelectScreen::init_dan_select_textures() {
+    t_global_bg = tex.get_texture("global/bg");
+    t_global_bg_header = tex.get_texture("global/bg_header");
+    t_global_bg_footer = tex.get_texture("global/bg_footer");
+    t_global_footer = tex.get_texture("global/footer");
+    t_global_dan_select = tex.get_texture("global/dan_select");
+    t_confirm_bg = tex.get_texture("confirm_box/bg");
+    t_confirm_text = tex.get_texture("confirm_box/confirmation_text");
+    t_confirm_selection_box = tex.get_texture("confirm_box/selection_box");
+    t_confirm_selection_box_highlight = tex.get_texture("confirm_box/selection_box_highlight");
+    t_confirm_selection_box_outline = tex.get_texture("confirm_box/selection_box_outline");
+    t_confirm_yes = tex.get_texture("confirm_box/yes");
+    t_confirm_no = tex.get_texture("confirm_box/no");
+    t_confirm_option = tex.has_texture("confirm_box/option") ? tex.get_texture("confirm_box/option") : nullptr;
+    t_confirm_option_highlight = tex.has_texture("confirm_box/option_highlight") ? tex.get_texture("confirm_box/option_highlight") : nullptr;
+}
+
 void DanSelectScreen::on_screen_start() {
     Screen::on_screen_start();
+    init_dan_select_textures();
     audio.play_sound("bgm", VolumePreset::MUSIC);
     audio.play_sound("dan_select", VolumePreset::VOICE);
 
@@ -782,36 +803,36 @@ void DanSelectScreen::draw_confirm_overlay() {
     if (f <= 0) return;
     ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height,
                        ray::Fade(ray::BLACK, std::min(0.5f, (float)f)));
-    tex.draw_texture(CONFIRM_BOX::BG,               {.fade=f});
-    tex.draw_texture(CONFIRM_BOX::CONFIRMATION_TEXT,{.fade=f});
+    tex.draw_texture(t_confirm_bg,   {.fade=f});
+    tex.draw_texture(t_confirm_text, {.fade=f});
     for (int i = 0; i < 2; i++)
-        tex.draw_texture(CONFIRM_BOX::SELECTION_BOX,{.fade=f, .index=i});
+        tex.draw_texture(t_confirm_selection_box, {.fade=f, .index=i});
     if (confirm_index != CONFIRM_OPTION) {
         const int side = (confirm_index == CONFIRM_YES) ? 0 : 1;
-        tex.draw_texture(CONFIRM_BOX::SELECTION_BOX_HIGHLIGHT,{.fade=f, .index=side});
-        tex.draw_texture(CONFIRM_BOX::SELECTION_BOX_OUTLINE,  {.fade=f, .index=side});
+        tex.draw_texture(t_confirm_selection_box_highlight, {.fade=f, .index=side});
+        tex.draw_texture(t_confirm_selection_box_outline,   {.fade=f, .index=side});
     }
     float swap_dx = 0.0f;
     if (tex.options[SCO::DAN_CONFIRM_YES_LEFT]) {
-        auto it = tex.textures.find((uint32_t)CONFIRM_BOX::SELECTION_BOX);
-        if (it != tex.textures.end() && it->second->x.size() >= 2)
-            swap_dx = (float)(it->second->x[1] - it->second->x[0]);
+        TextureObject* sel_box = t_confirm_selection_box;
+        if (sel_box->x.size() >= 2)
+            swap_dx = (float)(sel_box->x[1] - sel_box->x[0]);
     }
-    tex.draw_texture(CONFIRM_BOX::YES, {.x=-swap_dx, .fade=f});
-    tex.draw_texture(CONFIRM_BOX::NO,  {.x= swap_dx, .fade=f});
+    tex.draw_texture(t_confirm_yes, {.x=-swap_dx, .fade=f});
+    tex.draw_texture(t_confirm_no,  {.x= swap_dx, .fade=f});
 
-    if (tex.has_texture("confirm_box/option")) {
-        if (confirm_index == CONFIRM_OPTION && tex.has_texture("confirm_box/option_highlight"))
-            tex.draw_texture(tex.get_enum("confirm_box/option_highlight"), {.fade=f});
-        tex.draw_texture(tex.get_enum("confirm_box/option"), {.fade=f});
+    if (t_confirm_option) {
+        if (confirm_index == CONFIRM_OPTION && t_confirm_option_highlight)
+            tex.draw_texture(t_confirm_option_highlight, {.fade=f});
+        tex.draw_texture(t_confirm_option, {.fade=f});
     }
 }
 
 void DanSelectScreen::draw() {
-    tex.draw_texture(GLOBAL::BG,        {});
-    tex.draw_texture(GLOBAL::BG_HEADER, {});
-    tex.draw_texture(GLOBAL::BG_FOOTER, {});
-    tex.draw_texture(GLOBAL::FOOTER,    {});
+    tex.draw_texture(t_global_bg,        {});
+    tex.draw_texture(t_global_bg_header, {});
+    tex.draw_texture(t_global_bg_footer, {});
+    tex.draw_texture(t_global_footer,    {});
 
     coin_overlay.draw();
 
@@ -826,7 +847,7 @@ void DanSelectScreen::draw() {
     }
 
     indicator->draw(tex.skin_config[SC::DAN_SELECT_INDICATOR].x, tex.skin_config[SC::DAN_SELECT_INDICATOR].y);
-    tex.draw_texture(GLOBAL::DAN_SELECT, {});
+    tex.draw_texture(t_global_dan_select, {});
     allnet_indicator.draw();
 
     if (select_timer) select_timer->draw();

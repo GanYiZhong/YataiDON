@@ -71,6 +71,12 @@ public:
     virtual void draw_diff_select_bg() {}
 
     virtual void reset();
+    // Re-fetches every cached TextureObject*. Navigator reuses existing boxes
+    // across a game-round screen transition (see navigator.h's comment on
+    // Navigator being a global) instead of reconstructing them, and that
+    // transition unloads/reloads tex's textures -- so the pointers cached in
+    // the constructor go stale unless reset() re-resolves them.
+    virtual void load_textures();
     void set_position(float target_position);
     virtual void expand_box();
     virtual void close_box();
@@ -121,6 +127,17 @@ public:
     }
 
 protected:
+    TextureObject* t_shadow_bottom_left = nullptr;
+    TextureObject* t_shadow_bottom = nullptr;
+    TextureObject* t_shadow_bottom_right = nullptr;
+    TextureObject* t_shadow_right = nullptr;
+    TextureObject* t_shadow_top_right = nullptr;
+    TextureObject* t_folder_texture_left = nullptr;
+    TextureObject* t_folder_texture = nullptr;
+    TextureObject* t_folder_texture_right = nullptr;
+    TextureObject* t_genre_overlay = nullptr;
+    TextureObject* t_diff_overlay = nullptr;
+
     std::unique_ptr<MoveAnimation> move;
 
     ray::Shader shader;

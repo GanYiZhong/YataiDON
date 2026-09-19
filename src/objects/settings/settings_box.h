@@ -19,6 +19,10 @@ private:
     int             option_index;
     std::vector<std::unique_ptr<BaseOptionBox>> options;
 
+    TextureObject* t_box = nullptr;
+    TextureObject* t_box_highlight = nullptr;
+    TextureObject* t_blue_arrow = nullptr;
+
     void draw_text() const;
 
     static std::unique_ptr<BaseOptionBox> make_option_box(const rapidjson::Value& opt);

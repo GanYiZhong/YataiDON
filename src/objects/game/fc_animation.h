@@ -2,6 +2,8 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class FCAnimation {
 private:
     bool is_2p;
@@ -21,14 +23,22 @@ private:
     bool draw_clear_full;
     std::string name;
     int frame;
-    uint32_t combo_tex;
-    uint32_t combo_highlight_tex;
-    uint32_t combo_overlay_tex;
+    TextureObject* combo_tex;
+    TextureObject* combo_highlight_tex;
+    TextureObject* combo_overlay_tex;
     std::string combo_sound;
     std::string combo_voice;
     bool has_panel;
-    uint32_t panel_tex;
+    TextureObject* panel_tex;
     FadeAnimation* panel_fade_in;
+    TextureObject* t_fan_l = nullptr;
+    TextureObject* t_fan_r = nullptr;
+    TextureObject* t_clear_separated = nullptr;
+    TextureObject* t_clear_highlight = nullptr;
+    TextureObject* t_bachio_l_in = nullptr;
+    TextureObject* t_bachio_l_out = nullptr;
+    TextureObject* t_bachio_r_in = nullptr;
+    TextureObject* t_bachio_r_out = nullptr;
 
 public:
     FCAnimation(bool is_2p, bool donderful = false);

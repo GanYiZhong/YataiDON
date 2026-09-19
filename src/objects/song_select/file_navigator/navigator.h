@@ -28,6 +28,7 @@ class Navigator {
 private:
     std::vector<fs::path> root_paths;
     std::vector<std::unique_ptr<BaseBox>> items;
+    TextureObject* t_background = nullptr;
     std::map<std::pair<std::string, std::string>, fs::path> song_files;
     // song path -> every title and subtitle in every language, ASCII-folded, for Song Search
     std::unordered_map<std::string, std::string> song_search_text;

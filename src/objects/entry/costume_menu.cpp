@@ -14,6 +14,7 @@ CostumeMenu::CostumeMenu(PlayerNum player_num) : player_num(player_num), is_2p(p
     float title_y = info.y;
 
     presets_enabled = tex.options[SCO::COSTUME_PRESET_SLOTS];
+    t_item_box = is_2p ? tex.get_texture("costume_select/item_box_2p") : tex.get_texture("costume_select/item_box_1p");
 
     if (!load("CostumeMenu", "costume_menu", is_2p, text_str, title_x, title_y)) return;
     fn_update  = lua_object["update"];
@@ -32,8 +33,6 @@ void CostumeMenu::load_costume_icons(const std::string& subdir, const std::strin
     costume_icons.clear();
     costume_ids.clear();
     costume_names.clear();
-    costume_name_text.reset();
-    costume_name_text_index = -1;
     costume_icon_index = 0;
 
     fs::path dir = tex.resolve_skin_path(fs::path("Models") / subdir);
@@ -72,10 +71,10 @@ void CostumeMenu::load_costume_icons(const std::string& subdir, const std::strin
     }
 }
 
-bool CostumeMenu::is_preset_item(uint32_t item) {
-    return item == COSTUME_SELECT::DEFAULT   || item == COSTUME_SELECT::PRESET_1 ||
-           item == COSTUME_SELECT::PRESET_2  || item == COSTUME_SELECT::PRESET_3 ||
-           item == COSTUME_SELECT::RANDOM_ITEM;
+bool CostumeMenu::is_preset_item(const std::string& item) {
+    return item == "costume_select/default"   || item == "costume_select/preset_1" ||
+           item == "costume_select/preset_2"  || item == "costume_select/preset_3" ||
+           item == "costume_select/random_item";
 }
 
 void CostumeMenu::load_preset_data() {
@@ -91,12 +90,12 @@ void CostumeMenu::load_preset_data() {
     }
     std::sort(preset_pool.begin(), preset_pool.end());
 
-    static const std::pair<const char*, uint32_t> KEYS[] = {
-        {"default", COSTUME_SELECT::DEFAULT},
-        {"cool",    COSTUME_SELECT::PRESET_1},
-        {"cute",    COSTUME_SELECT::PRESET_2},
-        {"joke",    COSTUME_SELECT::PRESET_3},
-        {"random",  COSTUME_SELECT::RANDOM_ITEM},
+    static const std::pair<const char*, const char*> KEYS[] = {
+        {"default", "costume_select/default"},
+        {"cool",    "costume_select/preset_1"},
+        {"cute",    "costume_select/preset_2"},
+        {"joke",    "costume_select/preset_3"},
+        {"random",  "costume_select/random_item"},
     };
 
     fs::path presets_path = tex.resolve_skin_path("Models/costume_presets.json");
@@ -112,11 +111,11 @@ void CostumeMenu::load_preset_data() {
             }
         } catch (...) {}
     }
-    if (!preset_sets.count(COSTUME_SELECT::DEFAULT))
-        preset_sets[COSTUME_SELECT::DEFAULT] = {0};
+    if (!preset_sets.count("costume_select/default"))
+        preset_sets["costume_select/default"] = {0};
 }
 
-void CostumeMenu::apply_preset(uint32_t item) {
+void CostumeMenu::apply_preset(const std::string& item) {
     load_preset_data();
 
     const std::vector<int>* set = nullptr;
@@ -125,7 +124,7 @@ void CostumeMenu::apply_preset(uint32_t item) {
     else if (!preset_pool.empty()) set = &preset_pool;
     if (!set || set->empty()) return;
 
-    bool sticky = (item != COSTUME_SELECT::RANDOM_ITEM);
+    bool sticky = (item != "costume_select/random_item");
     if (sticky) {
         auto rolled = preset_rolled.find(item);
         if (rolled != preset_rolled.end()) {
@@ -207,7 +206,7 @@ void CostumeMenu::handle_input() {
         }
 
         if (is_l_don_pressed(player_num) || is_r_don_pressed(player_num)) {
-            if (ITEMS[selected_index] == COSTUME_SELECT::COSTUME) {
+            if (std::string(ITEMS[selected_index]) == "costume_select/costume") {
                 pick_stage = CostumePickStage::NONE;
                 load_costume_icons("costume_icon", "costume");
                 if (costume_icons.empty()) {
@@ -216,7 +215,7 @@ void CostumeMenu::handle_input() {
                 }
                 costume_select_mode = true;
                 audio.play_sound("don", VolumePreset::SOUND);
-            } else if (ITEMS[selected_index] == COSTUME_SELECT::HEAD_BODY) {
+            } else if (std::string(ITEMS[selected_index]) == "costume_select/head_body") {
                 pick_stage = CostumePickStage::HEAD;
                 picked_head_id = -1;
                 load_costume_icons("costume_head_icon", "head");
@@ -243,9 +242,8 @@ void CostumeMenu::draw(float x, float y) {
     constexpr float ITEM_W = 80.0f;
 
     if (costume_select_mode && !costume_icons.empty()) {
-        auto& ib = tex.textures[is_2p ? COSTUME_SELECT::ITEM_BOX_2P : COSTUME_SELECT::ITEM_BOX_1P];
-        float base_x = ib->x[0] + x;
-        float base_y = ib->y[0] + y;
+        float base_x = t_item_box->x[0] + x;
+        float base_y = t_item_box->y[0] + y;
         int n = (int)costume_icons.size();
         int slots = std::min(5, n);
         for (int i = 0; i < slots; i++) {
@@ -261,21 +259,10 @@ void CostumeMenu::draw(float x, float y) {
         }
     }
 
-    call(fn_draw_fg, "CostumeMenu:draw_fg", x, y);
-
+    sol::object name_arg = sol::lua_nil;
     if (costume_select_mode && !costume_icons.empty()) {
         auto it = costume_names.find(costume_ids[costume_icon_index]);
-        if (it != costume_names.end()) {
-            if (costume_name_text_index != costume_icon_index) {
-                costume_name_text_index = costume_icon_index;
-                costume_name_text = std::make_unique<OutlinedText>(it->second, 32, ray::WHITE, ray::BLACK, false);
-            }
-            auto& th = tex.textures[is_2p ? COSTUME_SELECT::TEXT_HIGHLIGHT_2P : COSTUME_SELECT::TEXT_HIGHLIGHT_1P];
-            float banner_cx = tex.draw_offset_x + th->x[0] + x;
-            float banner_cy = tex.draw_offset_y + th->y[0] + y;
-            float text_x = banner_cx - costume_name_text->width / 2.0f;
-            float text_y = banner_cy - costume_name_text->height / 2.0f;
-            costume_name_text->draw({.x = text_x, .y = text_y});
-        }
+        if (it != costume_names.end()) name_arg = sol::make_object(*script_manager.lua, it->second);
     }
+    call(fn_draw_fg, "CostumeMenu:draw_fg", x, y, name_arg);
 }

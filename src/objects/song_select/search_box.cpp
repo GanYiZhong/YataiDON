@@ -7,6 +7,7 @@ SearchBox::SearchBox() {
     diff_fade_in = (FadeAnimation*)tex.get_animation(20);
     bg_resize->start();
     diff_fade_in->start();
+    t_background = tex.get_texture("diff_sort/background");
 }
 
 void SearchBox::update(double current_ms) {
@@ -17,14 +18,13 @@ void SearchBox::update(double current_ms) {
 void SearchBox::draw() {
     ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height, ray::Fade(ray::BLACK, 0.6));
 
-    TextureObject* background = tex.textures[DIFF_SORT::BACKGROUND].get();
     float fade = diff_fade_in->attribute;
 
     const float screen_cx = tex.screen_width  / 2.0f;
     const float screen_cy = tex.screen_height / 2.0f;
-    const float board_dx = screen_cx - ((float)background->width  / 2 + background->x[0]);
-    const float board_dy = screen_cy - ((float)background->height / 2 + background->y[0]);
-    tex.draw_texture(DIFF_SORT::BACKGROUND, {.scale=(float)bg_resize->attribute, .center=true,
+    const float board_dx = screen_cx - ((float)t_background->width  / 2 + t_background->x[0]);
+    const float board_dy = screen_cy - ((float)t_background->height / 2 + t_background->y[0]);
+    tex.draw_texture(t_background, {.scale=(float)bg_resize->attribute, .center=true,
                                              .x=board_dx, .y=board_dy});
 
     float text_box_width  = tex.skin_config[SC::SEARCH_BOX].width;

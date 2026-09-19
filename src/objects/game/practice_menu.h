@@ -21,6 +21,13 @@ public:
     Dialog dialog = Dialog::NONE;
     int dialog_sel = 0;   // 0 = left option, 1 = right option
 
+    // Resolved once from PracticeGameScreen::on_screen_start(), after
+    // load_screen_textures() has run, instead of calling tex.get_texture() every
+    // frame from draw()/draw_dialog(). PracticeMenu is a persistent member reused
+    // across screen visits, so this must NOT run at construction time (textures
+    // aren't loaded yet then) or at on_screen_end (textures are about to unload).
+    void init_textures();
+
     void open_menu();
     void close();
 
@@ -43,4 +50,12 @@ private:
 
     void build_text();
     void open_dialog(Dialog which, bool auto_on);
+
+    TextureObject* t_menu_panel = nullptr;
+    TextureObject* t_menu_bar = nullptr;
+    TextureObject* t_menu_bar_selected = nullptr;
+    TextureObject* t_menu_auto_label = nullptr;
+    TextureObject* t_menu_toggle = nullptr;
+    TextureObject* t_menu_button = nullptr;
+    TextureObject* t_menu_button_selected = nullptr;
 };

@@ -10,7 +10,10 @@ void InputTestScreen::on_screen_start() {
     tex.load_folder("game", "practice");
     tex.load_folder("settings", "background");
 
-    auto& drum = *tex.textures[PRACTICE::LARGE_DRUM];
+    t_background = tex.get_texture("background/background");
+    t_large_drum = tex.get_texture("practice/large_drum");
+
+    auto& drum = *t_large_drum;
     drum_x_offset = (tex.screen_width - drum.width) / 2.0f - drum.x[0];
     drum_y_offset = (tex.screen_height - drum.height) / 2.0f - drum.y[0];
 }
@@ -50,8 +53,8 @@ std::optional<Screens> InputTestScreen::update() {
 }
 
 void InputTestScreen::draw() {
-    tex.draw_texture(BACKGROUND::BACKGROUND);
-    tex.draw_texture(PRACTICE::LARGE_DRUM, {.x = drum_x_offset, .y = drum_y_offset});
+    tex.draw_texture(t_background);
+    tex.draw_texture(t_large_drum, {.x = drum_x_offset, .y = drum_y_offset});
     for (auto& effect : hit_effects) {
         effect->draw(0);
     }

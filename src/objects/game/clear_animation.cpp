@@ -45,6 +45,14 @@ ClearAnimation::ClearAnimation(bool is_2p)
     clear_highlight_fade_in->start();
 
     audio.play_sound("clear", VolumePreset::SOUND);
+
+    t_clear = tex.get_texture("ending_anim/clear");
+    t_clear_separated = tex.get_texture("ending_anim/clear_separated");
+    t_clear_highlight = tex.get_texture("ending_anim/clear_highlight");
+    t_bachio_l_in = tex.get_texture("ending_anim/bachio_l_in");
+    t_bachio_l_out = tex.get_texture("ending_anim/bachio_l_out");
+    t_bachio_r_in = tex.get_texture("ending_anim/bachio_r_in");
+    t_bachio_r_out = tex.get_texture("ending_anim/bachio_r_out");
 }
 
 void ClearAnimation::update(double current_ms) {
@@ -75,12 +83,12 @@ void ClearAnimation::update(double current_ms) {
 
 void ClearAnimation::draw() {
     if (draw_clear_full) {
-        tex.draw_texture(ENDING_ANIM::CLEAR, {
+        tex.draw_texture(t_clear, {
             .index = (int)is_2p
         });
     } else {
         for (int i = 4; i >= 0; i--) {
-            tex.draw_texture(ENDING_ANIM::CLEAR_SEPARATED, {
+            tex.draw_texture(t_clear_separated, {
                 .frame = i,
                 .x = (float)(i * tex.skin_config[SC::CLEAR_ANIMATION_X_SPACING].x),
                 .y = (float)(-clear_separate_stretch[i]->attribute),
@@ -91,19 +99,19 @@ void ClearAnimation::draw() {
         }
     }
 
-    tex.draw_texture(ENDING_ANIM::CLEAR_HIGHLIGHT, {
+    tex.draw_texture(t_clear_highlight, {
         .fade = (float)(clear_highlight_fade_in->attribute),
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_l_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_l_in : t_bachio_l_out, {
         .frame = frame,
         .x = (float)(-bachio_move_out->attribute),
         .fade = (float)(bachio_fade_in->attribute),
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_r_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_r_in : t_bachio_r_out, {
         .frame = frame,
         .x = (float)(bachio_move_out->attribute),
         .fade = (float)(bachio_fade_in->attribute),

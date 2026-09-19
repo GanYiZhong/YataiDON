@@ -90,6 +90,10 @@ SettingsBox::SettingsBox(const std::string& name,
     blue_arrow_fade  = (FadeAnimation*) tex.get_animation(1, true);
     blue_arrow_move  = (MoveAnimation*) tex.get_animation(2, true);
 
+    t_box           = tex.get_texture("box/box");
+    t_box_highlight = tex.get_texture("box/box_highlight");
+    t_blue_arrow    = tex.get_texture("background/blue_arrow");
+
     if (options_json.IsObject()) {
         for (auto it = options_json.MemberBegin(); it != options_json.MemberEnd(); ++it) {
             try {
@@ -199,9 +203,8 @@ void SettingsBox::update(double current_time_ms, bool selected) {
 }
 
 void SettingsBox::draw_text() const {
-    auto& box_tex = tex.textures[BOX::BOX];
-    float text_x = x + box_tex->x[0] + (box_tex->x2[0] / 2.0f) - (label->width  / 2.0f);
-    float text_y = y + box_tex->y[0] + (box_tex->y2[0] / 2.0f) - (label->height / 2.0f);
+    float text_x = x + t_box->x[0] + (t_box->x2[0] / 2.0f) - (label->width  / 2.0f);
+    float text_y = y + t_box->y[0] + (t_box->y2[0] / 2.0f) - (label->height / 2.0f);
 
     if (is_selected) {
         label->draw({.x=text_x, .y=text_y});
@@ -213,19 +216,19 @@ void SettingsBox::draw_text() const {
 }
 
 void SettingsBox::draw() {
-    tex.draw_texture(BOX::BOX, {.x=x, .y=y});
+    tex.draw_texture(t_box, {.x=x, .y=y});
     if (is_selected) {
-        tex.draw_texture(BOX::BOX_HIGHLIGHT, {.x=x, .y=y});
+        tex.draw_texture(t_box_highlight, {.x=x, .y=y});
     }
     if (in_box && !options.empty()) {
         options[option_index]->draw();
         if (!options[option_index]->is_highlighted) {
-            tex.draw_texture(BACKGROUND::BLUE_ARROW,
+            tex.draw_texture(t_blue_arrow,
                 {.x=-(float)blue_arrow_move->attribute,
                  .fade=blue_arrow_fade->attribute,
                  .index=0});
             if (option_index != (int)options.size() - 1) {
-                tex.draw_texture(BACKGROUND::BLUE_ARROW,
+                tex.draw_texture(t_blue_arrow,
                     {.mirror=Mirror::HORIZONTAL,
                      .x=(float)blue_arrow_move->attribute,
                      .fade=blue_arrow_fade->attribute,

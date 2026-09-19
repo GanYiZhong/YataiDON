@@ -14,6 +14,9 @@ private:
     std::optional<AllNetIcon> allnet_indicator;
     std::string         username_on_entry;
 
+    TextureObject* t_background = nullptr;
+    TextureObject* t_footer = nullptr;
+
     std::optional<Screens> handle_input();
 
 public:

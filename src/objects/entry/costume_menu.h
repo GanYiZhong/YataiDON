@@ -2,8 +2,6 @@
 
 #include "../../libs/script.h"
 #include "../../libs/global_data.h"
-#include "../../libs/text.h"
-#include <memory>
 #include <vector>
 #include <unordered_map>
 
@@ -41,11 +39,11 @@ private:
     std::vector<ray::Texture2D> costume_icons;
     std::vector<int> costume_ids;
     std::unordered_map<int, std::string> costume_names;
-    std::unique_ptr<OutlinedText> costume_name_text;
-    int costume_name_text_index = -1;
 
     CostumePickStage pick_stage = CostumePickStage::NONE;
     int picked_head_id = -1;
+
+    TextureObject* t_item_box = nullptr;
 
     void load_costume_icons(const std::string& subdir, const std::string& json_key);
 
@@ -53,21 +51,21 @@ private:
     std::optional<int> preset_cos_id;
     int preset_seq = 0;
     std::vector<int> preset_pool;
-    std::unordered_map<uint32_t, std::vector<int>> preset_sets;
+    std::unordered_map<std::string, std::vector<int>> preset_sets;
     bool preset_data_loaded = false;
-    std::unordered_map<uint32_t, int> preset_rolled;
+    std::unordered_map<std::string, int> preset_rolled;
     void load_preset_data();
-    void apply_preset(uint32_t item);
-    static bool is_preset_item(uint32_t item);
+    void apply_preset(const std::string& item);
+    static bool is_preset_item(const std::string& item);
 
     static constexpr int NUM_ITEMS = 7;
-    static constexpr std::array<uint32_t, NUM_ITEMS> ITEMS = {
-        COSTUME_SELECT::COSTUME,
-        COSTUME_SELECT::DEFAULT,
-        COSTUME_SELECT::HEAD_BODY,
-        COSTUME_SELECT::PRESET_1,
-        COSTUME_SELECT::PRESET_2,
-        COSTUME_SELECT::PRESET_3,
-        COSTUME_SELECT::RANDOM_ITEM,
+    static constexpr std::array<const char*, NUM_ITEMS> ITEMS = {
+        "costume_select/costume",
+        "costume_select/default",
+        "costume_select/head_body",
+        "costume_select/preset_1",
+        "costume_select/preset_2",
+        "costume_select/preset_3",
+        "costume_select/random_item",
     };
 };

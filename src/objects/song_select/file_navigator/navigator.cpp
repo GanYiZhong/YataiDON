@@ -264,6 +264,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    t_background = tex.get_texture("box/background");
     emit_wheel_event(WHEEL_EVENT_SCENE_ENTRY);
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();
@@ -2110,10 +2111,10 @@ float Navigator::get_diff_fade_in() {
 void Navigator::draw_background() {
     if (script && script->draw_background(this)) return;
 
-    int width = tex.textures[BOX::BACKGROUND]->width;
+    int width = t_background->width;
     for (int i = 0; i < width * 4; i += width) {
-        tex.draw_texture(BOX::BACKGROUND, {.frame=(int)last_bg_genre_index, .x=(float)(i - background_move->attribute)});
-        tex.draw_texture(BOX::BACKGROUND, {.frame=(int)bg_genre_index,  .x=(float)(i - background_move->attribute), .fade=1.0f - background_fade_change->attribute});
+        tex.draw_texture(t_background, {.frame=(int)last_bg_genre_index, .x=(float)(i - background_move->attribute)});
+        tex.draw_texture(t_background, {.frame=(int)bg_genre_index,  .x=(float)(i - background_move->attribute), .fade=1.0f - background_fade_change->attribute});
     }
 }
 

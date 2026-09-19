@@ -2,14 +2,12 @@
 
 #include "../libs/screen.h"
 #include "../libs/global_data.h"
-#include "../libs/text.h"
 #include "../objects/result/background.h"
-#include "../objects/game/gauge.h"
+#include "../objects/result/dan_result_draw.h"
 #include "../objects/global/allnet_indicator.h"
 #include "../objects/global/coin_overlay.h"
 #include "../objects/global/nameplate.h"
 #include "../objects/global/chara_3d.h"
-#include "../objects/game/exam_caption.h"
 
 class DanResultScreen : public Screen {
 public:
@@ -27,11 +25,7 @@ private:
     FadeAnimation* page2_fade = nullptr;
 
     std::optional<ResultBackground> background;
-    std::unique_ptr<Gauge>        gauge;
-    std::unique_ptr<OutlinedText>    hori_name;
-    std::vector<std::unique_ptr<OutlinedText>> song_names;
-
-    ExamCaptionCache exam_captions;
+    std::optional<DanResultDraw> draw_seq;
 
     Nameplate nameplate;
     std::unique_ptr<Chara3D> chara;
@@ -39,17 +33,10 @@ private:
     bool is_page2 = false;
     double page_start_ms = 0.0;
     double page1_start_ms = 0.0;
-    std::vector<bool> page1_armed;
 
     double totals_start = 0;
     double totals_end   = 0;
-    struct RowSchedule {
-        double land  = 0;
-        double fill0 = 0;
-        double filld = 0;
-        double numin = 0;
-    };
-    std::vector<RowSchedule> rows;
+    std::vector<DanResultRowSchedule> rows;
     double stamp_at = 0;
     double voice_at = 0;
     bool page2_skipped = false;
@@ -76,22 +63,9 @@ private:
     int  prev_best_score = 0;
     bool best_score_show = false;
     int  prev_arrival    = 0;
-    void draw_best_score(double fade, double on_page);
-    void draw_congrats(double now);
-    void draw_nosave_banner();
-    std::unique_ptr<OutlinedText> nosave_text;
 
     void handle_input(double current_ms);
     void build_page2_timeline();
     void update_sounds(double now);
     void apply_reward();
-    void draw_page1(double now);
-    void draw_page2(double fade, double now);
-    void draw_exam_info(double fade, double now, float scale = 1.0f);
-    void draw_gauge_row(const Exam& exam, float y, double fade, double now, float scale);
-    void draw_celebration(double now);
-    void draw_digit_counter(const std::string& digits, float margin_x, TexID id,
-                             int index, float y, double fade, float scale,
-                             float x_off = 0.0f, double roll_t = -1.0);
-    void draw_chara_and_plate();
 };

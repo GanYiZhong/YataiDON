@@ -6,74 +6,12 @@
 
 static constexpr int ENTRY_FADE_OUT_ANIM_ID = 9;
 
-// ─── ROUND 83 (r83-dandojo-as-mode) — `Cabinet.DaniDojoFolderAvailable()` ──────
-//
-// On the cabinet 段位道場 is a MODE BOARD, appended by
-// `script_lua/entry/mode_select.lua` `CreateBoardList()` (l.289-296) directly after
-// `GameMode.kEnso`, and gated by `dani_enable`:
-//
-//     dani_available (= Cabinet.DaniDojoAvailable())  AND  exactly one seat, that
-//     seat being a CARD login spending a credit (l.240-242)
-//
-// The card half is unportable — this engine has no card system, every seat enters as
-// the cabinet's `kCoin` (`entry.cpp::join_player`, ROUND 12) — so it is deliberately
-// not reproduced; it is also the reason the 段位道場 chip in `entry_overlay.lua` can
-// only ever read NG (ROUND 49's open item, settled in MAPPING.md ROUND 83 §D).
-//
-// What IS portable is the content half. CHN05 registers **two** Lua bindings side by
-// side, `Cabinet.DaniDojoAvailable` (0x1401A2A60) and `Cabinet.DaniDojoFolderAvailable`
-// (0x1401A2AC0) — `decompiled/src/LuaFuncSetupCabinet.obj.c` — i.e. the cabinet itself
-// splits "the operator enabled it" from "the courses are installed". This is the second
-// one: no dan library on disk, no board.
-//
-// Cost matters (this runs in EntryScreen::on_screen_start): the dojo is a genre folder
-// at depth 1 of a library root, exactly where SONG_SELECT finds it, so only the
-// immediate children of each root are looked at — ~15 small reads, no recursive walk.
-// `Navigator::parse_box_def` is a Navigator member and there is no Navigator here, so
-// the one line that matters (`#GENRE:`) is read directly against the shared `GENRE_MAP`.
-static bool dan_library_available() {
-    if (!global_data.config) return false;
-    const auto dan_names = GENRE_MAP.find(GenreIndex::DAN);
-    if (dan_names == GENRE_MAP.end()) return false;   // fail soft
-    for (const fs::path& root : global_data.config->paths.tja_path) {
-        std::error_code ec;
-        if (!fs::is_directory(root, ec)) continue;
-        ec.clear();
-        fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
-        if (ec) continue;
-        const fs::directory_iterator end_it;
-        for (; it != end_it; it.increment(ec)) {
-            if (ec) break;
-            std::error_code entry_ec;
-            if (!it->is_directory(entry_ec)) continue;
-            std::ifstream box_def(it->path() / "box.def");
-            if (!box_def) continue;
-            std::string line;
-            while (std::getline(box_def, line)) {
-                if (line.size() >= 3 && (unsigned char)line[0] == 0xEF &&
-                    (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF)
-                    line.erase(0, 3);
-                line.erase(0, line.find_first_not_of(" \t\r\n"));
-                const size_t end = line.find_last_not_of(" \t\r\n");
-                if (end != std::string::npos) line.erase(end + 1);
-                if (!line.starts_with("#GENRE:")) continue;
-                if (dan_names->second.contains(line.substr(7))) return true;
-                break;
-            }
-        }
-    }
-    return false;
-}
-
 BoxManager::BoxManager(bool two_player)
     : selected_box_index(0), is_2p(two_player), costume_menu_open(false) {
     if (!global_data.config) {
         throw std::runtime_error("BoxManager: global_data.config not initialized");
     }
     const std::string lang = global_data.config->general.language;
-
-    dan_text      = tex.skin_text("entry_dan", lang);
-    dan_available = !dan_text.empty() && dan_library_available();
 
     fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(ENTRY_FADE_OUT_ANIM_ID));
     if (!fade_out) {
@@ -107,7 +45,6 @@ void BoxManager::build_board_list() {
         box_locations.push_back(screen);
         boxes.push_back(std::make_unique<Box>(skin[sc].text[lang], font_size, screen));
     }
-    //boxes.push_back(std::make_unique<Box>(skin[SC::ENTRY_AI_BATTLE].text[lang], font_size, Screens::AI_SELECT));
 
     num_boxes = boxes.size();
 
@@ -126,7 +63,7 @@ void BoxManager::build_board_list() {
         float step = spacing_y;
         float total_height = (num_boxes - 1) * step;
         float start_y = tex.screen_height / 2.0f - total_height / 2.0f;
-        float center_x = tex.screen_width / 2.0f - tex.textures[MODE_SELECT::BOX_HIGHLIGHT_CENTER]->width / 2.0f;
+        float center_x = tex.screen_width / 2.0f - tex.textures["mode_select/box_highlight_center"]->width / 2.0f;
 
         for (int i = 0; i < num_boxes; i++) {
             boxes[i]->set_positions(center_x, start_y + i * step);

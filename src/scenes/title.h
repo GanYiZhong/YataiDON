@@ -4,9 +4,7 @@
 #include "../libs/video.h"
 #include "../libs/text.h"
 #include "../objects/title/warning_screen.h"
-#include "../objects/title/attract_camera.h"
-#include "../objects/title/camera_cloud.h"
-#include "../objects/title/bana_advert.h"
+#include "../objects/title/attract_scene.h"
 #include "../objects/global/allnet_indicator.h"
 #include "../objects/global/coin_overlay.h"
 #include "../objects/global/entry_overlay.h"
@@ -28,10 +26,7 @@ private:
     std::optional<VideoPlayer> op_video;
     std::optional<VideoPlayer> attract_video;
     std::optional<WarningScreen> warning_board;
-    std::optional<AttractCamera> attract_camera;
-    std::optional<CameraCloud> camera_cloud;
-    std::optional<BanaAdvertisement> bana_advert_1;
-    std::optional<BanaAdvertisement> bana_advert_2;
+    std::optional<AttractScene> attract_scene;
 
     AllNetIcon allnet_indicator;
     CoinOverlay coin_overlay;

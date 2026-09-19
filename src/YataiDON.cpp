@@ -385,10 +385,10 @@ static void run_frame() {
         touch_drum_resize->update(get_current_ms());
         const float scale = (float)touch_drum_resize->attribute;
         float y_fix = 0.0f;
-        auto drum_it = global_tex.textures.find(OVERLAY::TOUCH_DRUM);
+        auto drum_it = global_tex.textures.find("overlay/touch_drum");
         if (drum_it != global_tex.textures.end())
             y_fix = drum_it->second->height * 0.5f * (1.0f - scale);
-        global_tex.draw_texture(OVERLAY::TOUCH_DRUM, {.scale=scale, .center=true, .y=y_fix, .fade=0.5f});
+        global_tex.draw_texture(global_tex.get_texture("overlay/touch_drum"), {.scale=scale, .center=true, .y=y_fix, .fade=0.5f});
         }
     }
 
@@ -623,6 +623,7 @@ int main(int argc, char* argv[]) {
     if (input_thread.joinable()) {
         input_thread.join();
     }
+    network.shutdown();
     shutdown_sdl_joysticks();
     delete g_loop;
     global_tex.unload_textures();

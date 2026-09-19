@@ -2,10 +2,13 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class UraSwitchAnimation {
 private:
     TextureChangeAnimation* texture_change;
     FadeAnimation* fade_out;
+    TextureObject* t_ura_switch = nullptr;
 public:
     UraSwitchAnimation();
 

@@ -2,6 +2,8 @@
 
 #include "../../../libs/animation.h"
 
+struct TextureObject;
+
 class YellowBox {
 public:
     bool is_diff_select;
@@ -37,4 +39,13 @@ public:
     void draw(float fade = 1.0, float y_offset = 0.0f);
 
 private:
+    TextureObject* t_bottom_right = nullptr;
+    TextureObject* t_bottom_left = nullptr;
+    TextureObject* t_top_right = nullptr;
+    TextureObject* t_top_left = nullptr;
+    TextureObject* t_bottom = nullptr;
+    TextureObject* t_right = nullptr;
+    TextureObject* t_left = nullptr;
+    TextureObject* t_top = nullptr;
+    TextureObject* t_center = nullptr;
 };

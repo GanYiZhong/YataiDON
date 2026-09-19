@@ -2,6 +2,8 @@
 #include <SDL3/SDL_camera.h>
 #include <spdlog/spdlog.h>
 
+WebCamera webcam;
+
 WebCamera::~WebCamera() {
     close();
 }

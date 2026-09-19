@@ -8,6 +8,7 @@
 #include "audio.h"
 #include "input.h"
 #include "filesystem.h"
+#include "webcam.h"
 #include "../objects/song_select/file_navigator/box_lua_bindings.h"
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
@@ -415,6 +416,23 @@ void ScriptManager::register_lua_bindings() {
         return script_manager.tex.screen_scale;
     });
 
+    tex.set_function("get_draw_offset", []() -> std::pair<float, float> {
+        return {script_manager.tex.draw_offset_x, script_manager.tex.draw_offset_y};
+    });
+
+    tex.set_function("draw_rect", [](float x, float y, float w, float h, int r, int g, int b, int a) {
+        auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
+        ray::DrawRectangle((int)x, (int)y, (int)w, (int)h, ray::Color{to_u8(r), to_u8(g), to_u8(b), to_u8(a)});
+    });
+
+tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
+        ray::BeginScissorMode((int)x, (int)y, (int)w, (int)h);
+    });
+
+    tex.set_function("end_scissor", []() {
+        ray::EndScissorMode();
+    });
+
     tex.set_function("get_skin_config", [](const std::string& config_key) -> sol::optional<sol::table> {
         auto config_it = script_manager.tex.skin_config_by_name.find(config_key);
         if (config_it == script_manager.tex.skin_config_by_name.end()) {
@@ -429,20 +447,26 @@ void ScriptManager::register_lua_bindings() {
         info["font_size"] = skin_info.font_size;
         info["width"] = skin_info.width;
         info["height"] = skin_info.height;
+        info["outline"] = skin_info.outline;
 
         return info;
+    });
+
+    tex.set_function("get_option", [](const std::string& name) -> bool {
+        auto it = screen_options_map.find(name);
+        if (it == screen_options_map.end()) return false;
+        auto o = script_manager.tex.options.find(it->second);
+        return o != script_manager.tex.options.end() && o->second;
     });
 
     tex.set_function("get_texture_keys", [](const std::string& subset) -> sol::optional<sol::table> {
         std::string prefix = subset + "/";
         sol::table keys = script_manager.lua->create_table();
         int index = 1;
-        for (const auto& [path, id] : tex_id_map) {
-            if (path.size() > prefix.size() && path.substr(0, prefix.size()) == prefix) {
-                if (script_manager.tex.textures.find(id) != script_manager.tex.textures.end()) {
-                    keys[index] = path.substr(prefix.size());
-                    ++index;
-                }
+        for (const auto& [path, obj] : script_manager.tex.textures) {
+            if (path.size() > prefix.size() && path.compare(0, prefix.size(), prefix) == 0) {
+                keys[index] = path.substr(prefix.size());
+                ++index;
             }
         }
         if (index == 1) return sol::nullopt;
@@ -450,10 +474,7 @@ void ScriptManager::register_lua_bindings() {
     });
 
     tex.set_function("get_texture_info", [](const std::string& subset, const std::string& texture_name) -> sol::optional<sol::table> {
-        auto it = tex_id_map.find(subset + "/" + texture_name);
-        if (it == tex_id_map.end()) return sol::nullopt;
-
-        auto tex_it = script_manager.tex.textures.find(it->second);
+        auto tex_it = script_manager.tex.textures.find(subset + "/" + texture_name);
         if (tex_it == script_manager.tex.textures.end()) return sol::nullopt;
 
         const auto& tex_obj = tex_it->second;
@@ -479,21 +500,20 @@ void ScriptManager::register_lua_bindings() {
         return info;
     });
 
-    tex.set_function("get_id", [](const std::string& subset, const std::string& texture_name) -> sol::optional<uint32_t> {
-        auto it = tex_id_map.find(subset + "/" + texture_name);
-        if (it != tex_id_map.end()) return it->second;
-        for (const auto& v : script_manager.tex.language_variants(subset + "/" + texture_name + "_" + global_data.config->general.language)) {
-            it = tex_id_map.find(v);
-            if (it != tex_id_map.end()) return it->second;
+    tex.set_function("get_id", [](const std::string& subset, const std::string& texture_name) -> sol::optional<TextureObject*> {
+        std::string base = subset + "/" + texture_name;
+        if (script_manager.tex.has_texture(base)) return script_manager.tex.get_texture(base);
+        for (const auto& v : script_manager.tex.language_variants(base + "_" + global_data.config->general.language)) {
+            if (script_manager.tex.has_texture(v)) return script_manager.tex.get_texture(v);
         }
-        return std::nullopt;
+        return sol::nullopt;
     });
 
-    tex.set_function("draw_texture", [](uint32_t id, sol::optional<sol::table> params_table) {
+    tex.set_function("draw_texture", [](TextureObject* id, sol::optional<sol::table> params_table) {
         script_manager.tex.draw_texture(id, parse_draw_params(params_table));
     });
 
-    tex.set_function("load_texture", [](const std::string& path) -> sol::optional<uint32_t> {
+    tex.set_function("get_texture", [](const std::string& path) -> sol::optional<TextureObject*> {
         // path format: "screen_name/subset/texture_name", e.g. "global/indicator/drum_face"
         auto first_slash = path.find('/');
         if (first_slash == std::string::npos) return sol::nullopt;
@@ -507,12 +527,11 @@ void ScriptManager::register_lua_bindings() {
         script_manager.tex.load_folder(screen_name, subset);
 
         // the current language's variant, then _en / _ja, then the plain name
-        for (const auto& v : script_manager.tex.language_variants(subset + "/" + texture_name + "_" + global_data.config->general.language)) {
-            auto it = tex_id_map.find(v);
-            if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
+        std::string base = subset + "/" + texture_name;
+        for (const auto& v : script_manager.tex.language_variants(base + "_" + global_data.config->general.language)) {
+            if (script_manager.tex.has_texture(v)) return script_manager.tex.get_texture(v);
         }
-        auto it = tex_id_map.find(subset + "/" + texture_name);
-        if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
+        if (script_manager.tex.has_texture(base)) return script_manager.tex.get_texture(base);
         return sol::nullopt;
     });
 
@@ -651,6 +670,7 @@ void ScriptManager::register_lua_bindings() {
             else if (p == "music")    preset = VolumePreset::MUSIC;
             else if (p == "voice")    preset = VolumePreset::VOICE;
             else if (p == "hitsound") preset = VolumePreset::HITSOUND;
+        else if (p == "attract_mode") preset = VolumePreset::ATTRACT_MODE;
         }
         audio.set_sound_loop(name, loop.value_or(false));
         audio.play_sound(name, preset);
@@ -666,6 +686,33 @@ void ScriptManager::register_lua_bindings() {
     });
 
     lua["audio"] = audio_tbl;
+
+    sol::table camera_tbl = lua.create_table();
+
+    camera_tbl.set_function("open", []() -> bool {
+        return webcam.open(global_data.config->general.webcam_number);
+    });
+
+    camera_tbl.set_function("close", []() {
+        webcam.close();
+    });
+
+    camera_tbl.set_function("update", []() {
+        webcam.update();
+    });
+
+    camera_tbl.set_function("is_ready", []() -> bool {
+        return webcam.is_ready();
+    });
+
+    camera_tbl.set_function("draw", [](float x, float y, float w, float h) {
+        if (!webcam.is_ready()) return;
+        ray::Rectangle src{0, 0, (float)webcam.width(), (float)webcam.height()};
+        ray::Rectangle dst{x, y, w, h};
+        ray::DrawTexturePro(webcam.get_texture(), src, dst, ray::Vector2{0, 0}, 0, ray::WHITE);
+    });
+
+    lua["camera"] = camera_tbl;
 
     register_song_select_lua_bindings(lua);
 }

@@ -2,6 +2,7 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
 
 class FailAnimation {
 private:
@@ -17,6 +18,12 @@ private:
     FadeAnimation* text_fade_in;
     std::string name;
     int frame;
+    TextureObject* t_fail = nullptr;
+    TextureObject* t_bachio_boom = nullptr;
+    TextureObject* t_bachio_l_in = nullptr;
+    TextureObject* t_bachio_l_fall = nullptr;
+    TextureObject* t_bachio_r_in = nullptr;
+    TextureObject* t_bachio_r_fall = nullptr;
 
 public:
     FailAnimation(bool is_2p);

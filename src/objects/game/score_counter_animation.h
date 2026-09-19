@@ -3,8 +3,11 @@
 #include "../../libs/global_data.h"
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class ScoreCounterAnimation {
 private:
+    TextureObject* t_score_number = nullptr;
     int counter;
     int direction;
     FadeAnimation* fade_animation_1;

@@ -27,6 +27,7 @@ void LoadingScreen::on_screen_start() {
     }
     fade_in = std::make_unique<FadeAnimation>(fade_ms, 0.0, false, false, 1.0);
     allnet_indicator = AllNetIcon();
+    t_warning = tex.get_texture("kidou/warning");
 
     songs = get_song_files(global_data.config->paths.tja_path);
 #ifdef __EMSCRIPTEN__
@@ -148,7 +149,7 @@ void LoadingScreen::draw() {
     if (fill_width > 0) {
         ray::DrawRectangle(progress_bar_x, progress_bar_y, fill_width, progress_bar_height, ray::RED);
     }
-    tex.draw_texture(KIDOU::WARNING);
+    tex.draw_texture(t_warning);
 
     ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height, ray::Fade(ray::WHITE, fade_in->attribute));
     allnet_indicator.draw();

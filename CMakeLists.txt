@@ -106,7 +106,7 @@ if(ANDROID)
 else()
   add_executable(${PROJECT_NAME} ${CppFiles} ${HeaderFiles})
 endif()
-add_dependencies(${PROJECT_NAME} skin_config_gen texture_ids_gen)
+add_dependencies(${PROJECT_NAME} skin_config_gen)
 
 if(MINGW)
   target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++ -static)

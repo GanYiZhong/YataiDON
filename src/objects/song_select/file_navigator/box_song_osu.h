@@ -10,4 +10,8 @@ public:
 protected:
     void draw_closed() override;
     void draw_open() override;
+    void load_textures() override;
+
+    TextureObject* t_favorite_1p = nullptr;
+    TextureObject* t_favorite_2p = nullptr;
 };

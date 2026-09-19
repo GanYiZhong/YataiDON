@@ -87,5 +87,39 @@ private:
     static const SkinInfo& dan_exam_info();
     void push_dan_state();
     void draw_dan_info();
-    void draw_digit_counter(const std::string& digits, float margin_x, TexID tex_id, int index, float y, float x_offset = 0);
+    void draw_digit_counter(const std::string& digits, float margin_x, TextureObject* tex_id, int index, float y, float x_offset = 0);
+
+    // Textures resolved once in on_screen_start(), after load_screen_textures() has run,
+    // instead of calling tex.get_texture() every frame from draw_exam_row()/draw_dan_info().
+    void init_dan_textures();
+
+    TextureObject* t_exam_bg = nullptr;
+    TextureObject* t_exam_overlay_1 = nullptr;
+    TextureObject* t_exam_overlay_2 = nullptr;
+    TextureObject* t_exam_fail = nullptr;
+    TextureObject* t_exam_failed = nullptr;
+    TextureObject* t_exam_less = nullptr;
+    TextureObject* t_exam_more = nullptr;
+    TextureObject* t_exam_percent = nullptr;
+    TextureObject* t_exam_badge = nullptr;
+    TextureObject* t_exam_frame_back_all = nullptr;
+    TextureObject* t_exam_frame_front_all = nullptr;
+    TextureObject* t_exam_border_counter = nullptr;
+    TextureObject* t_value_counter = nullptr;
+    TextureObject* t_exam_sub_bg = nullptr;
+    TextureObject* t_exam_sub_track = nullptr;
+    TextureObject* t_exam_sub_front = nullptr;
+    TextureObject* t_exam_sub_chip = nullptr;
+    TextureObject* t_exam_sub_counter = nullptr;
+    TextureObject* t_total_notes = nullptr;
+    TextureObject* t_total_notes_counter = nullptr;
+    TextureObject* t_rank_plate = nullptr;
+    TextureObject* t_dan_frame = nullptr;
+
+    // info.bar_texture ("exam_red"/"exam_gold"/"exam_max") -> classic-HUD bar art.
+    std::unordered_map<std::string, TextureObject*> t_classic_bars;
+    // exam type ("gauge"/"combo"/.../"renda") -> icon, already resolved through exam_icon_id().
+    std::unordered_map<std::string, TextureObject*> t_exam_icons;
+    // fill()'s bar-segment path ("dan_info/exam_sub_rainbow" etc, its own key) -> art.
+    std::unordered_map<std::string, TextureObject*> t_fill_bar;
 };

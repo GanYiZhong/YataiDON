@@ -26,6 +26,14 @@ BranchIndicator::BranchIndicator()
     diff_fade = require_anim<FadeAnimation>(BRANCH_ANIM_DIFF_FADE);
     level_fade = require_anim<FadeAnimation>(BRANCH_ANIM_LEVEL_FADE);
     level_scale = require_anim<TextureResizeAnimation>(BRANCH_ANIM_LEVEL_SCALE);
+
+    t_expert_bg = tex.get_texture("branch/expert_bg");
+    t_master_bg = tex.get_texture("branch/master_bg");
+    t_level_up = tex.get_texture("branch/level_up");
+    t_level_down = tex.get_texture("branch/level_down");
+    t_diff[(int)BranchDifficulty::NORMAL] = tex.get_texture("branch/normal");
+    t_diff[(int)BranchDifficulty::EXPERT] = tex.get_texture("branch/expert");
+    t_diff[(int)BranchDifficulty::MASTER] = tex.get_texture("branch/master");
 }
 
 void BranchIndicator::update(double current_ms) {
@@ -60,15 +68,14 @@ void BranchIndicator::level_down(BranchDifficulty difficulty) {
 
 void BranchIndicator::draw(float y) {
     if (difficulty == BranchDifficulty::EXPERT) {
-        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
+        tex.draw_texture(t_expert_bg, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
     } else if (difficulty == BranchDifficulty::MASTER) {
-        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
+        tex.draw_texture(t_master_bg, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
     }
 
-    std::string level_texture = direction == -1 ? "level_down" : "level_up";
-    tex.draw_texture(tex.get_enum("branch/" + (level_texture)), {.scale = (float)level_scale->attribute, .center = true, .y=y, .fade = level_fade->attribute});
+    tex.draw_texture(direction == -1 ? t_level_down : t_level_up, {.scale = (float)level_scale->attribute, .center = true, .y=y, .fade = level_fade->attribute});
 
-    tex.draw_texture(tex.get_enum("branch/" + (branch_diff_to_string(diff_2))), {.y = y + (float)(diff_down->attribute - diff_up->attribute) * direction, .fade = diff_fade->attribute});
+    tex.draw_texture(t_diff[(int)diff_2], {.y = y + (float)(diff_down->attribute - diff_up->attribute) * direction, .fade = diff_fade->attribute});
 
-    tex.draw_texture(tex.get_enum("branch/" + (branch_diff_to_string(difficulty))), {.y = y + (float)(diff_up->attribute * (direction * -1)) - (tex.skin_config[SC::BRANCH_INDICATOR_Y_OFFSET].y * direction * -1), .fade = 1 - diff_fade->attribute});
+    tex.draw_texture(t_diff[(int)difficulty], {.y = y + (float)(diff_up->attribute * (direction * -1)) - (tex.skin_config[SC::BRANCH_INDICATOR_Y_OFFSET].y * direction * -1), .fade = 1 - diff_fade->attribute});
 }

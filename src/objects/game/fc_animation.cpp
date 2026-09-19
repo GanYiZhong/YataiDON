@@ -10,12 +10,12 @@ FCAnimation::FCAnimation(bool is_2p, bool donderful)
         tex.has_texture("ending_donderful/full_combo_highlight") &&
         tex.has_texture("ending_donderful/full_combo_overlay");
     const std::string subset = has_dfc_tex ? "ending_donderful/" : "ending_anim/";
-    combo_tex           = tex.get_enum(subset + "full_combo");
-    combo_highlight_tex = tex.get_enum(subset + "full_combo_highlight");
-    combo_overlay_tex   = tex.get_enum(subset + "full_combo_overlay");
+    combo_tex           = tex.get_texture(subset + "full_combo");
+    combo_highlight_tex = tex.get_texture(subset + "full_combo_highlight");
+    combo_overlay_tex   = tex.get_texture(subset + "full_combo_overlay");
 
     has_panel = has_dfc_tex && tex.has_texture("ending_donderful/background");
-    panel_tex = has_panel ? tex.get_enum("ending_donderful/background") : 0;
+    panel_tex = has_panel ? tex.get_texture("ending_donderful/background") : nullptr;
     panel_fade_in = new FadeAnimation(250, 0.0, false, false, 1.0, 0.0);
 
     const bool has_dfc_sound = donderful && audio.has_sound("donderful_combo");
@@ -56,6 +56,15 @@ FCAnimation::FCAnimation(bool is_2p, bool donderful)
     fan_texture_change = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(62));
 
     audio.play_sound(combo_sound, VolumePreset::SOUND);
+
+    t_fan_l = tex.get_texture("ending_anim/fan_l");
+    t_fan_r = tex.get_texture("ending_anim/fan_r");
+    t_clear_separated = tex.get_texture("ending_anim/clear_separated");
+    t_clear_highlight = tex.get_texture("ending_anim/clear_highlight");
+    t_bachio_l_in = tex.get_texture("ending_anim/bachio_l_in");
+    t_bachio_l_out = tex.get_texture("ending_anim/bachio_l_out");
+    t_bachio_r_in = tex.get_texture("ending_anim/bachio_r_in");
+    t_bachio_r_out = tex.get_texture("ending_anim/bachio_r_out");
 }
 
 void FCAnimation::update(double current_ms) {
@@ -109,13 +118,13 @@ void FCAnimation::draw() {
                 .index = (int)is_2p
             });
         }
-        tex.draw_texture(ENDING_ANIM::FAN_L, {
+        tex.draw_texture(t_fan_l, {
             .frame = (int)fan_texture_change->attribute,
             .fade = (float)(fan_fade_in->attribute),
             .index = (int)is_2p
         });
 
-        tex.draw_texture(ENDING_ANIM::FAN_R, {
+        tex.draw_texture(t_fan_r, {
             .frame = (int)fan_texture_change->attribute,
             .fade = (float)(fan_fade_in->attribute),
             .index = (int)is_2p
@@ -139,7 +148,7 @@ void FCAnimation::draw() {
         });
     } else {
         for (int i = 4; i >= 0; i--) {
-            tex.draw_texture(ENDING_ANIM::CLEAR_SEPARATED, {
+            tex.draw_texture(t_clear_separated, {
                 .frame = i,
                 .x = (float)(i * tex.skin_config[SC::CLEAR_ANIMATION_X_SPACING].x),
                 .y = (float)(-clear_separate_stretch[i]->attribute),
@@ -150,12 +159,12 @@ void FCAnimation::draw() {
         }
     }
 
-    tex.draw_texture(ENDING_ANIM::CLEAR_HIGHLIGHT, {
+    tex.draw_texture(t_clear_highlight, {
         .fade = (float)(clear_highlight_fade_in->attribute),
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_l_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_l_in : t_bachio_l_out, {
         .frame = frame,
         .x = (float)((-bachio_move_out->attribute - bachio_move_out_2->attribute) * 1.15f),
         .y = (float)(-bachio_move_up->attribute),
@@ -163,7 +172,7 @@ void FCAnimation::draw() {
         .index = (int)is_2p
     });
 
-    tex.draw_texture(tex.get_enum("ending_anim/bachio_r_" + name), {
+    tex.draw_texture(name == "in" ? t_bachio_r_in : t_bachio_r_out, {
         .frame = frame,
         .x = (float)((bachio_move_out->attribute + bachio_move_out_2->attribute) * 1.15f),
         .y = (float)(-bachio_move_up->attribute),

@@ -14,6 +14,8 @@ private:
     float progress_bar_x;
     float progress_bar_y;
 
+    TextureObject* t_warning = nullptr;
+
     std::thread loading_thread;
 
     std::unique_ptr<FadeAnimation> fade_in;

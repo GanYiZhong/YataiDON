@@ -8,7 +8,6 @@
 #include "../global/timer.h"
 #include "../../libs/global_data.h"
 #include "../../libs/filesystem.h"
-#include "texture_ids_generated.h"
 
 constexpr int CENTER_X = 220;
 constexpr int CENTER_Y = 220;
@@ -39,7 +38,7 @@ struct Chara3DFixture : public SandboxScreen::Fixture {
         if (model_names.empty()) model_names.push_back("0");
     }
 
-    uint32_t anchor_texture_id() override { return 0; }
+    TextureObject* anchor_texture_id() override { return nullptr; }
 
     void reset(double) override {
         active.emplace(model_names[model_idx]);
@@ -88,7 +87,7 @@ struct AllNetIconFixture : public SandboxScreen::Fixture {
 
     AllNetIconFixture() { name = "AllNetIcon"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return OVERLAY::ALLNET_INDICATOR; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("overlay/allnet_indicator"); }
 
     void reset(double)    override { active.emplace(); }
     void on_space(double) override { active.emplace(); }
@@ -104,7 +103,7 @@ struct CoinOverlayFixture : public SandboxScreen::Fixture {
 
     CoinOverlayFixture() { name = "CoinOverlay"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return OVERLAY::CAMERA; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("overlay/camera"); }
 
     void reset(double)    override { active.emplace(); }
     void on_space(double) override { active.emplace(); }
@@ -120,7 +119,7 @@ struct EntryOverlayFixture : public SandboxScreen::Fixture {
 
     EntryOverlayFixture() { name = "EntryOverlay"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return OVERLAY::BANAPASS_CARD; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("overlay/banapass_card"); }
 
     void reset(double)    override { active.emplace(); }
     void on_space(double) override { active.emplace(); }
@@ -144,7 +143,7 @@ struct IndicatorFixture : public SandboxScreen::Fixture {
 
     IndicatorFixture() { name = "Indicator"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return INDICATOR::BACKGROUND; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("indicator/background"); }
 
     void reset(double) override { active.emplace(states[type_idx]); }
     void on_space(double) override { active.emplace(states[type_idx]); }
@@ -165,7 +164,7 @@ struct NameplateFixture : public SandboxScreen::Fixture {
 
     NameplateFixture() { name = "Nameplate"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return NAMEPLATE::OUTLINE; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("nameplate/outline"); }
 
     void reset(double) override {
         switch (type_idx) {
@@ -195,7 +194,7 @@ struct TimerFixture : public SandboxScreen::Fixture {
 
     TimerFixture() { name = "Timer"; screen = "global"; }
 
-    uint32_t anchor_texture_id() override { return TIMER::BG; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("timer/bg"); }
 
     void reset(double ms) override { active.emplace(times[type_idx], ms, []{}); }
     void on_space(double ms) override { active.emplace(times[type_idx], ms, []{}); }

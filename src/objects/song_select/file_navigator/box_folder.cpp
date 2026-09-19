@@ -100,6 +100,25 @@ FolderBox::FolderBox(const fs::path& path, const BoxDef& box_def, std::map<std::
     this->text_name = box_def.name;
     enter_fade = std::make_unique<FadeAnimation>(166);
     refresh_scores(song_files);
+
+    load_textures();
+}
+
+void FolderBox::load_textures() {
+    BaseBox::load_textures();
+    t_folder_clip = tex.get_texture("box/folder_clip");
+    t_crown_dfc = tex.get_texture("yellow_box/crown_dfc");
+    t_crown_fc = tex.get_texture("yellow_box/crown_fc");
+    t_crown_clear = tex.get_texture("yellow_box/crown_clear");
+    t_folder_top_edge = tex.get_texture("box/folder_top_edge");
+    t_folder_top = tex.get_texture("box/folder_top");
+    t_genre_overlay_large = tex.get_texture("box/genre_overlay_large");
+    t_diff_overlay_large = tex.get_texture("box/diff_overlay_large");
+    t_song_count_back = tex.get_texture("yellow_box/song_count_back");
+    t_song_count_num = tex.get_texture("yellow_box/song_count_num");
+    t_song_count_songs = tex.get_texture("yellow_box/song_count_songs");
+    t_folder_graphic = tex.get_texture("box/folder_graphic");
+    t_folder_text = tex.get_texture("box/folder_text");
 }
 
 void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files) {
@@ -232,7 +251,7 @@ void FolderBox::draw_closed() {
 
     if (shader_loaded && texture_index == TextureIndex::NONE)
         ray::BeginShaderMode(shader);
-    tex.draw_texture(BOX::FOLDER_CLIP, {.frame=(int)texture_index, .x=bx-(1.0f * tex.screen_scale), .y=by, .fade=fade->attribute});
+    tex.draw_texture(t_folder_clip, {.frame=(int)texture_index, .x=bx-(1.0f * tex.screen_scale), .y=by, .fade=fade->attribute});
     if (shader_loaded && texture_index == TextureIndex::NONE)
         ray::EndShaderMode();
 
@@ -253,9 +272,9 @@ void FolderBox::draw_closed() {
         return c.at(key);
     };
     auto draw_one = [&](Crown c, int frame, float x) {
-        if      (c == Crown::DFC) tex.draw_texture(YELLOW_BOX::CROWN_DFC,   {.frame=frame, .x=x, .y=by});
-        else if (c == Crown::FC)  tex.draw_texture(YELLOW_BOX::CROWN_FC,    {.frame=frame, .x=x, .y=by});
-        else                       tex.draw_texture(YELLOW_BOX::CROWN_CLEAR, {.frame=frame, .x=x, .y=by});
+        if      (c == Crown::DFC) tex.draw_texture(t_crown_dfc,   {.frame=frame, .x=x, .y=by});
+        else if (c == Crown::FC)  tex.draw_texture(t_crown_fc,    {.frame=frame, .x=x, .y=by});
+        else                       tex.draw_texture(t_crown_clear, {.frame=frame, .x=x, .y=by});
     };
 
     int frame_1p = 0, frame_2p = 0;
@@ -263,7 +282,7 @@ void FolderBox::draw_closed() {
     std::optional<Crown> crown_2p = navigator.is_2p ? highest_crown(crown_p2, frame_2p) : std::nullopt;
 
     if (crown_2p.has_value()) {
-        float half = tex.textures[YELLOW_BOX::CROWN_DFC]->width * 0.35f;
+        float half = t_crown_dfc->width * 0.35f;
         if (crown_1p.has_value()) draw_one(crown_1p.value(), frame_1p, bx - half);
         draw_one(crown_2p.value(), frame_2p, bx + half);
     } else if (crown_1p.has_value()) {
@@ -275,32 +294,32 @@ void FolderBox::draw_open_bg(float fade) {
     float bx = box_x();
     float by = box_y();
     float shadow_fade = std::min(fade, (float)open_fade->attribute);
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_LEFT,  {.x=bx, .y=by, .fade=shadow_fade, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM,       {.x=bx, .y=by, .fade=shadow_fade, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_RIGHT, {.x=bx, .y=by, .fade=shadow_fade, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_RIGHT,        {.x=bx, .y=by, .fade=shadow_fade, .index=1});
-    tex.draw_texture(YELLOW_BOX::SHADOW_TOP_RIGHT,    {.x=bx, .y=by, .fade=shadow_fade, .index=1});
+    tex.draw_texture(t_shadow_bottom_left,  {.x=bx, .y=by, .fade=shadow_fade, .index=1});
+    tex.draw_texture(t_shadow_bottom,       {.x=bx, .y=by, .fade=shadow_fade, .index=1});
+    tex.draw_texture(t_shadow_bottom_right, {.x=bx, .y=by, .fade=shadow_fade, .index=1});
+    tex.draw_texture(t_shadow_right,        {.x=bx, .y=by, .fade=shadow_fade, .index=1});
+    tex.draw_texture(t_shadow_top_right,    {.x=bx, .y=by, .fade=shadow_fade, .index=1});
     int frame = (int)texture_index;
     bool use_shader = shader_loaded && texture_index == TextureIndex::NONE;
 
     if (open_anim->attribute >= (100.0f * tex.screen_scale)) {
         if (use_shader) ray::BeginShaderMode(shader);
-        tex.draw_texture(BOX::FOLDER_TOP_EDGE, {.frame=frame, .mirror=Mirror::HORIZONTAL, .y=by-(float)open_anim->attribute, .fade=fade});
-        tex.draw_texture(BOX::FOLDER_TOP,      {.frame=frame, .y=by-(float)open_anim->attribute, .fade=fade});
-        tex.draw_texture(BOX::FOLDER_TOP_EDGE, {.frame=frame, .x=tex.skin_config[SC::SONG_FOLDER_TOP].x, .y=by-(float)open_anim->attribute, .fade=fade});
+        tex.draw_texture(t_folder_top_edge, {.frame=frame, .mirror=Mirror::HORIZONTAL, .y=by-(float)open_anim->attribute, .fade=fade});
+        tex.draw_texture(t_folder_top,      {.frame=frame, .y=by-(float)open_anim->attribute, .fade=fade});
+        tex.draw_texture(t_folder_top_edge, {.frame=frame, .x=tex.skin_config[SC::SONG_FOLDER_TOP].x, .y=by-(float)open_anim->attribute, .fade=fade});
         if (use_shader) ray::EndShaderMode();
     }
 
     if (use_shader) ray::BeginShaderMode(shader);
-    tex.draw_texture(BOX::FOLDER_TEXTURE_LEFT,  {.frame=frame, .x=bx-(float)open_anim->attribute, .y=by, .fade=fade});
-    tex.draw_texture(BOX::FOLDER_TEXTURE, {
+    tex.draw_texture(t_folder_texture_left,  {.frame=frame, .x=bx-(float)open_anim->attribute, .y=by, .fade=fade});
+    tex.draw_texture(t_folder_texture, {
         .frame=frame,
         .x=bx-(float)open_anim->attribute,
         .y=by,
         .x2=((float)open_anim->attribute * 2.0f) + tex.skin_config[SC::SONG_BOX_BG].width,
         .fade=fade
     });
-    tex.draw_texture(BOX::FOLDER_TEXTURE_RIGHT, {.frame=frame, .x=bx + (float)open_anim->attribute, .y=by, .fade=fade});
+    tex.draw_texture(t_folder_texture_right, {.frame=frame, .x=bx + (float)open_anim->attribute, .y=by, .fade=fade});
     if (use_shader) ray::EndShaderMode();
 }
 
@@ -316,15 +335,15 @@ void FolderBox::draw_open_fg(float fade) {
     }
 
     if (texture_index == TextureIndex::DEFAULT)
-        tex.draw_texture(BOX::GENRE_OVERLAY_LARGE, {.fade=fade});
+        tex.draw_texture(t_genre_overlay_large, {.fade=fade});
     if (genre_index == GenreIndex::DIFFICULTY)
-        tex.draw_texture(BOX::DIFF_OVERLAY_LARGE,  {.fade=fade});
+        tex.draw_texture(t_diff_overlay_large,  {.fade=fade});
 
     // Song count
     if (genre_index != GenreIndex::DIFFICULTY) {
-        tex.draw_texture(YELLOW_BOX::SONG_COUNT_BACK,  {.fade=std::min(fade, 0.5f)});
-        tex.draw_texture(YELLOW_BOX::SONG_COUNT_NUM,   {.fade=fade});
-        tex.draw_texture(YELLOW_BOX::SONG_COUNT_SONGS, {.fade=fade});
+        tex.draw_texture(t_song_count_back,  {.fade=std::min(fade, 0.5f)});
+        tex.draw_texture(t_song_count_num,   {.fade=fade});
+        tex.draw_texture(t_song_count_songs, {.fade=fade});
 
         float dest_width = std::min(tex.skin_config[SC::SONG_TJA_COUNT].width,
                                     (float)tja_count_text->width);
@@ -354,8 +373,8 @@ void FolderBox::draw_open_fg(float fade) {
         ray::Rectangle dest(x, y, scaled_width, scaled_height);
         ray::DrawTexturePro(box_texture.value(), src, dest, ray::Vector2(0, 0), 0, ray::Fade(ray::WHITE, fade));
     } else if (texture_index != TextureIndex::DEFAULT) {
-        tex.draw_texture(BOX::FOLDER_GRAPHIC, {.frame=(int)genre_index, .fade=fade});
-        tex.draw_texture(BOX::FOLDER_TEXT,    {.frame=(int)genre_index, .fade=fade});
+        tex.draw_texture(t_folder_graphic, {.frame=(int)genre_index, .fade=fade});
+        tex.draw_texture(t_folder_text,    {.frame=(int)genre_index, .fade=fade});
     }
 }
 

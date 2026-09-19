@@ -5,14 +5,13 @@
 #include "../result/bottom_characters.h"
 #include "../result/high_score_indicator.h"
 #include "../enums.h"
-#include "texture_ids_generated.h"
 
 struct ResultBackgroundFixture : public SandboxScreen::Fixture {
     std::optional<ResultBackground> active;
 
     ResultBackgroundFixture() { name = "ResultBackground"; screen = "result"; }
 
-    uint32_t anchor_texture_id() override { return BACKGROUND::RESULT_TEXT; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("background/result_text"); }
 
     void reset(double) override { active.emplace(PlayerNum::P1, (float)tex.screen_width); }
     void on_space(double) override { active.emplace(PlayerNum::P1, (float)tex.screen_width); }
@@ -31,7 +30,7 @@ struct ResultCrownFixture : public SandboxScreen::Fixture {
 
     ResultCrownFixture() { name = "ResultCrown"; screen = "result"; }
 
-    uint32_t anchor_texture_id() override { return CROWN::CROWN_CLEAR; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("crown/crown_clear"); }
 
     void reset(double) override { active.emplace((int)crown_types[type_idx], false); }
     void on_space(double) override { active.emplace((int)crown_types[type_idx], false); }
@@ -51,7 +50,7 @@ struct ResultFadeInFixture : public SandboxScreen::Fixture {
 
     ResultFadeInFixture() { name = "ResultFadeIn"; screen = "result"; }
 
-    uint32_t anchor_texture_id() override { return BACKGROUND::BACKGROUND_1P; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("background/background_1p"); }
 
     void reset(double) override { active.emplace(PlayerNum::P1); }
     void on_space(double) override { active.emplace(PlayerNum::P1); }
@@ -73,7 +72,7 @@ struct BottomCharactersFixture : public SandboxScreen::Fixture {
 
     BottomCharactersFixture() { name = "BottomCharacters"; screen = "result"; }
 
-    uint32_t anchor_texture_id() override { return BOTTOM::CHARA_CENTER; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("bottom/chara_center"); }
 
     void reset(double) override {
         type_idx = 0;
@@ -106,7 +105,7 @@ struct HighScoreIndicatorFixture : public SandboxScreen::Fixture {
 
     HighScoreIndicatorFixture() { name = "HighScoreIndicator"; screen = "result"; }
 
-    uint32_t anchor_texture_id() override { return SCORE::HIGH_SCORE_JA; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("score/high_score_ja"); }
 
     void reset(double) override { type_idx = 0; active.emplace(0, diffs[type_idx], false); }
     void on_space(double) override { active.emplace(0, diffs[type_idx], false); }

@@ -4,9 +4,9 @@ static constexpr int ENTRY_BOX_MOVE_ANIM_ID = 10;
 static constexpr int ENTRY_BOX_OPEN_ANIM_ID = 11;
 
 Box::Box(const std::string& text_str, int font_size, Screens location) : location(location) {
-    x = tex.textures[MODE_SELECT::BOX]->x[0];
-    y = tex.textures[MODE_SELECT::BOX]->y[0];
-    width = tex.textures[MODE_SELECT::BOX]->width;
+    x = tex.textures["mode_select/box"]->x[0];
+    y = tex.textures["mode_select/box"]->y[0];
+    width = tex.textures["mode_select/box"]->width;
     move = dynamic_cast<MoveAnimation*>(tex.get_animation(ENTRY_BOX_MOVE_ANIM_ID));
     open = dynamic_cast<MoveAnimation*>(tex.get_animation(ENTRY_BOX_OPEN_ANIM_ID));
     if (move == nullptr || open == nullptr) {
@@ -23,7 +23,7 @@ Box::Box(const std::string& text_str, int font_size, Screens location) : locatio
     static_x = x;
     left_x = x;
     static_left = left_x;
-    right_x = left_x + tex.textures[MODE_SELECT::BOX]->width - tex.textures[MODE_SELECT::BOX_HIGHLIGHT_RIGHT]->width;
+    right_x = left_x + tex.textures["mode_select/box"]->width - tex.textures["mode_select/box_highlight_right"]->width;
     static_right = right_x;
     if (!load("EntryBox", "box", text_str, font_size)) {
         spdlog::error("Box: failed to load EntryBox/box script; draw() will be a no-op");
@@ -37,7 +37,7 @@ void Box::set_positions(float x, float y) {
     static_x = this->x;
     left_x = this->x;
     static_left = left_x;
-    right_x = left_x + tex.textures[MODE_SELECT::BOX]->width - tex.textures[MODE_SELECT::BOX_HIGHLIGHT_RIGHT]->width;
+    right_x = left_x + tex.textures["mode_select/box"]->width - tex.textures["mode_select/box_highlight_right"]->width;
     static_right = right_x;
     this->y_pos = y;
     this->static_y = y;

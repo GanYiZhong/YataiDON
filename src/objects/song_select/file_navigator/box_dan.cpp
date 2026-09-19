@@ -1,5 +1,5 @@
 #include "box_dan.h"
-TexID exam_icon_id(TexID preferred, const char* folder);
+TextureObject* exam_icon_id(const std::string& preferred, const char* folder);
 #include "../../../libs/song_parser.h"
 #include "../../../libs/scores.h"
 #include <algorithm>
@@ -15,6 +15,53 @@ DanBox::DanBox(const fs::path& path, const std::string& title, int color,
     , songs(songs_in), exams(exams_in), total_notes(total_notes_in)
 {
     text_name = title;
+
+    load_textures();
+}
+
+void DanBox::load_textures() {
+    BaseBox::load_textures();
+    t_dan_folder = tex.get_texture("box/folder");
+    t_genre_banner = tex.get_texture("yellow_box/genre_banner");
+    t_song_label = tex.get_texture("yellow_box/song_label");
+    t_difficulty = tex.get_texture("yellow_box/difficulty");
+    t_difficulty_x = tex.get_texture("yellow_box/difficulty_x");
+    t_difficulty_star = tex.get_texture("yellow_box/difficulty_star");
+    t_difficulty_num = tex.get_texture("yellow_box/difficulty_num");
+    t_total_notes_bg = tex.get_texture("yellow_box/total_notes_bg");
+    t_total_notes = tex.get_texture("yellow_box/total_notes");
+    t_total_notes_counter = tex.get_texture("yellow_box/total_notes_counter");
+    t_rank_plate = tex.get_texture("yellow_box/rank_plate");
+    t_dan_rank_frame = tex.get_texture("yellow_box/frame");
+    t_exam_box_bottom_right = tex.get_texture("yellow_box/exam_box_bottom_right");
+    t_exam_box_bottom_left = tex.get_texture("yellow_box/exam_box_bottom_left");
+    t_exam_box_top_right = tex.get_texture("yellow_box/exam_box_top_right");
+    t_exam_box_top_left = tex.get_texture("yellow_box/exam_box_top_left");
+    t_exam_box_bottom = tex.get_texture("yellow_box/exam_box_bottom");
+    t_exam_box_right = tex.get_texture("yellow_box/exam_box_right");
+    t_exam_box_left = tex.get_texture("yellow_box/exam_box_left");
+    t_exam_box_top = tex.get_texture("yellow_box/exam_box_top");
+    t_exam_box_center = tex.get_texture("yellow_box/exam_box_center");
+    t_exam_header = tex.get_texture("yellow_box/exam_header");
+    t_judge_box = tex.get_texture("yellow_box/judge_box");
+    t_exam_percent = tex.get_texture("yellow_box/exam_percent");
+    t_judge_num = tex.get_texture("yellow_box/judge_num");
+    t_exam_more = tex.get_texture("yellow_box/exam_more");
+    t_exam_less = tex.get_texture("yellow_box/exam_less");
+    t_exam_frame = tex.get_texture("yellow_box/exam_frame");
+
+    static const std::unordered_map<std::string, std::string> exam_icon_paths = {
+        {"gauge",        "yellow_box/exam_gauge"},
+        {"combo",        "yellow_box/exam_combo"},
+        {"hit",          "yellow_box/exam_hit"},
+        {"judgebad",     "yellow_box/exam_judgebad"},
+        {"judgegood",    "yellow_box/exam_judgegood"},
+        {"judgeperfect", "yellow_box/exam_judgeperfect"},
+        {"score",        "yellow_box/exam_score"},
+        {"renda",        "yellow_box/exam_roll"},
+    };
+    for (const auto& [type, path] : exam_icon_paths)
+        t_exam_icon_by_type[type] = exam_icon_id(path, "yellow_box");
 }
 
 static float dan_shrink_font(float font_size) {
@@ -96,13 +143,13 @@ void DanBox::update(double current_ms) {
 }
 
 void DanBox::draw_chip() {
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_LEFT,  {.x=position, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM,       {.x=position, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_BOTTOM_RIGHT, {.x=position, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_RIGHT,        {.x=position, .fade=fade->attribute, .index=0});
-    tex.draw_texture(YELLOW_BOX::SHADOW_TOP_RIGHT,    {.x=position, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom_left,  {.x=position, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom,       {.x=position, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_bottom_right, {.x=position, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_right,        {.x=position, .fade=fade->attribute, .index=0});
+    tex.draw_texture(t_shadow_top_right,    {.x=position, .fade=fade->attribute, .index=0});
 
-    tex.draw_texture(BOX::FOLDER, {.frame=dan_color, .x=position, .fade=fade->attribute});
+    tex.draw_texture(t_dan_folder, {.frame=dan_color, .x=position, .fade=fade->attribute});
 
     if (text_loaded && name) {
         const SkinInfo* chip = tex.skin_entry("dan_chip_name");
@@ -131,20 +178,20 @@ void DanBox::draw_open() {
     for (int i = 0; i < (int)songs.size(); i++) {
         float x = i * offset_x;
         float y = i * offset_y;
-        tex.draw_texture(YELLOW_BOX::GENRE_BANNER,   {.frame=songs[i].genre_index, .x=x, .y=y, .fade=f});
+        tex.draw_texture(t_genre_banner,   {.frame=songs[i].genre_index, .x=x, .y=y, .fade=f});
         if (tex.has_texture("yellow_box/song_label"))
-            tex.draw_texture(tex.get_enum("yellow_box/song_label"),
+            tex.draw_texture(t_song_label,
                              {.frame=std::min(i, 2), .x=x, .y=y, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY,     {.frame=songs[i].difficulty,  .x=x, .y=y, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY_X,   {.x=x, .y=y, .fade=f});
-        tex.draw_texture(YELLOW_BOX::DIFFICULTY_STAR,{.x=x, .y=y, .fade=f});
+        tex.draw_texture(t_difficulty,     {.frame=songs[i].difficulty,  .x=x, .y=y, .fade=f});
+        tex.draw_texture(t_difficulty_x,   {.x=x, .y=y, .fade=f});
+        tex.draw_texture(t_difficulty_star,{.x=x, .y=y, .fade=f});
 
         // Level counter
         std::string lvl = std::to_string(songs[i].level);
         float margin = tex.skin_config[SC::DAN_LEVEL_COUNTER_MARGIN].x;
         float total_w = lvl.size() * margin;
         for (int j = 0; j < (int)lvl.size(); j++) {
-            tex.draw_texture(YELLOW_BOX::DIFFICULTY_NUM, {.frame=lvl[j]-'0', .x=x-(total_w/2)+(j*margin), .y=y, .fade=f});
+            tex.draw_texture(t_difficulty_num, {.frame=lvl[j]-'0', .x=x-(total_w/2)+(j*margin), .y=y, .fade=f});
         }
 
         // Song title and subtitle
@@ -159,20 +206,20 @@ void DanBox::draw_open() {
         }
     }
 
-    tex.draw_texture(YELLOW_BOX::TOTAL_NOTES_BG, {.fade=f});
+    tex.draw_texture(t_total_notes_bg, {.fade=f});
     const SkinInfo* tn_slot = tex.skin_entry("dan_select_total_notes");
     if (!tn_slot || tn_slot->x >= 1.0f) {
-        tex.draw_texture(YELLOW_BOX::TOTAL_NOTES,    {.fade=f});
+        tex.draw_texture(t_total_notes,    {.fade=f});
         std::string tn = std::to_string(total_notes);
         float tn_margin = tex.skin_config[SC::TOTAL_NOTES_COUNTER_MARGIN].x;
         for (int i = 0; i < (int)tn.size(); i++)
-            tex.draw_texture(YELLOW_BOX::TOTAL_NOTES_COUNTER, {.frame=tn[i]-'0', .x=(float)(i*tn_margin), .fade=f});
+            tex.draw_texture(t_total_notes_counter, {.frame=tn[i]-'0', .x=(float)(i*tn_margin), .fade=f});
     }
 
     if (dan_rank >= 0 && tex.options[SCO::DAN_SELECT_RANK_PLATE]) {
-        tex.draw_texture(YELLOW_BOX::RANK_PLATE, {.frame=dan_rank, .fade=f});
+        tex.draw_texture(t_rank_plate, {.frame=dan_rank, .fade=f});
     } else {
-        tex.draw_texture(YELLOW_BOX::FRAME, {.frame=dan_color, .fade=f});
+        tex.draw_texture(t_dan_rank_frame, {.frame=dan_color, .fade=f});
         if (hori_name) {
             SkinInfo hn = tex.skin_config[SC::DAN_HORI_NAME];
             hori_name->draw({
@@ -190,12 +237,11 @@ void DanBox::draw_open() {
 static void draw_abs(const std::string& name, float X, float Y, float fade,
                      int frame = 0) {
     if (!tex.has_texture(name)) return;
-    uint32_t id = (uint32_t)tex.get_enum(name);
-    auto it = tex.textures.find(id);
-    if (it == tex.textures.end() || it->second->x.empty()) return;
-    tex.draw_texture(id, {.frame = frame,
-                          .x = X - it->second->x[0],
-                          .y = Y - it->second->y[0],
+    TextureObject* t = tex.get_texture(name);
+    if (t->x.empty()) return;
+    tex.draw_texture(t, {.frame = frame,
+                          .x = X - t->x[0],
+                          .y = Y - t->y[0],
                           .fade = fade});
 }
 
@@ -203,9 +249,9 @@ void DanBox::draw_exam_grid() {
     const float f = open_fade->attribute;
 
     if (tex.has_texture("yellow_box/exam_frame"))
-        tex.draw_texture(tex.get_enum("yellow_box/exam_frame"), {.fade=f});
+        tex.draw_texture(t_exam_frame, {.fade=f});
 
-    tex.draw_texture(YELLOW_BOX::EXAM_HEADER, {.fade=f});
+    tex.draw_texture(t_exam_header, {.fade=f});
 
     auto num = [&](const SkinInfo* s, float dx, float dy) {
         return std::pair<float,float>{s ? s->x : dx, s ? s->y : dy};
@@ -259,11 +305,11 @@ void DanBox::draw_exam_grid() {
         const std::string digits = std::to_string(exam.red);
         float pct_w = 0.0f, suf_w = 0.0f;
         if (exam.type == "gauge" && tex.has_texture("yellow_box/exam_percent"))
-            pct_w = (float)tex.textures.at((uint32_t)tex.get_enum("yellow_box/exam_percent"))->width;
+            pct_w = (float)tex.get_texture("yellow_box/exam_percent")->width;
         const char* suffix = exam.range == "less" ? "yellow_box/exam_less"
                            : exam.range == "more" ? "yellow_box/exam_more" : nullptr;
         if (suffix && tex.has_texture(suffix))
-            suf_w = (float)tex.textures.at((uint32_t)tex.get_enum(suffix))->width;
+            suf_w = (float)tex.get_texture(suffix)->width;
         const float total = digits.size() * margin + pct_w + suf_w;
         float cx = centre_x - total * 0.5f;
         for (char c : digits) {
@@ -317,16 +363,16 @@ void DanBox::draw_exam_box() {
     if (tex.options[SCO::DAN_EXAM_GRID]) { draw_exam_grid(); return; }
 
     float f = open_fade->attribute;
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_BOTTOM_RIGHT, {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_BOTTOM_LEFT,  {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_TOP_RIGHT,    {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_TOP_LEFT,     {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_BOTTOM,       {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_RIGHT,        {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_LEFT,         {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_TOP,          {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_BOX_CENTER,       {.fade=f});
-    tex.draw_texture(YELLOW_BOX::EXAM_HEADER,           {.fade=f});
+    tex.draw_texture(t_exam_box_bottom_right, {.fade=f});
+    tex.draw_texture(t_exam_box_bottom_left,  {.fade=f});
+    tex.draw_texture(t_exam_box_top_right,    {.fade=f});
+    tex.draw_texture(t_exam_box_top_left,     {.fade=f});
+    tex.draw_texture(t_exam_box_bottom,       {.fade=f});
+    tex.draw_texture(t_exam_box_right,        {.fade=f});
+    tex.draw_texture(t_exam_box_left,         {.fade=f});
+    tex.draw_texture(t_exam_box_top,          {.fade=f});
+    tex.draw_texture(t_exam_box_center,       {.fade=f});
+    tex.draw_texture(t_exam_header,           {.fade=f});
 
     float offset_y = tex.skin_config[SC::DAN_EXAM_INFO].y;
     float margin   = tex.skin_config[SC::EXAM_COUNTER_MARGIN].x;
@@ -340,38 +386,28 @@ void DanBox::draw_exam_box() {
     for (int i = 0; i < (int)shown.size(); i++) {
         const Exam& exam = *shown[i];
         float y = i * offset_y;
-        tex.draw_texture(YELLOW_BOX::JUDGE_BOX, {.y=y, .fade=f});
+        tex.draw_texture(t_judge_box, {.y=y, .fade=f});
 
         // Exam type icon
-        static const std::unordered_map<std::string, TexID> exam_icons = {
-            {"gauge",        YELLOW_BOX::EXAM_GAUGE},
-            {"combo",        YELLOW_BOX::EXAM_COMBO},
-            {"hit",          YELLOW_BOX::EXAM_HIT},
-            {"judgebad",     YELLOW_BOX::EXAM_JUDGEBAD},
-            {"judgegood",    YELLOW_BOX::EXAM_JUDGEGOOD},
-            {"judgeperfect", YELLOW_BOX::EXAM_JUDGEPERFECT},
-            {"score",        YELLOW_BOX::EXAM_SCORE},
-            {"renda",        YELLOW_BOX::EXAM_ROLL},
-        };
-        auto icon_it = exam_icons.find(exam.type);
-        if (icon_it != exam_icons.end())
-            tex.draw_texture(exam_icon_id(icon_it->second, "yellow_box"), {.y=y, .fade=f});
+        auto icon_it = t_exam_icon_by_type.find(exam.type);
+        if (icon_it != t_exam_icon_by_type.end())
+            tex.draw_texture(icon_it->second, {.y=y, .fade=f});
 
         float x_offset = 0;
         if (exam.type == "gauge") {
-            tex.draw_texture(YELLOW_BOX::EXAM_PERCENT, {.y=y, .fade=f});
+            tex.draw_texture(t_exam_percent, {.y=y, .fade=f});
             x_offset = tex.skin_config[SC::EXAM_GAUGE_OFFSET].x;
         }
 
         std::string counter = std::to_string(exam.red);
         for (int j = 0; j < (int)counter.size(); j++) {
             float x = x_offset - (counter.size() - j) * margin;
-            tex.draw_texture(YELLOW_BOX::JUDGE_NUM, {.frame=counter[j]-'0', .x=x, .y=y, .fade=f});
+            tex.draw_texture(t_judge_num, {.frame=counter[j]-'0', .x=x, .y=y, .fade=f});
         }
 
         if (exam.range == "more")
-            tex.draw_texture(YELLOW_BOX::EXAM_MORE, {.x=-x_offset*1.7f, .y=y, .fade=f});
+            tex.draw_texture(t_exam_more, {.x=-x_offset*1.7f, .y=y, .fade=f});
         else if (exam.range == "less")
-            tex.draw_texture(YELLOW_BOX::EXAM_LESS, {.x=-x_offset*1.7f, .y=y, .fade=f});
+            tex.draw_texture(t_exam_less, {.x=-x_offset*1.7f, .y=y, .fade=f});
     }
 }

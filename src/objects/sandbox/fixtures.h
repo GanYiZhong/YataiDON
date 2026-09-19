@@ -22,7 +22,6 @@
 #include "../game/transition.h"
 #include "../game/score_counter_animation.h"
 #include "../game/song_info.h"
-#include "texture_ids_generated.h"
 
 // ─── Existing fixtures ────────────────────────────────────────────────────────
 
@@ -33,7 +32,7 @@ struct JudgmentFixture : public SandboxScreen::Fixture {
 
     JudgmentFixture() { name = "Judgment"; }
 
-    uint32_t anchor_texture_id() override { return HIT_EFFECT::OUTER_GOOD; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("hit_effect/outer_good"); }
 
     void reset(double) override { active.reset(); type_idx = 0; big = false; }
 
@@ -74,7 +73,7 @@ struct DrumHitFixture : public SandboxScreen::Fixture {
 
     DrumHitFixture() { name = "DrumHitEffect"; }
 
-    uint32_t anchor_texture_id() override { return LANE::DRUM_DON_L; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("lane/drum_don_l"); }
 
     void reset(double) override { active.reset(); variant = 0; }
 
@@ -109,7 +108,7 @@ struct ComboFixture : public SandboxScreen::Fixture {
 
     ComboFixture() { name = "Combo"; }
 
-    uint32_t anchor_texture_id() override { return COMBO::COMBO_JA; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("combo/combo_ja"); }
 
     void reset(double ms) override {
         count = 0;
@@ -141,7 +140,7 @@ struct LaneHitEffectFixture : public SandboxScreen::Fixture {
 
     LaneHitEffectFixture() { name = "LaneHitEffect"; }
 
-    uint32_t anchor_texture_id() override { return LANE::LANE_HIT_EFFECT; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("lane/lane_hit_effect"); }
 
     void reset(double) override { active.reset(); type_idx = 0; }
     void on_space(double) override { active.emplace(dtypes[type_idx], judgs[type_idx]); }
@@ -169,7 +168,7 @@ struct GaugeHitEffectFixture : public SandboxScreen::Fixture {
 
     GaugeHitEffectFixture() { name = "GaugeHitEffect"; }
 
-    uint32_t anchor_texture_id() override { return GAUGE::HIT_EFFECT; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("gauge/hit_effect"); }
 
     void reset(double) override { active.reset(); type_idx = 0; big = false; }
     void on_space(double) override {
@@ -204,7 +203,7 @@ struct GogoTimeFixture : public SandboxScreen::Fixture {
 
     GogoTimeFixture() { name = "GogoTime"; }
 
-    uint32_t anchor_texture_id() override { return GOGO_TIME::FIRE; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("gogo_time/fire"); }
 
     void reset(double) override { gogo.emplace(); }
     void on_space(double) override { gogo.emplace(); }
@@ -221,7 +220,7 @@ struct ScoreCounterFixture : public SandboxScreen::Fixture {
 
     ScoreCounterFixture() { name = "ScoreCounter"; }
 
-    uint32_t anchor_texture_id() override { return LANE::LANE_SCORE_COVER; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("lane/lane_score_cover"); }
 
     void reset(double ms) override {
         score = 0;
@@ -249,7 +248,7 @@ struct DrumrollCounterFixture : public SandboxScreen::Fixture {
 
     DrumrollCounterFixture() { name = "DrumrollCounter"; }
 
-    uint32_t anchor_texture_id() override { return DRUMROLL_COUNTER::BUBBLE; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("drumroll_counter/bubble"); }
 
     void reset(double ms) override {
         count = 0;
@@ -281,7 +280,7 @@ struct BalloonCounterFixture : public SandboxScreen::Fixture {
 
     BalloonCounterFixture() { name = "BalloonCounter"; }
 
-    uint32_t anchor_texture_id() override { return BALLOON::BUBBLE; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("balloon/bubble"); }
 
     void reset(double ms) override {
         hit_count = 0;
@@ -322,7 +321,7 @@ struct ComboAnnounceFixture : public SandboxScreen::Fixture {
 
     ComboAnnounceFixture() { name = "ComboAnnounce"; }
 
-    uint32_t anchor_texture_id() override { return COMBO::ANNOUNCE_BG_1P; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("combo/announce_bg_1p"); }
 
     void reset(double) override { active.reset(); type_idx = 0; }
     void on_space(double ms) override {
@@ -355,7 +354,7 @@ struct FCAnimationFixture : public SandboxScreen::Fixture {
 
     FCAnimationFixture() { name = "FCAnimation"; }
 
-    uint32_t anchor_texture_id() override { return ENDING_ANIM::FULL_COMBO; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("ending_anim/full_combo"); }
 
     void reset(double) override { active.reset(); }
     void on_space(double) override { active.emplace(false); }
@@ -374,7 +373,7 @@ struct ClearAnimationFixture : public SandboxScreen::Fixture {
 
     ClearAnimationFixture() { name = "ClearAnimation"; }
 
-    uint32_t anchor_texture_id() override { return ENDING_ANIM::CLEAR; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("ending_anim/clear"); }
 
     void reset(double) override { active.reset(); }
     void on_space(double) override { active.emplace(false); }
@@ -393,7 +392,7 @@ struct FailAnimationFixture : public SandboxScreen::Fixture {
 
     FailAnimationFixture() { name = "FailAnimation"; }
 
-    uint32_t anchor_texture_id() override { return ENDING_ANIM::FAIL; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("ending_anim/fail"); }
 
     void reset(double) override { active.reset(); }
     void on_space(double) override { active.emplace(false); }
@@ -412,7 +411,7 @@ struct FireworksFixture : public SandboxScreen::Fixture {
 
     FireworksFixture() { name = "Fireworks"; }
 
-    uint32_t anchor_texture_id() override { return GOGO_TIME::EXPLOSION; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("gogo_time/explosion"); }
 
     void reset(double) override { active.reset(); }
     void on_space(double) override { active.emplace(); }
@@ -442,7 +441,7 @@ struct BranchIndicatorFixture : public SandboxScreen::Fixture {
 
     BranchIndicatorFixture() { name = "BranchIndicator"; }
 
-    uint32_t anchor_texture_id() override { return BRANCH::EXPERT_BG; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("branch/expert_bg"); }
 
     void reset(double) override { active.emplace(); last_was_up = false; }
     void on_space(double) override {
@@ -476,7 +475,7 @@ struct GaugeFixture : public SandboxScreen::Fixture {
 
     GaugeFixture() { name = "Gauge"; }
 
-    uint32_t anchor_texture_id() override { return GAUGE::OVERLAY_HARD; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("gauge/overlay_hard"); }
 
     void reset(double) override {
         active.emplace(100, 2, 5, player_num);
@@ -515,7 +514,7 @@ struct JudgeCounterFixture : public SandboxScreen::Fixture {
 
     JudgeCounterFixture() { name = "JudgeCounter"; }
 
-    uint32_t anchor_texture_id() override { return JUDGE_COUNTER::BG; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("judge_counter/bg"); }
 
     void reset(double) override {
         good = ok = bad = rolls = 0;
@@ -559,7 +558,7 @@ struct KusudamaCounterFixture : public SandboxScreen::Fixture {
 
     KusudamaCounterFixture() { name = "KusudamaCounter"; }
 
-    uint32_t anchor_texture_id() override { return KUSUDAMA::RENDA; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("kusudama/renda"); }
 
     void reset(double ms) override {
         hit_count = 0;
@@ -598,8 +597,8 @@ struct NoteArcFixture : public SandboxScreen::Fixture {
     NoteArcFixture() {
         name = "NoteArc";
         mask_shader = load_shader("shader/dummy.vs", "shader/mask.fs");
-        auto rm = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW_MASK]);
-        auto r  = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW]);
+        auto rm = std::dynamic_pointer_cast<SingleTexture>(tex.textures["balloon/rainbow_mask"]);
+        auto r  = std::dynamic_pointer_cast<SingleTexture>(tex.textures["balloon/rainbow"]);
         if (rm && r) {
             SetShaderValueTexture(mask_shader, GetShaderLocation(mask_shader, "texture0"), rm->texture);
             SetShaderValueTexture(mask_shader, GetShaderLocation(mask_shader, "texture1"), r->texture);
@@ -607,7 +606,7 @@ struct NoteArcFixture : public SandboxScreen::Fixture {
     }
     ~NoteArcFixture() { ray::UnloadShader(mask_shader); }
 
-    uint32_t anchor_texture_id() override { return BALLOON::RAINBOW; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("balloon/rainbow"); }
 
     void reset(double) override { active.reset(); }
     void on_space(double ms) override {
@@ -635,7 +634,7 @@ struct ResultTransitionFixture : public SandboxScreen::Fixture {
 
     ResultTransitionFixture() { name = "ResultTransition"; }
 
-    uint32_t anchor_texture_id() override { return RESULT_TRANSITION::_1P_SHUTTER; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("result_transition/1p_shutter"); }
 
     void reset(double) override { active.emplace(PlayerNum::P1); }
     void on_space(double) override {
@@ -660,7 +659,7 @@ struct TransitionFixture : public SandboxScreen::Fixture {
 
     TransitionFixture() { name = "Transition"; }
 
-    uint32_t anchor_texture_id() override { return RAINBOW_TRANSITION::TEXT_BG; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("rainbow_transition/text_bg"); }
 
     void reset(double) override { active.emplace("Test Song", "Test Subtitle", false); }
     void on_space(double) override {
@@ -685,7 +684,7 @@ struct ScoreCounterAnimFixture : public SandboxScreen::Fixture {
 
     ScoreCounterAnimFixture() { name = "ScoreCounterAnim"; }
 
-    uint32_t anchor_texture_id() override { return LANE::SCORE_NUMBER; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("lane/score_number"); }
 
     void reset(double) override { active.reset(); type_idx = 0; }
     void on_space(double) override { active.emplace(PlayerNum::P1, scores[type_idx], false); }
@@ -712,7 +711,7 @@ struct SongInfoFixture : public SandboxScreen::Fixture {
 
     SongInfoFixture() { name = "SongInfo"; }
 
-    uint32_t anchor_texture_id() override { return SONG_INFO::GENRE; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("song_info/genre"); }
 
     void reset(double) override { active.emplace("Test Song", "Test Subtitle", true, genre, 1); }
     void on_tab(double) override {

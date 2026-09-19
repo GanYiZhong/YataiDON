@@ -8,6 +8,16 @@ static std::string skin_text_for(SC key, const std::string& lang) {
     return (it != texts.end()) ? it->second : std::string();
 }
 
+void PracticeMenu::init_textures() {
+    t_menu_panel = tex.get_texture("practice/menu_panel");
+    t_menu_bar = tex.get_texture("practice/menu_bar");
+    t_menu_bar_selected = tex.get_texture("practice/menu_bar_selected");
+    t_menu_auto_label = tex.get_texture("practice/menu_auto_label");
+    t_menu_toggle = tex.get_texture("practice/menu_toggle");
+    t_menu_button = tex.get_texture("practice/menu_button");
+    t_menu_button_selected = tex.get_texture("practice/menu_button_selected");
+}
+
 void PracticeMenu::open_menu() {
     open = true;
     build_text();
@@ -162,14 +172,14 @@ void PracticeMenu::draw() const {
     float panel_y = tex.skin_config[SC::PRACTICE_MENU_PANEL].y;
     float pad     = (panel_w - n * bar_w - (n - 1) * gap) / 2.0f;
 
-    tex.draw_texture(PRACTICE::MENU_PANEL, {.x = panel_x, .y = panel_y});
+    tex.draw_texture(t_menu_panel, {.x = panel_x, .y = panel_y});
 
     for (int i = 0; i < n; i++) {
         float x = panel_x + pad + i * (bar_w + gap);
         float y = panel_y + (panel_h - bar_h) / 2.0f;
         bool selected = (i == index);
 
-        tex.draw_texture(selected ? PRACTICE::MENU_BAR_SELECTED : PRACTICE::MENU_BAR,
+        tex.draw_texture(selected ? t_menu_bar_selected : t_menu_bar,
                          {.x = x, .y = y});
 
         OutlinedText* text = menu_text[i].get();
@@ -185,7 +195,7 @@ void PracticeMenu::draw_dialog() const {
     float panel_x = (tex.screen_width - panel_w) / 2.0f;
     float panel_y = tex.skin_config[SC::PRACTICE_MENU_PANEL].y;
 
-    tex.draw_texture(PRACTICE::MENU_PANEL, {.x = panel_x, .y = panel_y});
+    tex.draw_texture(t_menu_panel, {.x = panel_x, .y = panel_y});
 
     // The auto dialog stacks a label chip and the toggle row below its
     // title, so the title sits high; the yes/no confirms sit lower.
@@ -202,7 +212,7 @@ void PracticeMenu::draw_dialog() const {
     if (dialog == Dialog::AUTO) {
         // Don chip above an ON | slider | OFF row, like the arcade's.
         float label_w = tex.skin_config[SC::PRACTICE_MENU_AUTO_LABEL].width;
-        tex.draw_texture(PRACTICE::MENU_AUTO_LABEL,
+        tex.draw_texture(t_menu_auto_label,
                          {.x = panel_x + (panel_w - label_w) / 2.0f,
                           .y = panel_y + tex.skin_config[SC::PRACTICE_MENU_AUTO_LABEL].y});
         float tog_w = tex.skin_config[SC::PRACTICE_MENU_AUTO_TOGGLE].width;
@@ -212,7 +222,7 @@ void PracticeMenu::draw_dialog() const {
         right_x = left_x + btn_w + gap + tog_w + gap;
         row_y   = panel_y + tex.skin_config[SC::PRACTICE_MENU_AUTO_TOGGLE].y;
         // The red knob slides toward whichever side is picked.
-        tex.draw_texture(PRACTICE::MENU_TOGGLE,
+        tex.draw_texture(t_menu_toggle,
                          {.mirror = dialog_sel == 1 ? Mirror::HORIZONTAL : Mirror::NONE,
                           .x = left_x + btn_w + gap, .y = row_y + 6 * tex.screen_scale});
     } else {
@@ -221,9 +231,9 @@ void PracticeMenu::draw_dialog() const {
         row_y   = panel_y + tex.skin_config[SC::PRACTICE_MENU_DIALOG_BUTTON].y;
     }
 
-    tex.draw_texture(dialog_sel == 0 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
+    tex.draw_texture(dialog_sel == 0 ? t_menu_button_selected : t_menu_button,
                      {.x = left_x, .y = row_y});
-    tex.draw_texture(dialog_sel == 1 ? PRACTICE::MENU_BUTTON_SELECTED : PRACTICE::MENU_BUTTON,
+    tex.draw_texture(dialog_sel == 1 ? t_menu_button_selected : t_menu_button,
                      {.x = right_x, .y = row_y});
 
     if (dlg_left)

@@ -1,13 +1,12 @@
 #include "../../scenes/sandbox.h"
 #include "../entry/costume_menu.h"
-#include "texture_ids_generated.h"
 
 struct CostumeMenuFixture : public SandboxScreen::Fixture {
     std::optional<CostumeMenu> active;
 
     CostumeMenuFixture() { name = "CostumeMenu"; screen = "entry"; }
 
-    uint32_t anchor_texture_id() override { return COSTUME_SELECT::BOX_CENTER_1P; }
+    TextureObject* anchor_texture_id() override { return tex.get_texture("costume_select/box_center_1p"); }
 
     PlayerNum fixture_player = PlayerNum::P1;
 

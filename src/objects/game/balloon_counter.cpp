@@ -12,6 +12,9 @@ BalloonCounter::BalloonCounter(int count, bool is_2p)
      }
      fade->reset();
      stretch->reset();
+     t_pop = tex.get_texture("balloon/pop");
+     t_bubble = tex.get_texture("balloon/bubble");
+     t_counter = tex.get_texture("balloon/counter");
 }
 
 void BalloonCounter::update_count(int count) {
@@ -49,15 +52,15 @@ void BalloonCounter::draw(float y) {
                                                          : Mirror::NONE;
 
     if (is_popped) {
-        tex.draw_texture(BALLOON::POP, {.frame=7, .x=body_x, .y=y + body_y, .fade=fade->attribute});
+        tex.draw_texture(t_pop, {.frame=7, .x=body_x, .y=y + body_y, .fade=fade->attribute});
     } else if (balloon_count >= 1) {
         static const int GEKI[6] = {0, 2, 3, 4, 5, 6};
         const int step = (balloon_total > 0) ? (balloon_count * 6 / balloon_total) : 0;
         const int balloon_index = GEKI[std::min(5, std::max(0, step))];
-        tex.draw_texture(BALLOON::POP, {.frame=balloon_index, .x=body_x, .y=y + body_y, .fade=fade->attribute});
+        tex.draw_texture(t_pop, {.frame=balloon_index, .x=body_x, .y=y + body_y, .fade=fade->attribute});
     }
     if (balloon_count > 0) {
-        tex.draw_texture(BALLOON::BUBBLE, {.mirror = bubble_mirror, .x=x_offset, .y=y + y_offset, .fade=fade->attribute});
+        tex.draw_texture(t_bubble, {.mirror = bubble_mirror, .x=x_offset, .y=y + y_offset, .fade=fade->attribute});
         std::string counter = std::to_string(std::max(0, balloon_total - balloon_count));
         float margin = tex.skin_config[SC::DRUMROLL_COUNTER_MARGIN].x;
         if (const SkinInfo* m = tex.skin_entry("balloon_counter_margin"); m && m->x > 0)
@@ -65,7 +68,7 @@ void BalloonCounter::draw(float y) {
         float total_width = counter.length() * margin;
         for (int i = 0; i < counter.size(); i++) {
             char digit = counter[i];
-            tex.draw_texture(BALLOON::COUNTER, {.frame=digit - '0', .x=x_offset - (total_width / 2.0f) + (i * margin), .y=y - (float)stretch->attribute + digit_y_offset, .y2=(float)stretch->attribute, .fade=fade->attribute});
+            tex.draw_texture(t_counter, {.frame=digit - '0', .x=x_offset - (total_width / 2.0f) + (i * margin), .y=y - (float)stretch->attribute + digit_y_offset, .y2=(float)stretch->attribute, .fade=fade->attribute});
         }
     }
 }

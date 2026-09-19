@@ -57,6 +57,21 @@ ModifierSelector::ModifierSelector(PlayerNum player_num, PlayerData* player) : p
 
     audio.play_sound("voice_options_" + std::to_string((int)player_num) + "p", VolumePreset::VOICE);
 
+    t_top = tex.get_texture("modifier/top");
+    t_player_p = tex.get_texture("modifier/" + std::to_string((int)player_num) + "p");
+    t_bottom = tex.get_texture("modifier/bottom");
+    t_background = tex.get_texture("modifier/background");
+    t_mod_bg = tex.get_texture("modifier/mod_bg");
+    t_mod_bg_highlight = tex.get_texture("modifier/mod_bg_highlight");
+    t_mod_box = tex.get_texture("modifier/mod_box");
+    t_mod_yonbai = tex.get_texture("modifier/mod_yonbai");
+    t_mod_sanbai = tex.get_texture("modifier/mod_sanbai");
+    t_mod_detarame = tex.get_texture("modifier/mod_detarame");
+    t_blue_arrow = tex.get_texture("modifier/blue_arrow");
+    t_mod_icons.clear();
+    for (const auto& [name, icon] : TEX_MAP)
+        t_mod_icons[icon] = tex.get_texture("modifier/" + icon);
+
     static const std::array<SC, 5> MOD_NAME_KEYS = {
         SC::MODIFIER_NAME_AUTO, SC::MODIFIER_NAME_SPEED, SC::MODIFIER_NAME_DISPLAY,
         SC::MODIFIER_NAME_INVERSE, SC::MODIFIER_NAME_RANDOM
@@ -251,18 +266,18 @@ void ModifierSelector::draw() {
     float x = ((int)player_num - 1) * tex.skin_config[SC::OPTION_P2].x;
     float mod_offset_y = tex.skin_config[SC::MODIFIER_OFFSET].y;
 
-    tex.draw_texture(MODIFIER::TOP,    {.x=x, .y=move_val});
-    tex.draw_texture(tex.get_enum("modifier/" + (std::to_string((int)player_num) + "p")), {.x=x, .y=move_val});
-    tex.draw_texture(MODIFIER::BOTTOM, {.x=x, .y=move_val + ((int)mod_names.size() * mod_offset_y)});
+    tex.draw_texture(t_top,    {.x=x, .y=move_val});
+    tex.draw_texture(t_player_p, {.x=x, .y=move_val});
+    tex.draw_texture(t_bottom, {.x=x, .y=move_val + ((int)mod_names.size() * mod_offset_y)});
 
     for (int i = 0; i < (int)mod_names.size(); i++) {
         float row_y = move_val + (i * mod_offset_y);
         const std::string& mod_name = mod_names[i];
         bool is_current = (i == current_mod_index);
 
-        tex.draw_texture(MODIFIER::BACKGROUND,                              {.x=x, .y=row_y});
-        tex.draw_texture(tex.get_enum(std::string("modifier/") + (is_current ? "mod_bg_highlight" : "mod_bg")), {.x=x, .y=row_y});
-        tex.draw_texture(MODIFIER::MOD_BOX,                                 {.x=x, .y=row_y});
+        tex.draw_texture(t_background,                              {.x=x, .y=row_y});
+        tex.draw_texture(is_current ? t_mod_bg_highlight : t_mod_bg, {.x=x, .y=row_y});
+        tex.draw_texture(t_mod_box,                                 {.x=x, .y=row_y});
 
         text_name[i]->draw({
             .x = tex.skin_config[SC::MODIFIER_OFFSET_2].x + x,
@@ -277,9 +292,9 @@ void ModifierSelector::draw() {
             draw_animated_text(text_speed, text_speed_2, tx + x, text_y, is_current);
 
             float spd = player->modifier_speed;
-            if      (spd >= 40) tex.draw_texture(MODIFIER::MOD_YONBAI,         {.x=x, .y=row_y});
-            else if (spd >= 30) tex.draw_texture(MODIFIER::MOD_SANBAI,         {.x=x, .y=row_y});
-            else if (spd >  10) tex.draw_texture(tex.get_enum("modifier/" + (TEX_MAP.at(mod_name))), {.x=x, .y=row_y});
+            if      (spd >= 40) tex.draw_texture(t_mod_yonbai, {.x=x, .y=row_y});
+            else if (spd >= 30) tex.draw_texture(t_mod_sanbai, {.x=x, .y=row_y});
+            else if (spd >  10) tex.draw_texture(t_mod_icons.at(TEX_MAP.at(mod_name)), {.x=x, .y=row_y});
 
         } else if (mod_name == "neiro") {
             float tx = text_base_x - (text_neiro->width / 2.0f);
@@ -289,11 +304,11 @@ void ModifierSelector::draw() {
             if (player->modifier_random == 1) {
                 float tx = text_base_x - (text_kimagure->width / 2.0f);
                 draw_animated_text(text_kimagure, text_kimagure_2, tx + x, text_y, is_current);
-                tex.draw_texture(tex.get_enum("modifier/" + (TEX_MAP.at(mod_name))), {.x=x, .y=row_y});
+                tex.draw_texture(t_mod_icons.at(TEX_MAP.at(mod_name)), {.x=x, .y=row_y});
             } else if (player->modifier_random == 2) {
                 float tx = text_base_x - (text_detarame->width / 2.0f);
                 draw_animated_text(text_detarame, text_detarame_2, tx + x, text_y, is_current);
-                tex.draw_texture(MODIFIER::MOD_DETARAME, {.x=x, .y=row_y});
+                tex.draw_texture(t_mod_detarame, {.x=x, .y=row_y});
             } else {
                 float tx = text_base_x - (text_false->width / 2.0f);
                 draw_animated_text(text_false, text_false_2, tx + x, text_y, is_current);
@@ -304,7 +319,7 @@ void ModifierSelector::draw() {
             bool val = get_bool(i);
             auto icon = TEX_MAP.find(mod_name);
             if (val && icon != TEX_MAP.end())
-                tex.draw_texture(tex.get_enum("modifier/" + icon->second), {.x=x, .y=row_y});
+                tex.draw_texture(t_mod_icons.at(icon->second), {.x=x, .y=row_y});
             const auto& primary   = val ? text_true   : text_false;
             const auto& secondary = val ? text_true_2 : text_false_2;
             float tx = text_base_x - (primary->width / 2.0f);
@@ -312,8 +327,8 @@ void ModifierSelector::draw() {
         }
 
         if (is_current) {
-            tex.draw_texture(MODIFIER::BLUE_ARROW, {.x=x - (float)blue_arrow_move->attribute, .y=row_y, .fade=blue_arrow_fade->attribute});
-            tex.draw_texture(MODIFIER::BLUE_ARROW, {.mirror=Mirror::HORIZONTAL, .x=x + tex.skin_config[SC::MODIFIER_OFFSET_2].y + (float)blue_arrow_move->attribute, .y=row_y, .fade=blue_arrow_fade->attribute});
+            tex.draw_texture(t_blue_arrow, {.x=x - (float)blue_arrow_move->attribute, .y=row_y, .fade=blue_arrow_fade->attribute});
+            tex.draw_texture(t_blue_arrow, {.mirror=Mirror::HORIZONTAL, .x=x + tex.skin_config[SC::MODIFIER_OFFSET_2].y + (float)blue_arrow_move->attribute, .y=row_y, .fade=blue_arrow_fade->attribute});
         }
     }
 }

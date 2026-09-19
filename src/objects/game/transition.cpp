@@ -13,6 +13,14 @@ Transition::Transition(const std::string& title, const std::string& subtitle, bo
     this->title = std::make_unique<OutlinedText>(title, global_tex.skin_config[SC::TRANSITION_TITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
     this->subtitle = std::make_unique<OutlinedText>(subtitle, global_tex.skin_config[SC::TRANSITION_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
 
+    t_rainbow_text_bg = global_tex.get_texture("rainbow_transition/text_bg");
+    t_rainbow_bg_bottom = global_tex.get_texture("rainbow_transition/rainbow_bg_bottom");
+    t_rainbow_bg_top = global_tex.get_texture("rainbow_transition/rainbow_bg_top");
+    t_rainbow_bg = global_tex.get_texture("rainbow_transition/rainbow_bg");
+    t_chara_left = global_tex.get_texture("rainbow_transition/chara_left");
+    t_chara_right = global_tex.get_texture("rainbow_transition/chara_right");
+    t_chara_center = global_tex.get_texture("rainbow_transition/chara_center");
+
     if (!load("SongTransition", "transition", title, subtitle, is_second)) return;
     fn_update    = lua_object["update"];
     fn_draw_bg   = lua_object["draw_bg"];
@@ -43,6 +51,8 @@ void Transition::add_loading_graphic(const std::string& path) {
 void Transition::set_dan(int color, const std::string& rank_name) {
     dan_color = color;
     global_tex.load_folder("dan_loading", "loading_dan");
+    t_loading_dan_night = global_tex.get_texture("loading_dan/night");
+    t_loading_dan_plaque = global_tex.get_texture("loading_dan/plaque");
     if (!rank_name.empty()) {
         dan_rank_text = std::make_unique<OutlinedText>(
             rank_name, global_tex.skin_config[SC::DAN_TITLE].font_size,
@@ -57,9 +67,9 @@ void Transition::draw_dan(float total_offset) {
     const float  black = (float)std::clamp(1.0 - (f - 36.0) / 29.0, 0.0, 1.0);
     const float  dy = -(float)rainbow_up->attribute - total_offset;
 
-    global_tex.draw_texture(LOADING_DAN::NIGHT, {.y = y + dy});
+    global_tex.draw_texture(t_loading_dan_night, {.y = y + dy});
     if (a > 0.0f) {
-        global_tex.draw_texture(LOADING_DAN::PLAQUE,
+        global_tex.draw_texture(t_loading_dan_plaque,
                                 {.frame = std::clamp(dan_color, 0, 6), .y = dy, .fade = a});
         if (dan_rank_text) {
             const SkinInfo* p = global_tex.skin_entry("dan_loading_rank");
@@ -107,7 +117,7 @@ void Transition::draw_song_info() {
         fade_2 = std::min(0.70, song_info_fade_out->attribute);
         offset = global_tex.skin_config[SC::TRANSITION_OFFSET].y - rainbow_up->attribute;
     }
-    global_tex.draw_texture(RAINBOW_TRANSITION::TEXT_BG, {.y=(float)-rainbow_up->attribute - offset, .fade=fade_2});
+    global_tex.draw_texture(t_rainbow_text_bg, {.y=(float)-rainbow_up->attribute - offset, .fade=fade_2});
 
     float x = (float)global_tex.screen_width/2 - title->width/2;
     float y = global_tex.skin_config[SC::TRANSITION_TITLE].y - title->height/2 - rainbow_up->attribute - offset;
@@ -119,18 +129,18 @@ void Transition::draw_song_info() {
 }
 
 void Transition::draw_default(float total_offset) {
-    global_tex.draw_texture(RAINBOW_TRANSITION::RAINBOW_BG_BOTTOM, {.y=(float)-rainbow_up->attribute - total_offset});
-    global_tex.draw_texture(RAINBOW_TRANSITION::RAINBOW_BG_TOP, {.y=(float)-rainbow_up->attribute - total_offset});
-    global_tex.draw_texture(RAINBOW_TRANSITION::RAINBOW_BG, {.y=(float)-rainbow_up->attribute - total_offset});
+    global_tex.draw_texture(t_rainbow_bg_bottom, {.y=(float)-rainbow_up->attribute - total_offset});
+    global_tex.draw_texture(t_rainbow_bg_top, {.y=(float)-rainbow_up->attribute - total_offset});
+    global_tex.draw_texture(t_rainbow_bg, {.y=(float)-rainbow_up->attribute - total_offset});
     float offset = chara_down->attribute;
     float chara_offset = 0;
     if (is_second) {
         offset = chara_down->attribute - mini_up->attribute/3;
         chara_offset = global_tex.skin_config[SC::TRANSITION_CHARA_OFFSET].y;
     }
-    global_tex.draw_texture(RAINBOW_TRANSITION::CHARA_LEFT, {.x=(float)-mini_up->attribute/2 - chara_offset, .y=(float)-mini_up->attribute + offset - total_offset});
-    global_tex.draw_texture(RAINBOW_TRANSITION::CHARA_RIGHT, {.x=(float)mini_up->attribute/2 + chara_offset, .y=(float)-mini_up->attribute + offset - total_offset});
-    global_tex.draw_texture(RAINBOW_TRANSITION::CHARA_CENTER, {.y=(float)-rainbow_up->attribute + offset - total_offset});
+    global_tex.draw_texture(t_chara_left, {.x=(float)-mini_up->attribute/2 - chara_offset, .y=(float)-mini_up->attribute + offset - total_offset});
+    global_tex.draw_texture(t_chara_right, {.x=(float)mini_up->attribute/2 + chara_offset, .y=(float)-mini_up->attribute + offset - total_offset});
+    global_tex.draw_texture(t_chara_center, {.y=(float)-rainbow_up->attribute + offset - total_offset});
 }
 
 void Transition::draw() {

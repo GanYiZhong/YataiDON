@@ -59,6 +59,9 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
     }
 
     arc_points_cache = &_arc_points_cache[cache_key];
+
+    t_note = tex.get_texture("notes/" + std::to_string((int)note_type));
+    t_rainbow_mask = tex.get_texture("balloon/rainbow_mask");
 }
 
 void NoteArc::update(double current_ms) {
@@ -80,7 +83,7 @@ void NoteArc::update(double current_ms) {
 
 void NoteArc::draw(float y, ray::Shader mask_shader) {
     if (is_balloon) {
-        const std::shared_ptr<TextureObject>& rainbow = tex.textures[BALLOON::RAINBOW];
+        const std::shared_ptr<TextureObject>& rainbow = tex.textures["balloon/rainbow"];
         if (!rainbow) return;
         float rainbow_height;
         if (player_num == PlayerNum::P2) {
@@ -107,12 +110,12 @@ void NoteArc::draw(float y, ray::Shader mask_shader) {
                     y_pos = 0;
                 }
                 ray::BeginShaderMode(mask_shader);
-                tex.draw_texture(BALLOON::RAINBOW_MASK, {.mirror=mirror, .x=crop_start_x, .y=y + y_pos, .x2=-rainbow->width + crop_width, .src=src});
+                tex.draw_texture(t_rainbow_mask, {.mirror=mirror, .x=crop_start_x, .y=y + y_pos, .x2=-rainbow->width + crop_width, .src=src});
                 ray::EndShaderMode();
             }
         }
     }
-    tex.draw_texture(tex.get_enum("notes/" + (std::to_string((int)note_type))), {.x=x_i, .y=y + y_i});
+    tex.draw_texture(t_note, {.x=x_i, .y=y + y_i});
 }
 
 bool NoteArc::is_finished() const {

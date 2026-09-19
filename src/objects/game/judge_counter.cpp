@@ -7,6 +7,13 @@ JudgeCounter::JudgeCounter()
     : good(0), ok(0), bad(0), drumrolls(0) {
     orange = ray::Color{253, 161, 0, 255};
     white = ray::WHITE;
+
+    t_counter = tex.get_texture("judge_counter/counter");
+    t_bg = tex.get_texture("judge_counter/bg");
+    t_total_percent = tex.get_texture("judge_counter/total_percent");
+    t_judgments = tex.get_texture("judge_counter/judgments");
+    t_drumrolls = tex.get_texture("judge_counter/drumrolls");
+    t_percent = tex.get_texture("judge_counter/percent");
 }
 
 void JudgeCounter::update(int good, int ok, int bad, int drumrolls) {
@@ -24,7 +31,7 @@ void JudgeCounter::draw_counter(float counter, float x, float y, float margin, r
     for (int i = 0; i < counter_str.length(); i++) {
         char c = counter_str[i];
         if (c < '0' || c > '9') continue;
-        tex.draw_texture(JUDGE_COUNTER::COUNTER, {
+        tex.draw_texture(t_counter, {
             .color = color,
             .frame = c - '0',
             .x = x - (counter_len - i) * margin,
@@ -34,13 +41,13 @@ void JudgeCounter::draw_counter(float counter, float x, float y, float margin, r
 }
 
 void JudgeCounter::draw() {
-    tex.draw_texture(JUDGE_COUNTER::BG);
-    tex.draw_texture(JUDGE_COUNTER::TOTAL_PERCENT);
-    tex.draw_texture(JUDGE_COUNTER::JUDGMENTS);
-    tex.draw_texture(JUDGE_COUNTER::DRUMROLLS);
+    tex.draw_texture(t_bg);
+    tex.draw_texture(t_total_percent);
+    tex.draw_texture(t_judgments);
+    tex.draw_texture(t_drumrolls);
 
     for (int i = 0; i < 4; i++) {
-        tex.draw_texture(JUDGE_COUNTER::PERCENT, {
+        tex.draw_texture(t_percent, {
             .color = orange,
             .index = i
         });

@@ -34,6 +34,39 @@ private:
     void draw_diff_select();
     void draw_level_select();
 
+    // Fixed-path textures resolved once in the constructor instead of calling
+    // tex.get_texture() every frame from the draw_*() methods.
+    TextureObject* t_stat_bg = nullptr;   // player-num-specific, fixed per instance
+    TextureObject* t_stat_overlay = nullptr;
+    TextureObject* t_stat_diff = nullptr;
+    TextureObject* t_stat_starx = nullptr;
+    TextureObject* t_stat_prev = nullptr;
+    TextureObject* t_stat_num_star = nullptr;
+    TextureObject* t_stat_num = nullptr;
+    TextureObject* t_stat_num_small = nullptr;
+    TextureObject* t_background = nullptr;
+    TextureObject* t_box_highlight = nullptr;
+    TextureObject* t_box_text_highlight = nullptr;
+    TextureObject* t_box = nullptr;
+    TextureObject* t_box_text = nullptr;
+    TextureObject* t_back_outline = nullptr;
+    TextureObject* t_box_outline = nullptr;
+    TextureObject* t_box_diff = nullptr;
+    TextureObject* t_star_select_prompt = nullptr;
+    TextureObject* t_star_select_text = nullptr;
+    TextureObject* t_star_limit = nullptr;
+    TextureObject* t_level_box = nullptr;
+    TextureObject* t_diff = nullptr;
+    TextureObject* t_star_num = nullptr;
+    TextureObject* t_star = nullptr;
+    TextureObject* t_small_box_highlight = nullptr;
+    TextureObject* t_small_box_text_highlight = nullptr;
+    TextureObject* t_small_box_outline = nullptr;
+    TextureObject* t_small_box = nullptr;
+    TextureObject* t_small_box_text = nullptr;
+    TextureObject* t_pongos = nullptr;
+    TextureObject* t_arrow = nullptr;
+
     bool one_menu_sort = false;
     SongSelectScript* script = nullptr;
     int session = 0;

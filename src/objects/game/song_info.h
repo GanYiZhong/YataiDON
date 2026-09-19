@@ -25,6 +25,9 @@ private:
     std::unique_ptr<SongNum> song_num;
     std::unique_ptr<SongNum> song_max;
 
+    TextureObject* t_genre = nullptr;
+    TextureObject* t_song_num_plate = nullptr;
+
 public:
     SongInfo() = default;
     SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0);

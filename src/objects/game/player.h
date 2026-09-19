@@ -87,7 +87,7 @@ public:
     int get_max_combo() const { return max_combo; }
     int get_combo() const { return combo; }
     int get_total_drumroll() const { return total_drumroll; }
-    int get_scissor_x() const { return virtual_to_screen_x(static_cast<float>(tex.textures[lane_cover_tex_id]->x2[0])); }
+    int get_scissor_x() const { return virtual_to_screen_x(static_cast<float>(lane_cover_tex_id->x2[0])); }
     void set_is_dan(bool v) { is_dan = v; }
 
     void reload_for_dan(std::optional<SongParser>& new_parser, int new_difficulty);
@@ -184,9 +184,35 @@ private:
     std::string don_hitsound;
     std::string kat_hitsound;
 
-    TexID lane_cover_tex_id;
-    TexID lane_icon_tex_id;
-    TexID note_tex_ids[10];
+    TextureObject* lane_cover_tex_id = nullptr;
+    TextureObject* lane_icon_tex_id = nullptr;
+    TextureObject* note_tex_ids[10] = {};
+
+    // Textures resolved once in the constructor (after the owning screen's
+    // load_screen_textures() has already run), instead of calling tex.get_texture()
+    // every frame from draw()/draw_practice()/draw_overlays()/draw_modifiers().
+    void init_player_textures();
+
+    TextureObject* t_lane_background = nullptr;
+    TextureObject* t_ai_lane_background = nullptr;
+    TextureObject* t_lane_hit_circle = nullptr;
+    TextureObject* t_dan_lane_cover = nullptr;
+    TextureObject* t_drum = nullptr;
+    TextureObject* t_lane_difficulty = nullptr;
+    TextureObject* t_timer = nullptr;
+    TextureObject* t_auto_icon = nullptr;
+    TextureObject* t_lane_score_cover = nullptr;
+    TextureObject* t_mod_shinuchi = nullptr;
+    std::vector<TextureObject*> t_badges;
+
+    TextureObject* t_notes_0 = nullptr;
+    TextureObject* t_notes_8 = nullptr;
+    TextureObject* t_notes_9 = nullptr;
+    TextureObject* t_notes_10 = nullptr;
+    TextureObject* t_moji = nullptr;
+    TextureObject* t_moji_drumroll_mid = nullptr;
+    TextureObject* t_drumroll_big_tail = nullptr;
+    TextureObject* t_drumroll_tail = nullptr;
 
     std::vector<Judgment> draw_judge_list;
     std::vector<GaugeHitEffect> gauge_hit_effect;

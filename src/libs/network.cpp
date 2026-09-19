@@ -1,5 +1,4 @@
 #include "network.h"
-#include <thread>
 #include "scores.h"
 #include "color_utils.h"
 #include "global_data.h"
@@ -485,40 +484,36 @@ void NetworkClient::submit_score(std::string& hash, int difficulty, const std::s
     };
     // The upload runs off the render thread: a synchronous POST stalled the end of
     // the song for up to the 5 s timeout whenever the server was unreachable.
-    // TODO: replace the detached thread with an owned worker joined in ~NetworkClient(),
-    // or with cpr::PostAsync whose future is polled from update().
-    std::thread([params = std::move(params), input_log = std::move(input_log), played_at,
-                 modifiers_json, chara_is_costume, chara_cos_index]() mutable {
-        cpr::Response response = cpr::Post(
-            cpr::Url{network_url("/submit_score")},
-            signed_headers("POST", "/submit_score", params),
-            cpr::Parameters{
-                {"access_code", params["access_code"]},
-                {"hash", params["hash"]},
-                {"difficulty", params["difficulty"]},
-                {"crown", params["crown"]},
-                {"rank", params["rank"]},
-                {"score", params["score"]},
-                {"good", params["good"]},
-                {"ok", params["ok"]},
-                {"bad", params["bad"]},
-                {"drumroll", params["drumroll"]},
-                {"max_combo", params["max_combo"]},
-            },
-            cpr::Payload{
-                {"input_log", map_to_json_impl(input_log)},
-                {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
-                {"modifiers", modifiers_json},
-                {"chara_is_costume", chara_is_costume ? "true" : "false"},
-                {"chara_cos_index", std::to_string(chara_cos_index)},
-            },
-            cpr::Timeout{5000}
-            NETWORK_CA_OPT
-        );
-        if (response.status_code != 200) {
-            spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
-        }
-    }).detach();
+    // Tracked (not detached) so shutdown() can drain it before the process exits.
+    if (pending_score_submit.has_value()) {
+        pending_score_submit->wait();
+    }
+    pending_score_submit = cpr::PostAsync(
+        cpr::Url{network_url("/submit_score")},
+        signed_headers("POST", "/submit_score", params),
+        cpr::Parameters{
+            {"access_code", params["access_code"]},
+            {"hash", params["hash"]},
+            {"difficulty", params["difficulty"]},
+            {"crown", params["crown"]},
+            {"rank", params["rank"]},
+            {"score", params["score"]},
+            {"good", params["good"]},
+            {"ok", params["ok"]},
+            {"bad", params["bad"]},
+            {"drumroll", params["drumroll"]},
+            {"max_combo", params["max_combo"]},
+        },
+        cpr::Payload{
+            {"input_log", map_to_json_impl(input_log)},
+            {"played_at", played_at > 0 ? std::to_string(played_at) : ""},
+            {"modifiers", modifiers_json},
+            {"chara_is_costume", chara_is_costume ? "true" : "false"},
+            {"chara_cos_index", std::to_string(chara_cos_index)},
+        },
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
 }
 
 void NetworkClient::poll_song_jump(const std::string& access_code) {
@@ -583,6 +578,33 @@ void NetworkClient::update(double current_ms) {
             }
         }
     }
+
+    if (pending_score_submit.has_value() &&
+        pending_score_submit->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_score_submit->get();
+        pending_score_submit.reset();
+        if (response.status_code != 200) {
+            spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
+        }
+    }
+}
+
+void NetworkClient::shutdown() {
+    if (pending_heartbeat.has_value()) {
+        pending_heartbeat->wait();
+        pending_heartbeat.reset();
+    }
+    if (pending_song_jump.has_value()) {
+        pending_song_jump->wait();
+        pending_song_jump.reset();
+    }
+    if (pending_score_submit.has_value()) {
+        cpr::Response response = pending_score_submit->get();
+        pending_score_submit.reset();
+        if (response.status_code != 200) {
+            spdlog::error("Failed to submit score: HTTP {} - {}", response.status_code, response.text);
+        }
+    }
 }
 
 #else
@@ -603,5 +625,6 @@ std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { retur
 void NetworkClient::poll_song_jump(const std::string&) {}
 std::optional<std::string> NetworkClient::take_song_jump_result() { return std::nullopt; }
 void NetworkClient::update(double) {}
+void NetworkClient::shutdown() {}
 
 #endif

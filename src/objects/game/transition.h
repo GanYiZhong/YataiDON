@@ -24,6 +24,18 @@ private:
     MoveAnimation* chara_down;
     FadeAnimation* song_info_fade;
     FadeAnimation* song_info_fade_out;
+
+    // "global" screen assets, loaded once at app startup - safe to resolve here.
+    TextureObject* t_rainbow_text_bg = nullptr;
+    TextureObject* t_rainbow_bg_bottom = nullptr;
+    TextureObject* t_rainbow_bg_top = nullptr;
+    TextureObject* t_rainbow_bg = nullptr;
+    TextureObject* t_chara_left = nullptr;
+    TextureObject* t_chara_right = nullptr;
+    TextureObject* t_chara_center = nullptr;
+    // Resolved in set_dan(), right after it explicitly loads the "loading_dan" folder.
+    TextureObject* t_loading_dan_night = nullptr;
+    TextureObject* t_loading_dan_plaque = nullptr;
 public:
 
     Transition(const std::string& title, const std::string& subtitle, bool is_second);

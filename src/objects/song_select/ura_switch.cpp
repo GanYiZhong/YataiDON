@@ -4,6 +4,7 @@
 UraSwitchAnimation::UraSwitchAnimation() {
     texture_change = (TextureChangeAnimation*)tex.get_animation(7);
     fade_out = (FadeAnimation*)tex.get_animation(8);
+    t_ura_switch = tex.get_texture("diff_select/ura_switch");
 }
 
 void UraSwitchAnimation::start(bool is_backwards) {
@@ -20,5 +21,5 @@ void UraSwitchAnimation::update(double current_ms) {
 }
 
 void UraSwitchAnimation::draw() {
-    tex.draw_texture(DIFF_SELECT::URA_SWITCH, {.frame=(int)texture_change->attribute, .fade=fade_out->attribute});
+    tex.draw_texture(t_ura_switch, {.frame=(int)texture_change->attribute, .fade=fade_out->attribute});
 }

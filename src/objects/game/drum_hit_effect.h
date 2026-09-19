@@ -3,11 +3,14 @@
 #include "../enums.h"
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class DrumHitEffect {
 protected:
     DrumType type;
     Side side;
     FadeAnimation* fade;
+    TextureObject* t_effect = nullptr;
 
 public:
     DrumHitEffect(DrumType type, Side side);

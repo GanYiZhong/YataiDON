@@ -127,10 +127,8 @@ inline void DanBetween::draw(float lane_y) {
     if (f < F_START || f >= F_END) return;
     if (!tex.has_texture("lane/dan_between_fusuma")) return;
 
-    const uint32_t door_id = (uint32_t)tex.get_enum("lane/dan_between_fusuma");
-    auto dit = tex.textures.find(door_id);
-    if (dit == tex.textures.end()) return;
-    const TextureObject& door = *dit->second;
+    TextureObject* door_id = tex.get_texture("lane/dan_between_fusuma");
+    const TextureObject& door = *door_id;
 
     const double a = text_alpha();
     if (a > 0.0) {
@@ -150,12 +148,10 @@ inline void DanBetween::draw(float lane_y) {
 
     float mask_x = 498.0f, mask_y = 12.0f, mask_h = 195.0f;
     if (tex.has_texture("lane/dan_between_fill")) {
-        auto mit = tex.textures.find((uint32_t)tex.get_enum("lane/dan_between_fill"));
-        if (mit != tex.textures.end()) {
-            mask_x = (float)mit->second->x[0];
-            mask_y = (float)mit->second->y[0];
-            mask_h = (float)mit->second->y2[0];
-        }
+        TextureObject* fill = tex.get_texture("lane/dan_between_fill");
+        mask_x = (float)fill->x[0];
+        mask_y = (float)fill->y[0];
+        mask_h = (float)fill->y2[0];
     }
 
     const int scissor_x = virtual_to_screen_x(mask_x);

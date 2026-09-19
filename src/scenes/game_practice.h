@@ -5,19 +5,22 @@
 
 class PracticeDrumHitEffect : public DrumHitEffect {
     int player_index;
+    TextureObject* t_drum = nullptr;
 public:
     PracticeDrumHitEffect(DrumType type, Side side, int player_index)
-        : DrumHitEffect(type, side), player_index(player_index) {}
-
-    void draw(float y) override {
+        : DrumHitEffect(type, side), player_index(player_index) {
         if (type == DrumType::DON) {
-            tex.draw_texture(PRACTICE::LARGE_DRUM_DON, {.fade = fade->attribute, .index = player_index});
+            t_drum = tex.get_texture("practice/large_drum_don");
         } else if (type == DrumType::KAT) {
             if (side == Side::LEFT)
-                tex.draw_texture(PRACTICE::LARGE_DRUM_KAT_L, {.fade = fade->attribute, .index = player_index});
+                t_drum = tex.get_texture("practice/large_drum_kat_l");
             else if (side == Side::RIGHT)
-                tex.draw_texture(PRACTICE::LARGE_DRUM_KAT_R, {.fade = fade->attribute, .index = player_index});
+                t_drum = tex.get_texture("practice/large_drum_kat_r");
         }
+    }
+
+    void draw(float y) override {
+        tex.draw_texture(t_drum, {.fade = fade->attribute, .index = player_index});
     }
 };
 
@@ -92,6 +95,42 @@ private:
 
     int jump_bar = -1;
     PracticeMenu menu;
+
+    // Textures resolved once in on_screen_start(), after GameScreen::on_screen_start()'s
+    // load_screen_textures() has run, instead of calling tex.get_texture() every frame.
+    void init_practice_textures();
+
+    TextureObject* t_notes[10] = {};
+    TextureObject* t_notes_0 = nullptr;
+    TextureObject* t_notes_8 = nullptr;
+    TextureObject* t_notes_9 = nullptr;
+    TextureObject* t_notes_10 = nullptr;
+    TextureObject* t_drumroll_big_tail = nullptr;
+    TextureObject* t_drumroll_tail = nullptr;
+    TextureObject* t_moji = nullptr;
+    TextureObject* t_moji_drumroll_mid = nullptr;
+
+    TextureObject* t_large_drum = nullptr;
+    TextureObject* t_pause_don = nullptr;
+    TextureObject* t_pause_kat = nullptr;
+    TextureObject* t_resume_don = nullptr;
+    TextureObject* t_skip_l_kat = nullptr;
+    TextureObject* t_skip_r_kat = nullptr;
+    TextureObject* t_menu_don = nullptr;
+    TextureObject* t_speed_r_kat = nullptr;
+    TextureObject* t_speed_l_kat = nullptr;
+    TextureObject* t_playing = nullptr;
+    TextureObject* t_progress_bar_bg = nullptr;
+    TextureObject* t_progress_bar = nullptr;
+    TextureObject* t_gogo_marker = nullptr;
+    TextureObject* t_bar_count = nullptr;
+    TextureObject* t_bar_divider = nullptr;
+    TextureObject* t_bar_count_bar = nullptr;
+    TextureObject* t_song_tempo = nullptr;
+    TextureObject* t_dot = nullptr;
+    TextureObject* t_multiplier = nullptr;
+    TextureObject* t_bar_label = nullptr;
+    TextureObject* t_paused = nullptr;
 
     void init_tja_practice(const fs::path& song);
     void pause_song_practice();

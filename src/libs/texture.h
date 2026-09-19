@@ -3,7 +3,6 @@
 #include "animation.h"
 #include "ray.h"
 #include "skin_config_generated.h"
-#include "texture_ids_generated.h" // IWYU pragma: keep
 #include <filesystem>
 #include <stdexcept>
 #include <unordered_set>
@@ -141,7 +140,7 @@ private:
     std::unordered_set<std::string> loaded_subsets;
 
 public:
-    std::unordered_map<uint32_t, std::shared_ptr<TextureObject>> textures;
+    std::unordered_map<std::string, std::shared_ptr<TextureObject>> textures;
     std::unordered_map<SC, SkinInfo> skin_config;
     std::unordered_map<std::string, SkinInfo> skin_config_by_name;
     std::unordered_map<SCO, bool> options;
@@ -218,18 +217,22 @@ public:
 
     void clear_screen(const ray::Color& color);
 
-    TexID get_enum(const std::string& name);
+    // Looks up a texture by its "subset/name" path (see language_variants() for the
+    // language-suffix fallback). Falls back to a warning placeholder if nothing
+    // matches. Returned pointer is only valid while the texture stays loaded
+    // (i.e. until the owning screen/subset is unloaded) - safe to cache in a
+    // member for a scene's lifetime, not safe to hold across a reload.
+    TextureObject* get_texture(const std::string& name);
     std::vector<std::string> language_variants(const std::string& name) const;
 
     bool has_texture(const std::string& name);
 
-    void draw_texture(uint32_t id, const DrawTextureParams& = {});
+    void draw_texture(TextureObject* tex_obj, const DrawTextureParams& = {});
 };
 
 extern TextureWrapper tex;
 
 extern TextureWrapper global_tex;
 
-// TexID enum, per-subset namespaces, and tex_id_map ??auto-generated from skin texture.json files
-// Usage: tex.draw_texture(YELLOW_BOX::CROWN_FC, {...})
-//        tex.textures[YELLOW_BOX::CROWN_FC]->width
+// Usage: tex.draw_texture(tex.get_texture("yellow_box/crown_fc"), {...})
+//        tex.textures["yellow_box/crown_fc"]->width

@@ -1,6 +1,5 @@
 #include "sandbox.h"
 #include "../objects/sandbox/fixtures.h"
-#include "../objects/sandbox/fixtures_title.h"
 #include "../objects/sandbox/fixtures_result.h"
 #include "../objects/sandbox/fixtures_song_select.h"
 #include "../objects/sandbox/fixtures_global.h"
@@ -139,13 +138,6 @@ void SandboxScreen::on_screen_start() {
     fixtures.push_back(std::make_unique<TransitionFixture>());
     fixtures.push_back(std::make_unique<ScoreCounterAnimFixture>());
     fixtures.push_back(std::make_unique<SongInfoFixture>());
-
-    // ── title ─────────────────────────────────────────────────────────────────
-    fixtures.push_back(std::make_unique<WarningXFixture>());
-    fixtures.push_back(std::make_unique<WarningBachiHitFixture>());
-    fixtures.push_back(std::make_unique<AttractCameraFixture>());
-    fixtures.push_back(std::make_unique<BanaAdvertisementFixture>());
-    fixtures.push_back(std::make_unique<CameraCloudFixture>());
 
     // ── result ────────────────────────────────────────────────────────────────
     fixtures.push_back(std::make_unique<ResultBackgroundFixture>());
@@ -451,14 +443,13 @@ void SandboxScreen::draw() {
 
     if (!fixtures.empty()) {
         auto& f = fixtures[fixture_idx];
-        uint32_t anchor = f->anchor_texture_id();
+        TextureObject* anchor = f->anchor_texture_id();
 
         const float vcx = SB_PANEL_W + (tex.screen_width  - SB_PANEL_W) / 2.0f;
         const float vcy =               tex.screen_height / 2.0f;
-        auto it = tex.textures.find(anchor);
-        if (it != tex.textures.end()) {
-            tex.draw_offset_x = vcx - (float)it->second->x[0] - (float)it->second->width / 2.0f;
-            tex.draw_offset_y = vcy - (float)it->second->y[0] - (float)it->second->height / 2.0f;
+        if (anchor) {
+            tex.draw_offset_x = vcx - (float)anchor->x[0] - (float)anchor->width / 2.0f;
+            tex.draw_offset_y = vcy - (float)anchor->y[0] - (float)anchor->height / 2.0f;
         }
 
         f->draw();

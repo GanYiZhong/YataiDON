@@ -23,8 +23,8 @@ void GameScreen::on_screen_start() {
     pause_time = 0;
     global_data.live_combo = global_data.live_score = global_data.live_drumroll = 0;
     global_data.live_gogo = false;
-    auto rainbow_mask = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW_MASK]);
-    auto rainbow = std::dynamic_pointer_cast<SingleTexture>(tex.textures[BALLOON::RAINBOW]);
+    auto rainbow_mask = std::dynamic_pointer_cast<SingleTexture>(tex.textures["balloon/rainbow_mask"]);
+    auto rainbow = std::dynamic_pointer_cast<SingleTexture>(tex.textures["balloon/rainbow"]);
     if (rainbow_mask && rainbow) {
         SetShaderValueTexture(mask_shader, GetShaderLocation(mask_shader, "texture0"), rainbow_mask->texture);
         SetShaderValueTexture(mask_shader, GetShaderLocation(mask_shader, "texture1"), rainbow->texture);

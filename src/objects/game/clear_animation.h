@@ -2,6 +2,8 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class ClearAnimation {
 private:
     bool is_2p;
@@ -15,6 +17,13 @@ private:
     bool draw_clear_full;
     std::string name;
     int frame;
+    TextureObject* t_clear = nullptr;
+    TextureObject* t_clear_separated = nullptr;
+    TextureObject* t_clear_highlight = nullptr;
+    TextureObject* t_bachio_l_in = nullptr;
+    TextureObject* t_bachio_l_out = nullptr;
+    TextureObject* t_bachio_r_in = nullptr;
+    TextureObject* t_bachio_r_out = nullptr;
 
 public:
     ClearAnimation(bool is_2p);

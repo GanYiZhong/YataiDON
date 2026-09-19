@@ -29,6 +29,8 @@ ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, 
         base_color = ray::Color{254, 102, 0, 255};
     }
     color = ray::Fade(base_color, 1.0f);
+
+    t_score_number = tex.get_texture("lane/score_number");
 }
 
 void ScoreCounterAnimation::update(double current_ms) {
@@ -68,7 +70,7 @@ void ScoreCounterAnimation::draw(float y) {
 
         float y_offset = (y_pos * direction) + y + (tex.skin_config[SC::SCORE_COUNTER_ANIMATION_P2_OFFSET].y * (direction == -1));
 
-        tex.draw_texture(LANE::SCORE_NUMBER, {
+        tex.draw_texture(t_score_number, {
             .color = color,
             .frame = (counter_str[i] >= '0' && counter_str[i] <= '9') ? counter_str[i] - '0' : 0,
             .x = start_x + (i * margin),

@@ -16,6 +16,7 @@ class SongSelectScreen : public Screen {
 protected:
     FadeAnimation* diff_fade_out;
     std::unique_ptr<SongSelectScript> script;
+    TextureObject* t_song_num_bg = nullptr;
 
     SongSelectState state;
 

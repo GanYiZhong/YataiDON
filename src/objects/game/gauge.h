@@ -3,6 +3,8 @@
 #include "../../libs/global_data.h"
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class Gauge {
 public:
 
@@ -45,6 +47,38 @@ private:
     int difficulty;
     int previous_points = 0;
     static constexpr float max_length = 100.0f;
+
+    // Textures resolved once in the constructor (string_diff/player_num never change
+    // after construction) instead of calling tex.get_texture() every frame from draw().
+    // clear_/clear_dark_ (language-suffixed) stay inline: language can change at runtime.
+    TextureObject* t_border = nullptr;
+    TextureObject* t_unfilled = nullptr;
+    TextureObject* t_bar = nullptr;
+    TextureObject* t_bar_clear_transition = nullptr;
+    TextureObject* t_bar_clear_top = nullptr;
+    TextureObject* t_bar_clear_bottom = nullptr;
+    TextureObject* t_rainbow = nullptr;
+    TextureObject* t_bar_clear_transition_fade = nullptr;
+    TextureObject* t_bar_clear_fade = nullptr;
+    TextureObject* t_bar_fade = nullptr;
+    TextureObject* t_overlay = nullptr;
+    TextureObject* t_tamashii_fire = nullptr;
+    TextureObject* t_tamashii = nullptr;
+    TextureObject* t_tamashii_overlay = nullptr;
+    TextureObject* t_tamashii_dark = nullptr;
+
+    TextureObject* t_dan_bar = nullptr;
+    TextureObject* t_dan_bar_fade = nullptr;
+    TextureObject* t_dan_border = nullptr;
+    TextureObject* t_dan_unfilled = nullptr;
+    TextureObject* t_dan_rainbow = nullptr;
+    TextureObject* t_dan_overlay = nullptr;
+    TextureObject* t_dan_tamashii_fire = nullptr;
+    TextureObject* t_dan_tamashii = nullptr;
+    TextureObject* t_dan_tamashii_overlay = nullptr;
+    TextureObject* t_dan_tamashii_dark = nullptr;
+    TextureObject* t_clear = nullptr;
+    TextureObject* t_clear_dark = nullptr;
 
     struct GaugeTable {
         float soul_percent;

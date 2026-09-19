@@ -2,11 +2,16 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class KusudamaCounter {
 private:
     int balloon_total;
     int balloon_count;
     bool is_popped;
+    TextureObject* t_kusudama = nullptr;
+    TextureObject* t_renda = nullptr;
+    TextureObject* t_counter = nullptr;
     MoveAnimation* move_down;
     MoveAnimation* move_up;
     MoveAnimation* renda_move_up;

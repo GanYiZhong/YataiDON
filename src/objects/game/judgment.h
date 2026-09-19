@@ -3,6 +3,8 @@
 #include "../enums.h"
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class Judgment {
 private:
     Judgments type;
@@ -12,6 +14,9 @@ private:
     FadeAnimation* fade_animation_2;
     MoveAnimation* move_animation;
     TextureChangeAnimation* texture_animation;
+    TextureObject* t_effect = nullptr;
+    TextureObject* t_outer_effect = nullptr;
+    TextureObject* t_text = nullptr;
 
 public:
     Judgment(Judgments type, bool big);

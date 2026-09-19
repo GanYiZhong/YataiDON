@@ -2,11 +2,16 @@
 
 #include "../../libs/animation.h"
 
+struct TextureObject;
+
 class ScoreCounter {
 private:
     int score;
     bool is_2p;
     TextStretchAnimation* stretch;
+
+    TextureObject* t_lane_score_cover = nullptr;
+    TextureObject* t_score_number = nullptr;
 
 public:
     ScoreCounter(int score, bool is_2p);
