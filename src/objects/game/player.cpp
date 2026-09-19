@@ -1242,7 +1242,8 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
     // the note that follows it in the chart, which takes it from its own 可 window onward. The
     // head is then left alone and misses by itself. Only a note of this colour can take the press
     // this way; a note of the other colour or a roll/balloon between the two blocks it.
-    if (lane.size() > 1 && ms_from_start > curr_note.hit_ms + ok_window_ms) {
+    // Autoplay always plays the oldest note: a frame hitch must not turn its press into a miss.
+    if (!modifiers.auto_play && lane.size() > 1 && ms_from_start > curr_note.hit_ms + ok_window_ms) {
         const Note& next = lane[1];
         auto blocked_by = [&](const std::deque<Note>& notes) {
             auto it = std::find_if(notes.begin(), notes.end(), [&](const Note& n) { return n.index > curr_note.index; });
