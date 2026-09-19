@@ -163,6 +163,7 @@ jobs:
             mingw-w64-x86_64-lua
             mingw-w64-x86_64-sdl3
             mingw-w64-x86_64-ffmpeg
+            git
             make
 
       - name: Configure CMake
