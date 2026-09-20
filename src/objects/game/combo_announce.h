@@ -2,9 +2,9 @@
 
 #include "../../libs/animation.h"
 #include "../../libs/global_data.h"
-#include "../../libs/texture.h"
+#include "../../libs/script.h"
 
-class ComboAnnounce {
+class ComboAnnounce : public LuaScript {
 private:
     PlayerNum player_num;
     int combo;
@@ -16,6 +16,9 @@ private:
     TextureObject* t_announce_text = nullptr;
     TextureObject* t_announce_number = nullptr;
     TextureObject* t_announce_add = nullptr;
+
+    sol::protected_function fn_draw;
+    void draw_default(float y, float fade_value);
 
 public:
     bool is_finished;

@@ -63,8 +63,8 @@ void ResultTransition::init_textures() {
         t_footer_1p  = global_tex.get_texture("result_transition/1p_shutter_footer");
         t_footer_2p  = global_tex.get_texture("result_transition/2p_shutter_footer");
     } else {
-        t_shutter_player = tex.get_texture("result_transition/" + player_str + "_shutter");
-        t_footer_player  = tex.get_texture("result_transition/" + player_str + "_shutter_footer");
+        t_shutter_player = global_tex.get_texture("result_transition/" + player_str + "_shutter");
+        t_footer_player  = global_tex.get_texture("result_transition/" + player_str + "_shutter_footer");
     }
 }
 
