@@ -14,18 +14,12 @@ void load_skin() {
         spdlog::error("load_skin() called before config was initialized");
         return;
     }
-    // load_skin() is not idempotent on its own: unload any previously loaded
-    // skin's textures/scripts/font/audio device first so a reload can't leak
-    // or re-init on top of live handles.
     unload_skin();
     ensure_skin_extracted(global_data.config->paths.skin.string());
     fs::path root_skin_path = fs::path("Skins") / global_data.config->paths.skin;
     set_skin_graphics_path(root_skin_path / "Graphics");
 
     tex.init(root_skin_path / "Graphics");
-    // UIKit owns the iOS window size. SDL cannot resize it to the skin canvas,
-    // but raylib's SetWindowSize would still overwrite its logical dimensions.
-    // Keep those dimensions intact and let compute_camera2d scale the skin.
 #ifndef YATAIDON_PLATFORM_IOS
     const bool was_fullscreen = ray::IsWindowFullscreen();
     if (was_fullscreen) ray::ToggleFullscreen();
@@ -36,11 +30,6 @@ void load_skin() {
     global_tex.init(root_skin_path / "Graphics");
     global_tex.load_screen_textures("global");
     script_manager.init(root_skin_path / "Scripts");
-    // A skin may ship one font per interface language (Graphics/font_<lang>.ttf, e.g.
-    // font_zh.ttf drawn from the Simplified Chinese glyph set) and fall back to font.ttf.
-    // The settings screen reloads the skin, so a language change picks up the right file.
-    // Looked up by the interface language code first, then by the cabinet family name
-    // that language draws from (zh -> cn, ko -> kr, ja -> jp), then font.ttf.
     static const std::unordered_map<std::string, std::string> font_family = {
         {"zh", "cn"}, {"ko", "kr"}, {"ja", "jp"}, {"zh_tw", "tw"}, {"zh-tw", "tw"}, {"zh_cn", "cn"}, {"zh-cn", "cn"},
     };
