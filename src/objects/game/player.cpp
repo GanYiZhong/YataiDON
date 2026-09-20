@@ -559,14 +559,6 @@ void Player::draw_practice(double ms_from_start, float x, float y, ray::Shader& 
     if (branch_indicator.has_value()) {
         branch_indicator->draw(y);
     }
-    if (gauge.has_value()) {
-        if (is_2p) {
-            gauge->draw(y + tex.skin_config[SC::GAUGE_2P_OFFSET].y);
-        } else {
-            gauge->draw(y);
-        }
-        if (bg_hook) bg_hook->draw_gauge(player_num);
-    }
     if (lane_hit_effect.has_value()) {
         lane_hit_effect->draw(y);
     }
@@ -1001,6 +993,7 @@ void Player::play_note_manager(double current_ms, std::optional<Background>& bac
         combo = 0;
         if (background.has_value()) background->handle_bad(PlayerNum(1 + is_2p));
         bad_count++;
+        note_judgments[don_notes.front().index] = Judgments::BAD;
         if (dan_gauge) dan_gauge->add_bad();
         else if (gauge.has_value()) gauge->add_bad();
 
@@ -1012,6 +1005,7 @@ void Player::play_note_manager(double current_ms, std::optional<Background>& bac
         combo = 0;
         if (background.has_value()) background->handle_bad(PlayerNum(1 + is_2p));
         bad_count++;
+        note_judgments[kat_notes.front().index] = Judgments::BAD;
         if (dan_gauge) dan_gauge->add_bad();
         else if (gauge.has_value()) gauge->add_bad();
 
@@ -1300,6 +1294,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
                 draw_judge_list.push_back(Judgment(Judgments::GOOD, big));
             }
             lane_hit_effect = LaneHitEffect(drum_type, Judgments::GOOD);
+            note_judgments[curr_note.index] = Judgments::GOOD;
             good_count++;
             score += base_score;
             if (base_score_list.size() < 5) {
@@ -1315,6 +1310,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
         } else if ((curr_note.hit_ms - ok_window_ms) <= ms_from_start && ms_from_start <= (curr_note.hit_ms + ok_window_ms)) {
             draw_judge_list.push_back(Judgment(Judgments::OK, big));
             lane_hit_effect = LaneHitEffect(drum_type, Judgments::OK);
+            note_judgments[curr_note.index] = Judgments::OK;
             ok_count++;
             score += 10 * std::floor(base_score / 2 / 10);
             if (base_score_list.size() < 5) {
@@ -1340,6 +1336,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
                 note = kat_notes.front();
                 kat_notes.pop_front();
             }
+            note_judgments[note.index] = Judgments::BAD;
             auto it = std::lower_bound(draw_note_buffer.begin(), draw_note_buffer.end(),
                                        note.index, [](const Note& n, int idx) { return n.index < idx; });
             if (it != draw_note_buffer.end() && *it == note) draw_note_buffer.erase(it);

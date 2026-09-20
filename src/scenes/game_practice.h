@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "game.h"
 #include "../libs/input.h"
 #include "../objects/game/practice_menu.h"
@@ -92,9 +93,14 @@ private:
     TextureResizeAnimation* menu_don_anim;
     TextureResizeAnimation* speed_l_kat_anim;
     TextureResizeAnimation* speed_r_kat_anim;
+    TextureResizeAnimation* mark_action_anim;
+    TextureResizeAnimation* mark_finish_anim;
 
-    int jump_bar = -1;
+    std::array<int, PracticeMenu::MARK_SLOTS> jump_bars = {-1, -1, -1, -1, -1};
     PracticeMenu menu;
+
+    int jump_arrow_bar = -1;
+    std::unique_ptr<MoveAnimation> jump_arrow_anim;
 
     // Textures resolved once in on_screen_start(), after GameScreen::on_screen_start()'s
     // load_screen_textures() has run, instead of calling tex.get_texture() every frame.
@@ -119,10 +125,16 @@ private:
     TextureObject* t_menu_don = nullptr;
     TextureObject* t_speed_r_kat = nullptr;
     TextureObject* t_speed_l_kat = nullptr;
+    TextureObject* t_confirm = nullptr;
+    TextureObject* t_delete = nullptr;
+    TextureObject* t_finish = nullptr;
+    TextureObject* t_jump_point_editing = nullptr;
+    TextureObject* t_jump_point_arrow = nullptr;
     TextureObject* t_playing = nullptr;
     TextureObject* t_progress_bar_bg = nullptr;
     TextureObject* t_progress_bar = nullptr;
     TextureObject* t_gogo_marker = nullptr;
+    TextureObject* t_jump_point_progress = nullptr;
     TextureObject* t_bar_count = nullptr;
     TextureObject* t_bar_divider = nullptr;
     TextureObject* t_bar_count_bar = nullptr;
@@ -137,8 +149,11 @@ private:
     void restart_practice();
     std::optional<Screens> handle_menu_action(PracticeMenu::Action action);
     std::optional<Screens> global_keys_practice();
+    void animate_scrobble_to(int new_index);
+    void scrobble_step_bar(bool right);
 
     float get_scrobble_position_x(const Note& note, double current_ms) const;
+    ray::Color moji_judgment_color(int note_index) const;
     void draw_bar_scrobble(const Note& bar, double current_ms) const;
     void draw_drumroll_scrobble(const Note& head, double current_ms) const;
     void draw_balloon_scrobble(const Note& head, double current_ms) const;

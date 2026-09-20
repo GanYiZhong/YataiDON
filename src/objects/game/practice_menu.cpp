@@ -27,6 +27,8 @@ void PracticeMenu::open_menu() {
 void PracticeMenu::close() {
     open = false;
     dialog = Dialog::NONE;
+    editing_marks = false;
+    jumping_marks = false;
 }
 
 void PracticeMenu::step(bool right) {
@@ -77,6 +79,18 @@ void PracticeMenu::build_text() {
         menu_text.push_back(std::make_unique<OutlinedText>(label, fs,
             ray::WHITE, ray::BLACK, true, outline, 2.0f, v));
     }
+}
+
+void PracticeMenu::open_mark_edit() {
+    editing_marks = true;
+}
+
+void PracticeMenu::close_mark_edit() {
+    editing_marks = false;
+}
+
+void PracticeMenu::open_jump_mode() {
+    jumping_marks = true;
 }
 
 void PracticeMenu::open_dialog(Dialog which, bool auto_on) {
