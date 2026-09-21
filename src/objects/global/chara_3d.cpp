@@ -586,7 +586,7 @@ void Chara3D::update(double current_ms) {
     }
 }
 
-void Chara3D::draw_outline(float x, float y) {
+void Chara3D::draw_outline(float x, float y, int rt_w, int rt_h) {
     std::vector<std::vector<ray::Shader>> saved(parts.size());
     for (size_t p = 0; p < parts.size(); p++) {
         saved[p].resize(parts[p].materialCount);
@@ -620,9 +620,9 @@ void Chara3D::draw_outline(float x, float y) {
         //  3. the line of the vertices facing away, which closes the silhouette where the
         //     front rings carry no line weight (the body's rim by the drum head) and on coarse
         //     small parts (the feet): it is behind the model everywhere but the overhang.
-        const float thickness_px = 2.5f * (float)ray::GetRenderHeight() / 720.0f;
+        const float thickness_px = 2.5f * (float)rt_h / 720.0f;
         float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push (model units); 0 = front faces, 1 = back faces
-        float size[2]  = {(float)ray::GetRenderWidth(), (float)ray::GetRenderHeight()};
+        float size[2]  = {(float)rt_w, (float)rt_h};
         if (outline_param_loc < 0) outline_param_loc = ray::GetShaderLocation(outline_shader, "outlineParam");
         if (outline_size_loc < 0)  outline_size_loc  = ray::GetShaderLocation(outline_shader, "screenSize");
         ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
@@ -682,17 +682,24 @@ void Chara3D::draw(float x, float y, float scale_mul) {
 
     int rw = ray::GetRenderWidth();
     int rh = ray::GetRenderHeight();
+    // Render at 2x and downscale on blit: bilinear-filtered supersampling ahead of the
+    // FXAA pass, since raylib render textures have no MSAA path that stays GLES/Android-safe.
+    constexpr float SUPERSAMPLE = 2.0f;
+    int ssw = (int)((float)rw * SUPERSAMPLE);
+    int ssh = (int)((float)rh * SUPERSAMPLE);
 
-    if (scene_target.id == 0 || scene_target_w != rw || scene_target_h != rh) {
+    if (scene_target.id == 0 || scene_target_w != ssw || scene_target_h != ssh) {
         if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
-        scene_target   = ray::LoadRenderTexture(rw, rh);
+        scene_target   = ray::LoadRenderTexture(ssw, ssh);
         if (scene_target.id == 0) {
             spdlog::warn("Chara3D: render texture unavailable, using direct render");
             use_render_textures = false;
+        } else {
+            ray::SetTextureFilter(scene_target.texture, ray::TEXTURE_FILTER_BILINEAR);
         }
-        scene_target_w = rw;
-        scene_target_h = rh;
-        float ts[2] = {(float)rw, (float)rh};
+        scene_target_w = ssw;
+        scene_target_h = ssh;
+        float ts[2] = {(float)ssw, (float)ssh};
         ray::SetShaderValue(outline_fxaa_shader, outline_fxaa_size_loc, ts, ray::SHADER_UNIFORM_VEC2);
         render_dirty = true;
     }
@@ -730,7 +737,7 @@ void Chara3D::draw(float x, float y, float scale_mul) {
         ray::BeginBlendMode(ray::BLEND_ALPHA);
         ray::BeginMode3D(cam3d);
         draw_3d(x, y);
-        draw_outline(x, y);
+        draw_outline(x, y, ssw, ssh);
         ray::EndMode3D();
         ray::EndBlendMode();
         ray::EndTextureMode();
@@ -738,9 +745,10 @@ void Chara3D::draw(float x, float y, float scale_mul) {
 
     {
         ray::BeginShaderMode(outline_fxaa_shader);
-        ray::DrawTextureRec(scene_target.texture,
-            {0, 0, (float)rw, -(float)rh},
-            {0, 0}, ray::WHITE);
+        ray::DrawTexturePro(scene_target.texture,
+            {0, 0, (float)ssw, -(float)ssh},
+            {0, 0, (float)rw, (float)rh},
+            {0, 0}, 0.0f, ray::WHITE);
         ray::EndShaderMode();
     }
 

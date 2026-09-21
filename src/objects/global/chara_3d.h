@@ -127,7 +127,7 @@ private:
     void set_texture(fs::path& texture_path, int part_index, int material_index);
     void load_face_textures(fs::path& face_dir);
     void load_face_anims(fs::path& anim_path);
-    void draw_outline(float x, float y);
+    void draw_outline(float x, float y, int rt_w, int rt_h);
     void draw_3d(float x, float y);
     void ensure_render_targets(int rw, int rh);
     void prewarm_render_targets();
