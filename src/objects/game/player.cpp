@@ -1277,12 +1277,23 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             check_kusudama(current_ms, drum_type, curr_note, background);
         }
         return;
-    } else if (drum_type == DrumType::DON) {
-        if (don_notes.empty()) return;
-        curr_note = don_notes.front();
-    } else if (drum_type == DrumType::KAT) {
-        if (kat_notes.empty()) return;
-        curr_note = kat_notes.front();
+    }
+
+    auto& lane = (drum_type == DrumType::DON) ? don_notes : kat_notes;
+    if (lane.empty()) return;
+    curr_note = lane.front();
+    size_t lane_pos = 0;
+    if (!modifiers.auto_play && lane.size() > 1 && ms_from_start > curr_note.hit_ms + ok_window_ms) {
+        const Note& next = lane[1];
+        auto blocked_by = [&](const std::deque<Note>& notes) {
+            auto it = std::find_if(notes.begin(), notes.end(), [&](const Note& n) { return n.index > curr_note.index; });
+            return it != notes.end() && it->index < next.index;
+        };
+        const auto& other_lane = (drum_type == DrumType::DON) ? kat_notes : don_notes;
+        if (!blocked_by(other_lane) && !blocked_by(other_notes) && ms_from_start > next.hit_ms - ok_window_ms) {
+            curr_note = next;
+            lane_pos = 1;
+        }
     }
 
     {
@@ -1300,6 +1311,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             if (base_score_list.size() < 5) {
                 base_score_list.push_back(ScoreCounterAnimation(player_num, base_score, is_2p));
             }
+            if (lane_pos != 0) lane.erase(lane.begin() + lane_pos);
             note_correct(curr_note, current_ms);
             if (dan_gauge) dan_gauge->add_good();
             else if (gauge.has_value()) gauge->add_good();
@@ -1316,6 +1328,7 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             if (base_score_list.size() < 5) {
                 base_score_list.push_back(ScoreCounterAnimation(player_num, 10 * std::floor(base_score / 2 / 10), is_2p));
             }
+            if (lane_pos != 0) lane.erase(lane.begin() + lane_pos);
             note_correct(curr_note, current_ms);
             if (dan_gauge) dan_gauge->add_ok();
             else if (gauge.has_value()) gauge->add_ok();
