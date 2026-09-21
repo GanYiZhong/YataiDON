@@ -1,6 +1,7 @@
 #include "game_practice.h"
 #include "../libs/animation.h"
 #include "../libs/input.h"
+#include <algorithm>
 #include <cmath>
 
 void PracticeGameScreen::init_practice_textures() {
@@ -26,10 +27,16 @@ void PracticeGameScreen::init_practice_textures() {
     t_menu_don = tex.get_texture("practice/menu_don");
     t_speed_r_kat = tex.get_texture("practice/speed_r_kat");
     t_speed_l_kat = tex.get_texture("practice/speed_l_kat");
+    t_confirm = tex.get_texture("practice/confirm");
+    t_delete = tex.get_texture("practice/delete");
+    t_finish = tex.get_texture("practice/finish");
+    t_jump_point_editing = tex.get_texture("practice/jump_point_editing");
+    t_jump_point_arrow = tex.get_texture("practice/jump_point_arrow");
     t_playing = tex.get_texture("practice/playing");
     t_progress_bar_bg = tex.get_texture("practice/progress_bar_bg");
     t_progress_bar = tex.get_texture("practice/progress_bar");
     t_gogo_marker = tex.get_texture("practice/gogo_marker");
+    t_jump_point_progress = tex.get_texture("practice/jump_point_progress");
     t_bar_count = tex.get_texture("practice/bar_count");
     t_bar_divider = tex.get_texture("practice/bar_divider");
     t_bar_count_bar = tex.get_texture("practice/bar_count_bar");
@@ -52,13 +59,15 @@ void PracticeGameScreen::on_screen_start() {
     menu_don_anim    = (TextureResizeAnimation*)tex.get_animation(67, true);
     speed_l_kat_anim = (TextureResizeAnimation*)tex.get_animation(67, true);
     speed_r_kat_anim = (TextureResizeAnimation*)tex.get_animation(67, true);
+    mark_action_anim = (TextureResizeAnimation*)tex.get_animation(67, true);
+    mark_finish_anim = (TextureResizeAnimation*)tex.get_animation(67, true);
     init_tja_practice(global_data.session_data[(int)global_data.player_num].selected_song);
 }
 
 Screens PracticeGameScreen::on_screen_end(Screens next_screen) {
     scrobble_index = 0;
     scrobble_time = 0;
-    jump_bar = -1;
+    jump_bars.fill(-1);
     menu = PracticeMenu();
     scrobble_move = std::make_unique<MoveAnimation>(200.0, 0);
     bars.clear();
@@ -198,20 +207,47 @@ std::optional<Screens> PracticeGameScreen::handle_menu_action(PracticeMenu::Acti
         case PracticeMenu::Action::AUTO_OFF:
             if (practice_player) practice_player->set_auto_play(false);
             return std::nullopt;
-        case PracticeMenu::Action::JUMP_TO_MARK:
-            if (jump_bar >= 0 && jump_bar < (int)bars.size()) {
-                scrobble_index = jump_bar;
-                scrobble_time  = bars[scrobble_index].hit_ms;
-                scrobble_move  = std::make_unique<MoveAnimation>(200.0, 0);
-                menu.close();
+        case PracticeMenu::Action::JUMP_TO_MARK: {
+            bool any_mark = false;
+            for (int b : jump_bars) {
+                if (b >= 0 && b < (int)bars.size()) { any_mark = true; break; }
             }
+            if (any_mark) menu.open_jump_mode();
             return std::nullopt;
+        }
         case PracticeMenu::Action::SET_MARK:
-            jump_bar = scrobble_index;
+            menu.open_mark_edit();
             return std::nullopt;
         default:
             return std::nullopt;
     }
+}
+
+void PracticeGameScreen::animate_scrobble_to(int new_index) {
+    if (bars.empty()) return;
+    if (scrobble_move->is_started && !scrobble_move->is_finished) {
+        scrobble_time = bars[scrobble_index].hit_ms;
+    }
+    double time_difference = bars[new_index].hit_ms - bars[scrobble_index].hit_ms;
+    scrobble_index = new_index;
+    scrobble_move = std::make_unique<MoveAnimation>(400.0, (int)time_difference, false, false, 0, 0.0,
+                                                    std::nullopt, std::nullopt, EaseType::Quadratic);
+    scrobble_move->start();
+}
+
+void PracticeGameScreen::scrobble_step_bar(bool right) {
+    if (bars.empty()) return;
+    audio.play_sound("kat", VolumePreset::SOUND);
+    if (right) skip_r_kat_anim->start();
+    else       skip_l_kat_anim->start();
+    if (practice_player) {
+        int player_idx = (int)global_data.player_num - 1;
+        if (right) practice_player->spawn_scrobble_effect(DrumType::KAT, Side::RIGHT, player_idx);
+        else       practice_player->spawn_scrobble_effect(DrumType::KAT, Side::LEFT,  player_idx);
+    }
+    int new_index = right ? (scrobble_index + 1) % (int)bars.size()
+                          : ((scrobble_index > 0) ? scrobble_index - 1 : (int)bars.size() - 1);
+    animate_scrobble_to(new_index);
 }
 
 std::optional<Screens> PracticeGameScreen::global_keys_practice() {
@@ -244,6 +280,83 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
         }
     } else {
         if (menu.open) {
+            if (menu.jumping_marks) {
+                // Free-roam jump-point navigation: 1P cycles between marks
+                // and confirms with don, returning to paused practice.
+                bool step_l = is_l_kat_pressed(global_data.player_num);
+                bool step_r = is_r_kat_pressed(global_data.player_num);
+                bool p1_don = is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num);
+
+                if (!bars.empty() && (step_l || step_r)) {
+                    std::vector<int> marks;
+                    for (int b : jump_bars) if (b >= 0 && b < (int)bars.size()) marks.push_back(b);
+                    std::sort(marks.begin(), marks.end());
+
+                    if (!marks.empty()) {
+                        bool right = !step_l && step_r;
+                        int new_index;
+                        if (right) {
+                            auto it = std::upper_bound(marks.begin(), marks.end(), scrobble_index);
+                            new_index = (it != marks.end()) ? *it : marks.front();
+                        } else {
+                            auto it = std::lower_bound(marks.begin(), marks.end(), scrobble_index);
+                            new_index = (it == marks.begin()) ? marks.back() : *(--it);
+                        }
+                        audio.play_sound("kat", VolumePreset::SOUND);
+                        if (right) skip_r_kat_anim->start();
+                        else       skip_l_kat_anim->start();
+                        if (practice_player) {
+                            if (right) practice_player->spawn_scrobble_effect(DrumType::KAT, Side::RIGHT, player_idx);
+                            else       practice_player->spawn_scrobble_effect(DrumType::KAT, Side::LEFT,  player_idx);
+                        }
+                        animate_scrobble_to(new_index);
+                    }
+                }
+                if (p1_don) {
+                    audio.play_sound("don", VolumePreset::SOUND);
+                    mark_finish_anim->start();
+                    menu.close();
+                }
+                return std::nullopt;
+            }
+
+            if (menu.editing_marks) {
+                // Jump-point editor: 1P moves the bar cursor and toggles a mark
+                // at the current bar, 2P confirm exits.
+                bool step_l = is_l_kat_pressed(global_data.player_num);
+                bool step_r = is_r_kat_pressed(global_data.player_num);
+                bool p1_don = is_l_don_pressed(global_data.player_num) || is_r_don_pressed(global_data.player_num);
+                bool p2_don = is_l_don_pressed(other_player) || is_r_don_pressed(other_player);
+
+                if (step_l || step_r) {
+                    scrobble_step_bar(!step_l && step_r);
+                }
+                if (p1_don) {
+                    audio.play_sound("don", VolumePreset::SOUND);
+                    mark_action_anim->start();
+                    auto marked = std::find(jump_bars.begin(), jump_bars.end(), scrobble_index);
+                    if (marked != jump_bars.end()) {
+                        *marked = -1;   // already marked here: remove it
+                    } else {
+                        auto free_slot = std::find(jump_bars.begin(), jump_bars.end(), -1);
+                        if (free_slot != jump_bars.end()) {
+                            *free_slot = scrobble_index;   // append
+                            jump_arrow_bar = scrobble_index;
+                            jump_arrow_anim = std::make_unique<MoveAnimation>(350.0, (int)(184 * tex.screen_scale),
+                                                                              false, false, 0, 0.0,
+                                                                              std::nullopt, std::nullopt, EaseType::Quadratic);
+                            jump_arrow_anim->start();
+                        }
+                    }
+                }
+                if (p2_don) {
+                    audio.play_sound("don", VolumePreset::SOUND);
+                    mark_finish_anim->start();
+                    menu.close_mark_edit();
+                }
+                return std::nullopt;
+            }
+
             // The menu swallows the drums: kat steps, don confirms.
             bool step_l = is_l_kat_pressed(global_data.player_num) || is_l_kat_pressed(other_player);
             bool step_r = is_r_kat_pressed(global_data.player_num) || is_r_kat_pressed(other_player);
@@ -292,31 +405,7 @@ std::optional<Screens> PracticeGameScreen::global_keys_practice() {
         bool scrobble_right = is_r_kat_pressed(global_data.player_num);
 
         if (!bars.empty() && (scrobble_left || scrobble_right)) {
-            audio.play_sound("kat", VolumePreset::SOUND);
-            if (scrobble_left)  skip_l_kat_anim->start();
-            if (scrobble_right) skip_r_kat_anim->start();
-
-            if (practice_player) {
-                if (scrobble_left)  practice_player->spawn_scrobble_effect(DrumType::KAT, Side::LEFT,  player_idx);
-                if (scrobble_right) practice_player->spawn_scrobble_effect(DrumType::KAT, Side::RIGHT, player_idx);
-            }
-
-            // Snap any in-progress animation
-            if (scrobble_move->is_started && !scrobble_move->is_finished) {
-                scrobble_time = bars[scrobble_index].hit_ms;
-            }
-
-            int old_index = scrobble_index;
-            if (scrobble_left) {
-                scrobble_index = (scrobble_index > 0) ? scrobble_index - 1 : (int)bars.size() - 1;
-            } else {
-                scrobble_index = (scrobble_index + 1) % (int)bars.size();
-            }
-
-            double time_difference = bars[scrobble_index].hit_ms - bars[old_index].hit_ms;
-            scrobble_move = std::make_unique<MoveAnimation>(400.0, (int)time_difference, false, false, 0, 0.0,
-                                                            std::nullopt, std::nullopt, EaseType::Quadratic);
-            scrobble_move->start();
+            scrobble_step_bar(!scrobble_left && scrobble_right);
         }
     }
 
@@ -370,6 +459,9 @@ std::optional<Screens> PracticeGameScreen::update() {
     if (menu_don_anim)    menu_don_anim->update(current_ms);
     if (speed_l_kat_anim) speed_l_kat_anim->update(current_ms);
     if (speed_r_kat_anim) speed_r_kat_anim->update(current_ms);
+    if (mark_action_anim) mark_action_anim->update(current_ms);
+    if (mark_finish_anim) mark_finish_anim->update(current_ms);
+    if (jump_arrow_anim) jump_arrow_anim->update(current_ms);
 
     return std::nullopt;
 }
@@ -382,6 +474,18 @@ float PracticeGameScreen::get_scrobble_position_x(const Note& note, double curre
         offset_px = (float)(scrobble_move->attribute * bar_speedx);
     }
     return JudgePos::X + (float)((note.hit_ms - current_ms) * speedx) - offset_px;
+}
+
+ray::Color PracticeGameScreen::moji_judgment_color(int note_index) const {
+    if (!practice_player) return ray::WHITE;
+    auto judgment = practice_player->get_note_judgment(note_index);
+    if (!judgment.has_value()) return ray::WHITE;
+    switch (judgment.value()) {
+        case Judgments::GOOD: return ray::YELLOW;
+        case Judgments::OK:   return ray::WHITE;
+        case Judgments::BAD:  return ray::SKYBLUE;
+    }
+    return ray::WHITE;
 }
 
 void PracticeGameScreen::draw_bar_scrobble(const Note& bar, double current_ms) const {
@@ -472,7 +576,7 @@ void PracticeGameScreen::draw_notes_scrobble(double current_ms) const {
                 tex.draw_texture(note_tex, {.center = true, .x = x - t_notes_9->width / 2.0f, .y = tex.skin_config[SC::NOTES].y + y});
             }
             float moji_x = get_scrobble_position_x(note, current_ms) - t_moji->width / 2.0f;
-            tex.draw_texture(t_moji, {.frame = note.moji, .x = moji_x, .y = tex.skin_config[SC::MOJI].y + y});
+            tex.draw_texture(t_moji, {.color = moji_judgment_color(note.index), .frame = note.moji, .x = moji_x, .y = tex.skin_config[SC::MOJI].y + y});
         }
     }
 
@@ -504,6 +608,15 @@ void PracticeGameScreen::draw() {
     // Scrobble note overlay when paused
     if (paused) {
         draw_notes_scrobble(scrobble_time);
+        if (menu.editing_marks) {
+            tex.draw_texture(t_jump_point_editing, {});
+        }
+        if (jump_arrow_anim && jump_arrow_anim->is_started &&
+            jump_arrow_bar >= 0 && jump_arrow_bar < (int)bars.size()) {
+            float ax = get_scrobble_position_x(bars[jump_arrow_bar], scrobble_time) - t_jump_point_arrow->width / 2.0f;
+            float ay = (float)jump_arrow_anim->attribute - t_jump_point_arrow->height;
+            tex.draw_texture(t_jump_point_arrow, {.x = ax, .y = ay});
+        }
     }
 
     // Player overlays after practice graphics (hit effects, combos, etc.)
@@ -520,6 +633,17 @@ void PracticeGameScreen::draw() {
         tex.draw_texture(t_pause_don, {.scale = pause_don_anim  ? (float)pause_don_anim->attribute  : 1.0f, .center = true, .index = other_idx});
         tex.draw_texture(t_pause_kat, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2});
         tex.draw_texture(t_pause_kat, {.scale = pause_kat_anim  ? (float)pause_kat_anim->attribute  : 1.0f, .center = true, .index = other_idx * 2 + 1});
+    } else if (menu.editing_marks || menu.jumping_marks) {
+        tex.draw_texture(t_skip_l_kat, {.scale = skip_l_kat_anim ? (float)skip_l_kat_anim->attribute : 1.0f, .center = true, .index = player_idx * 2});
+        tex.draw_texture(t_skip_r_kat, {.scale = skip_r_kat_anim ? (float)skip_r_kat_anim->attribute : 1.0f, .center = true, .index = player_idx * 2 + 1});
+        if (menu.editing_marks) {
+            tex.draw_texture(t_finish, {.scale = mark_finish_anim ? (float)mark_finish_anim->attribute : 1.0f, .center = true, .index = other_idx});
+            bool marked = std::find(jump_bars.begin(), jump_bars.end(), scrobble_index) != jump_bars.end();
+            tex.draw_texture(marked ? t_delete : t_confirm,
+                             {.scale = mark_action_anim ? (float)mark_action_anim->attribute : 1.0f, .center = true, .index = player_idx});
+        } else {
+            tex.draw_texture(t_finish, {.scale = mark_finish_anim ? (float)mark_finish_anim->attribute : 1.0f, .center = true, .index = player_idx});
+        }
     } else {
         tex.draw_texture(t_resume_don,  {.scale = resume_don_anim  ? (float)resume_don_anim->attribute  : 1.0f, .center = true, .index = player_idx});
         tex.draw_texture(t_skip_l_kat,  {.scale = skip_l_kat_anim  ? (float)skip_l_kat_anim->attribute  : 1.0f, .center = true, .index = player_idx * 2});
@@ -555,6 +679,11 @@ void PracticeGameScreen::draw() {
         for (double marker : markers) {
             float mx = (float)((marker - first_bar_time) / total_time) * bar_width;
             tex.draw_texture(t_gogo_marker, {.x = mx});
+        }
+        for (int b : jump_bars) {
+            if (b < 0 || b >= (int)bars.size()) continue;
+            float jx = (float)((bars[b].hit_ms - first_bar_time) / total_time) * bar_width;
+            tex.draw_texture(t_jump_point_progress, {.x = jx});
         }
     }
 
@@ -606,7 +735,7 @@ void PracticeGameScreen::draw() {
 
     if (paused) {
         tex.draw_texture(t_paused, {.fade = 0.5});
-        if (menu.open) {
+        if (menu.open && !menu.editing_marks && !menu.jumping_marks) {
             if (menu.dialog != PracticeMenu::Dialog::NONE) menu.draw_dialog();
             else                                           menu.draw();
         }

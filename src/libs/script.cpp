@@ -499,34 +499,29 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
         return info;
     });
 
-    tex.set_function("get_id", [](const std::string& subset, const std::string& texture_name) -> sol::optional<TextureObject*> {
-        std::string base = subset + "/" + texture_name;
-        if (script_manager.tex.has_texture(base)) return script_manager.tex.get_texture(base);
-        for (const auto& v : script_manager.tex.language_variants(base + "_" + global_data.config->general.language)) {
-            if (script_manager.tex.has_texture(v)) return script_manager.tex.get_texture(v);
-        }
-        return sol::nullopt;
-    });
-
     tex.set_function("draw_texture", [](TextureObject* id, sol::optional<sol::table> params_table) {
         script_manager.tex.draw_texture(id, parse_draw_params(params_table));
     });
 
     tex.set_function("get_texture", [](const std::string& path) -> sol::optional<TextureObject*> {
-        // path format: "screen_name/subset/texture_name", e.g. "global/indicator/drum_face"
         auto first_slash = path.find('/');
-        if (first_slash == std::string::npos) return sol::nullopt;
-        auto second_slash = path.find('/', first_slash + 1);
-        if (second_slash == std::string::npos) return sol::nullopt;
+        auto last_slash = path.rfind('/');
+        if (first_slash == std::string::npos || last_slash == first_slash) return sol::nullopt;
 
         std::string screen_name  = path.substr(0, first_slash);
-        std::string subset       = path.substr(first_slash + 1, second_slash - first_slash - 1);
-        std::string texture_name = path.substr(second_slash + 1);
+        std::string subset       = path.substr(first_slash + 1, last_slash - first_slash - 1);
+        std::string texture_name = path.substr(last_slash + 1);
+
+        std::string subset_key = fs::path(subset).filename().string();
+        std::string base = subset_key + "/" + texture_name;
+
+        for (const auto& v : script_manager.tex.language_variants(base + "_" + global_data.config->general.language)) {
+            if (script_manager.tex.has_texture(v)) return script_manager.tex.get_texture(v);
+        }
+        if (script_manager.tex.has_texture(base)) return script_manager.tex.get_texture(base);
 
         script_manager.tex.load_folder(screen_name, subset);
 
-        // the current language's variant, then _en / _ja, then the plain name
-        std::string base = subset + "/" + texture_name;
         for (const auto& v : script_manager.tex.language_variants(base + "_" + global_data.config->general.language)) {
             if (script_manager.tex.has_texture(v)) return script_manager.tex.get_texture(v);
         }
@@ -535,9 +530,6 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
     });
 
     tex.set_function("language", []() { return global_data.config->general.language; });
-    // skin_config text for the current interface language: tex.skin_text("entry_game")
-    // -> the "text" map's entry for the language, else ja, else en, else the first entry,
-    // else "" (a Lua script should never need to carry a string of its own).
     tex.set_function("skin_text", [](const std::string& key, sol::optional<std::string> lang_opt) -> std::string {
         auto it = script_manager.tex.skin_config_by_name.find(key);
         if (it == script_manager.tex.skin_config_by_name.end()) return "";

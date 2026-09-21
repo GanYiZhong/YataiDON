@@ -52,10 +52,15 @@ ComboAnnounce::ComboAnnounce(int combo, double current_ms, PlayerNum player_num)
 
     const std::string suffix = std::to_string(static_cast<int>(player_num)) + "p";
     t_announce_bg = tex.get_texture("combo/announce_bg_" + suffix);
-    t_announce_digit = tex.get_texture("combo/announce_digit_" + suffix);
+    const std::string digit_name = "combo/announce_digit_" + suffix;
+    if (tex.has_texture(digit_name)) t_announce_digit = tex.get_texture(digit_name);
     t_announce_text = tex.get_texture("combo/announce_text");
     t_announce_number = tex.get_texture("combo/announce_number");
     t_announce_add = tex.get_texture("combo/announce_add");
+
+    if (load("ComboAnnounce", "combo_announce", combo, static_cast<int>(player_num))) {
+        fn_draw = lua_object["draw"];
+    }
 }
 
 void ComboAnnounce::update(double current_ms) {
@@ -86,12 +91,18 @@ void ComboAnnounce::draw(float y) {
 
     float fade_value = is_finished ? fade->attribute : 1 - fade->attribute;
 
-    const std::string suffix = std::to_string(static_cast<int>(player_num)) + "p";
+    if (fn_draw.valid()) {
+        call(fn_draw, "ComboAnnounce:draw", y, fade_value);
+        return;
+    }
+    draw_default(y, fade_value);
+}
+
+void ComboAnnounce::draw_default(float y, float fade_value) {
     tex.draw_texture(t_announce_bg,
                      {.y = y, .fade = fade_value});
 
-    const std::string digit_name = "combo/announce_digit_" + suffix;
-    if (tex.has_texture(digit_name)) {
+    if (t_announce_digit) {
         const std::string number = std::to_string(combo);
         const int n = static_cast<int>(number.size());
         const Layout lay = layout(n);

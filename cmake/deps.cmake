@@ -162,7 +162,7 @@ if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
 endif()
 
 # libsndfile
-if(ANDROID OR IOS OR EMSCRIPTEN OR WIN32)
+if(ANDROID OR APPLE OR EMSCRIPTEN OR WIN32)
   message(STATUS "Fetching libogg + libvorbis for ${CMAKE_SYSTEM_NAME} (needed by libsndfile)")
   FetchContent_Declare(
       ogg

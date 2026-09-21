@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include "../../libs/screen.h"
 #include "../../libs/song_parser.h"
 #include "../../libs/text.h"
@@ -69,6 +70,10 @@ public:
     int get_good() const { return good_count; }
     int get_ok()   const { return ok_count; }
     int get_bad()  const { return bad_count; }
+    std::optional<Judgments> get_note_judgment(int note_index) const {
+        auto it = note_judgments.find(note_index);
+        return it != note_judgments.end() ? std::optional<Judgments>(it->second) : std::nullopt;
+    }
     bool is_auto_play() const { return modifiers.auto_play; }
     bool is_skip_enabled() const { return modifiers.skip; }
     void cut_to_end(double now, int prev_good = 0, int prev_ok = 0, int prev_bad = 0);
@@ -81,6 +86,7 @@ public:
         score = 0;
         total_drumroll = 0;
         was_gauge_full = false;
+        note_judgments.clear();
         if (judge_counter) judge_counter = JudgeCounter();
     }
     int get_score() const { return score; }
@@ -133,6 +139,7 @@ private:
     int last_reported_score = -1;   // last value sent to Background::handle_score
     int max_combo;
     int total_drumroll;
+    std::unordered_map<int, Judgments> note_judgments;
 
     int arc_points;
     float judge_x;

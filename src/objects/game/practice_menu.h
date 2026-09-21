@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include "../../libs/text.h"
 
 class PracticeMenu {
@@ -8,10 +9,15 @@ public:
 
     enum class Action { NONE, END_GAME, ANOTHER_SONG, RESTART, JUMP_TO_MARK, SET_MARK, AUTO_ON, AUTO_OFF };
 
+    static constexpr int MARK_SLOTS = 5;
+
     bool open = false;
     int index = 0;
     Dialog dialog = Dialog::NONE;
     int dialog_sel = 0;   // 0 = left option, 1 = right option
+
+    bool editing_marks = false;
+    bool jumping_marks = false;
 
     void init_textures();
 
@@ -23,6 +29,13 @@ public:
     Action activate(bool auto_on);
 
     Action confirm();
+
+    // Jump-point editor, entered from the SET_MARK menu row.
+    void open_mark_edit();
+    void close_mark_edit();
+
+    // Free-roam jump-point navigation, entered from the JUMP_TO_MARK menu row.
+    void open_jump_mode();
 
     void draw() const;
     void draw_dialog() const;
