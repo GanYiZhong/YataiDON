@@ -1,5 +1,6 @@
 #include "text.h"
 #include "han_fold_table.h"
+#include "script.h"
 #include <vector>
 #include <cmath>
 #include <cstdlib>
@@ -766,6 +767,7 @@ void OutlinedText::draw(const DrawTextureParams& params) {
     if (debug_log_draws) {
         std::string label = text.size() > 40 ? text.substr(0, 40) + "..." : text;
         debug_draw_log.push_back({"\"" + label + "\"", dst});
+        log_lua_site(debug_draw_log.back(), script_lua_state());
     }
 
     ray::DrawTexturePro(*texture, src, dst, {0, 0}, 0.0f,

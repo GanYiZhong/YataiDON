@@ -334,7 +334,8 @@ private:
             size_t slash = e.name.find('/');
             if (slash != std::string::npos) return {e.name.substr(0, slash), e.name.substr(slash + 1)};
         }
-        return {"[lua]", e.name};
+        if (!e.from_lua) return {"[c++]", e.name};
+        return {e.lua_source.empty() ? "[lua]" : fs::path(e.lua_source).stem().string(), e.name};
     }
 
     void rebuild_visible_rows() {

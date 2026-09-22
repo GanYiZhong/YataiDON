@@ -141,6 +141,11 @@ struct DrawLogEntry {
     bool center = false;
     ray::Vector2 origin = {0, 0};
     float rotation = 0.0f;
+    bool from_lua = false;
+    std::string lua_source;
+    int lua_line = 0;
+    std::string lua_function;
+    int lua_defined_line = 0;
 };
 
 inline bool debug_log_draws = false;
