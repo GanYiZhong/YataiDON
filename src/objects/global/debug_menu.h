@@ -2,8 +2,11 @@
 
 #include "../../libs/texture.h"
 #include "../../libs/screen.h"
+#include "../../libs/script.h"
+#include "../../libs/filesystem.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <map>
 
 class DebugMenu {
@@ -23,6 +26,14 @@ public:
     static constexpr float FRAME_BTN_ROW_HEIGHT  = 20.0f;
     static constexpr float FRAMES_HEADER_HEIGHT  = 20.0f;
     static constexpr float FRAME_ROW_HEIGHT      = FRAME_THUMB_SIZE + 4.0f + FRAME_BTN_ROW_HEIGHT;
+    static constexpr int   LUA_TEXT_SIZE         = 12;
+    static constexpr float LUA_LINE_HEIGHT       = 15.0f;
+    static constexpr float LUA_BTN_HEIGHT        = 22.0f;
+    static constexpr float LUA_BTN_GAP           = 6.0f;
+    static constexpr int   CALL_TEXT_MAX_ROWS    = 6;
+    static constexpr size_t SOURCE_MAX_FILES     = 8;
+    static constexpr std::uintmax_t SOURCE_MAX_BYTES = 1 << 20;
+    static constexpr double SOURCE_RESTAT_SECONDS = 0.5;
 
     bool open = false;
     int active_tab = 0;
@@ -51,6 +62,7 @@ public:
         has_selection = false;
         selected_name.clear();
         selected_log_index = -1;
+        source_cache.clear();
     }
 
     FramedTexture* get_selected_framed() const {
@@ -90,7 +102,7 @@ public:
         debug_draw_log.clear();
 
         const bool textures_tab_active = open && active_tab == 0;
-        debug_log_draws = textures_tab_active;
+        debug_log_draws = open && (active_tab == 0 || active_tab == 2);
         if (!open) { commit_edit(); return; }
 
         const float panel_x   = tex.screen_width - PANEL_WIDTH;
@@ -112,6 +124,19 @@ public:
             if (clicked && mouse_over_panel && mouse.y >= TAB_HEIGHT) {
                 int row = (int)((mouse.y - TAB_HEIGHT) / ROW_HEIGHT);
                 if (row >= 0 && row < (int)std::size(ALL_SCREENS)) requested_screen = ALL_SCREENS[row];
+            }
+            return;
+        }
+
+        if (active_tab == 2) {
+            const DrawLogEntry* entry = clicked && mouse_over_panel ? find_selected_entry() : nullptr;
+            if (entry && entry->from_lua && !entry->lua_source.empty()) {
+                LuaButtons buttons = lua_buttons(panel_x, (float)tex.screen_height);
+                std::string path = resolve_lua_path(entry->lua_source).string();
+                if (path.empty()) return;
+                if (in_rect(mouse, buttons.copy_path)) ray::SetClipboardText(path.c_str());
+                else if (in_rect(mouse, buttons.copy_path_line))
+                    ray::SetClipboardText((path + ":" + std::to_string(entry->lua_line)).c_str());
             }
             return;
         }
@@ -222,7 +247,7 @@ public:
 
         ray::DrawRectangle((int)panel_x, 0, (int)PANEL_WIDTH, (int)screen_h, ray::Fade(ray::BLACK, 0.85f));
 
-        static const char* tab_labels[TAB_COUNT] = {"Textures", "Scenes", "", ""};
+        static const char* tab_labels[TAB_COUNT] = {"Textures", "Scenes", "Lua", ""};
         for (int i = 0; i < TAB_COUNT; i++) {
             float tab_x = panel_x + i * tab_width;
             ray::Color tab_color = (i == active_tab) ? ray::Fade(ray::WHITE, 0.3f) : ray::Fade(ray::WHITE, 0.1f);
@@ -238,9 +263,156 @@ public:
 
         if (active_tab == 0) draw_textures_tab(panel_x, screen_h);
         else if (active_tab == 1) draw_scenes_tab(panel_x);
+        else if (active_tab == 2) draw_lua_tab(panel_x, screen_h);
     }
 
 private:
+    struct LuaButtons { ray::Rectangle copy_path, copy_path_line; };
+
+    static LuaButtons lua_buttons(float panel_x, float screen_h) {
+        float width = (PANEL_WIDTH - LUA_BTN_GAP * 3) / 2;
+        float row_y = screen_h - LUA_BTN_HEIGHT - LUA_BTN_GAP;
+        ray::Rectangle left  = {panel_x + LUA_BTN_GAP, row_y, width, LUA_BTN_HEIGHT};
+        ray::Rectangle right = {left.x + width + LUA_BTN_GAP, row_y, width, LUA_BTN_HEIGHT};
+        return {left, right};
+    }
+
+    static fs::path resolve_lua_path(const std::string& source) {
+        std::error_code ec;
+        fs::path path = fs::weakly_canonical(source, ec);
+        if (fs::exists(path, ec)) return path;
+        path = fs::weakly_canonical(resolve_skin_path(fs::path("Scripts") / fs::path(source).filename()), ec);
+        return fs::exists(path, ec) ? path : fs::path();
+    }
+
+    static const char* loaded_by(const std::string& name) {
+        if (script_manager.tex.textures.count(name)) return "a lua script (tex.load_folder)";
+        if (tex.textures.count(name)) return "c++ (load_screen_textures)";
+        if (global_tex.textures.count(name)) return "c++ (global textures)";
+        return "unknown";
+    }
+
+    static std::string call_text(const std::vector<std::string>& lines, int first_line) {
+        std::string text;
+        int depth = 0;
+        for (int i = first_line - 1; i >= 0 && i < (int)lines.size() && i < first_line - 1 + CALL_TEXT_MAX_ROWS; i++) {
+            text += lines[i];
+            for (char c : lines[i]) depth += (c == '(') - (c == ')');
+            if (depth <= 0) break;
+            text += ' ';
+        }
+        size_t start = text.find_first_not_of(" \t");
+        return start == std::string::npos ? std::string() : text.substr(start);
+    }
+
+    static int lua_chars_per_row() {
+        int ten_chars = std::max(1, ray::MeasureText("ABCDEFGHIJ", LUA_TEXT_SIZE));
+        return std::max(1, (int)((PANEL_WIDTH - 12.0f) * 10.0f / ten_chars));
+    }
+
+    static float draw_lua_rows(const std::string& text, float x, float y, int max_rows, ray::Color color) {
+        int budget = lua_chars_per_row();
+        for (int row = 0; row < max_rows && (size_t)row * budget < text.size(); row++) {
+            ray::DrawText(text.substr((size_t)row * budget, budget).c_str(), (int)x, (int)y, LUA_TEXT_SIZE, color);
+            y += LUA_LINE_HEIGHT;
+        }
+        return y;
+    }
+
+    static void draw_lua_button(const ray::Rectangle& box, const char* label, bool enabled) {
+        ray::DrawRectangleRec(box, ray::Fade(ray::WHITE, enabled ? 0.2f : 0.05f));
+        ray::DrawRectangleLinesEx(box, 1.0f, ray::Fade(ray::WHITE, 0.4f));
+        int label_w = ray::MeasureText(label, LUA_TEXT_SIZE);
+        ray::DrawText(label, (int)(box.x + (box.width - label_w) * 0.5f), (int)box.y + 5, LUA_TEXT_SIZE,
+                      enabled ? ray::WHITE : ray::GRAY);
+    }
+
+    struct SourceFile {
+        std::vector<std::string> lines;
+        fs::file_time_type mtime;
+        double checked_at = -1.0;
+    };
+    std::map<std::string, SourceFile> source_cache;
+
+    const std::vector<std::string>* source_lines(const fs::path& path) {
+        auto it = source_cache.find(path.string());
+        if (it == source_cache.end()) {
+            if (source_cache.size() >= SOURCE_MAX_FILES) source_cache.clear();
+            it = source_cache.emplace(path.string(), SourceFile{}).first;
+        }
+        SourceFile& file = it->second;
+        if (ray::GetTime() - file.checked_at < SOURCE_RESTAT_SECONDS) return file.lines.empty() ? nullptr : &file.lines;
+
+        file.checked_at = ray::GetTime();
+        std::error_code ec;
+        fs::file_time_type mtime = fs::last_write_time(path, ec);
+        if (!ec && (file.lines.empty() || mtime != file.mtime)) {
+            file.mtime = mtime;
+            file.lines.clear();
+            if (fs::file_size(path, ec) <= SOURCE_MAX_BYTES && !ec) {
+                std::ifstream in(path);
+                for (std::string line; std::getline(in, line); ) {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    file.lines.push_back(line);
+                }
+            }
+        }
+        return file.lines.empty() ? nullptr : &file.lines;
+    }
+
+    int selected_draw_count() const {
+        int count = 0;
+        for (const DrawLogEntry& entry : debug_draw_log_prev)
+            if (entry.name == selected_name && entry.index == selected_tex_index) count++;
+        return count;
+    }
+
+    void draw_lua_tab(float panel_x, float screen_h) {
+        const float x = panel_x + 6.0f;
+        float y = TAB_HEIGHT + 8.0f;
+
+        if (!has_selection) {
+            draw_lua_rows("Select an element on the Textures tab.", x, y, 1, ray::GRAY);
+            return;
+        }
+
+        y = draw_lua_rows(selected_name, x, y, 2, ray::WHITE) + 4.0f;
+
+        const DrawLogEntry* entry = find_selected_entry();
+        if (!entry) {
+            draw_lua_rows("Not drawn this frame.", x, y, 1, ray::GRAY);
+            return;
+        }
+
+        y = draw_lua_rows(ray::TextFormat("%d draw(s) with this name this frame", selected_draw_count()), x, y, 1, ray::GRAY);
+        if (entry->tex_obj)
+            y = draw_lua_rows(ray::TextFormat("texture loaded by %s", loaded_by(entry->name)), x, y, 2, ray::GRAY);
+        y += 6.0f;
+
+        if (!entry->from_lua) {
+            draw_lua_rows("Drawn from C++: no lua frame was on the stack.", x, y, 2, ray::SKYBLUE);
+            return;
+        }
+
+        fs::path path = entry->lua_source.empty() ? fs::path() : resolve_lua_path(entry->lua_source);
+        std::string shown = path.empty() ? entry->lua_source : path.string();
+        if (shown.empty()) shown = "(chunk has no file)";
+        std::string file = fs::path(shown).filename().string();
+        y = draw_lua_rows(entry->lua_function.empty()
+                              ? ray::TextFormat("%s:%d, in the function defined at line %d", file.c_str(), entry->lua_line, entry->lua_defined_line)
+                              : ray::TextFormat("%s:%d, in %s()", file.c_str(), entry->lua_line, entry->lua_function.c_str()),
+                          x, y, 2, ray::ORANGE);
+        y = draw_lua_rows(shown, x, y, 4, ray::Fade(ray::ORANGE, 0.6f)) + 6.0f;
+
+        if (!path.empty())
+            if (const std::vector<std::string>* lines = source_lines(path))
+                draw_lua_rows(call_text(*lines, entry->lua_line), x, y, CALL_TEXT_MAX_ROWS, ray::WHITE);
+
+        LuaButtons buttons = lua_buttons(panel_x, screen_h);
+        draw_lua_button(buttons.copy_path, "copy path", !path.empty());
+        draw_lua_button(buttons.copy_path_line, "copy path:line", !path.empty());
+    }
+
     void draw_scenes_tab(float panel_x) {
         for (size_t i = 0; i < std::size(ALL_SCREENS); i++) {
             float row_y = TAB_HEIGHT + i * ROW_HEIGHT;
