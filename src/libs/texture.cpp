@@ -775,7 +775,10 @@ void TextureWrapper::draw_texture(TextureObject* tex_obj, const DrawTextureParam
         };
     }
 
-    if (debug_log_draws) debug_draw_log.push_back({tex_obj->name, dest_rect, tex_obj, params.index});
+    if (debug_log_draws) debug_draw_log.push_back({.name = tex_obj->name, .rect = dest_rect, .tex_obj = tex_obj,
+                                                   .index = params.index, .offset_x = params.x, .offset_y = params.y,
+                                                   .scale = params.scale, .center = params.center,
+                                                   .origin = params.origin, .rotation = params.rotation});
 
     const ray::Texture2D* frame_tex = tex_obj->frame_texture(params.frame);
     if (frame_tex) {

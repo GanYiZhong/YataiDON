@@ -135,6 +135,12 @@ struct DrawLogEntry {
     ray::Rectangle rect;
     TextureObject* tex_obj = nullptr;
     int index = 0;
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    float scale = 1.0f;
+    bool center = false;
+    ray::Vector2 origin = {0, 0};
+    float rotation = 0.0f;
 };
 
 inline bool debug_log_draws = false;

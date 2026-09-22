@@ -13,8 +13,11 @@ public:
     static constexpr float TAB_HEIGHT       = 36.0f;
     static constexpr float ROW_HEIGHT       = 20.0f;
     static constexpr float SCROLLBAR_WIDTH  = 6.0f;
-    static constexpr float EDIT_PANEL_HEIGHT = 150.0f;
     static constexpr float EDIT_ROW_HEIGHT   = 24.0f;
+    static constexpr float VERDICT_TOP       = 44.0f;
+    static constexpr float VERDICT_HEIGHT    = 34.0f;
+    static constexpr float EDIT_FIELDS_TOP   = VERDICT_TOP + VERDICT_HEIGHT + 4.0f;
+    static constexpr float EDIT_PANEL_HEIGHT = EDIT_FIELDS_TOP + 4 * EDIT_ROW_HEIGHT + 6.0f;
     static constexpr float FRAME_CELL_WIDTH      = 56.0f;
     static constexpr float FRAME_THUMB_SIZE      = 40.0f;
     static constexpr float FRAME_BTN_ROW_HEIGHT  = 20.0f;
@@ -275,6 +278,46 @@ private:
         return entry ? entry->tex_obj : nullptr;
     }
 
+    enum class Position { Json, JsonPlusOffset, NoJson, Unknown };
+
+    static Position position_of(const DrawLogEntry& entry) {
+        if (!entry.tex_obj) return Position::NoJson;
+        if (entry.origin.x != 0 || entry.origin.y != 0 || entry.rotation != 0) return Position::Unknown;
+        if (entry.offset_x == 0 && entry.offset_y == 0 && !(entry.center && entry.scale != 1.0f)) return Position::Json;
+        return Position::JsonPlusOffset;
+    }
+
+    void draw_verdict(const DrawLogEntry& entry, float panel_x, float top) {
+        ray::Color color = ray::GRAY;
+        std::string headline, advice;
+        switch (position_of(entry)) {
+            case Position::Json:
+                color = ray::GREEN;
+                headline = "position comes from texture.json";
+                break;
+            case Position::JsonPlusOffset:
+                color = ray::ORANGE;
+                headline = ray::TextFormat("caller adds x%+.0f y%+.0f to the json base", entry.offset_x, entry.offset_y);
+                break;
+            case Position::NoJson:
+                color = ray::RED;
+                headline = "no texture.json behind this draw";
+                advice = "x/y here do nothing; the position is set in code";
+                break;
+            case Position::Unknown:
+                headline = "origin/rotation in use";
+                advice = "the box and these numbers are approximate";
+                break;
+        }
+        if (advice.empty())
+            advice = entry.scale != 1.0f
+                ? ray::TextFormat("x/y move it 1:1; x2/y2 change by x%.2f", entry.scale)
+                : "x/y move it 1:1 whatever the caller adds";
+        ray::DrawRectangle((int)panel_x, (int)top, (int)PANEL_WIDTH, (int)VERDICT_HEIGHT, ray::Fade(color, 0.3f));
+        ray::DrawText(headline.c_str(), (int)panel_x + 6, (int)top + 3, 12, ray::WHITE);
+        ray::DrawText(advice.c_str(), (int)panel_x + 6, (int)top + 18, 12, ray::Fade(ray::WHITE, 0.75f));
+    }
+
     struct FieldButtons { ray::Rectangle minus, plus, value; };
 
     struct VisualRow {
@@ -336,7 +379,7 @@ private:
     }
 
     static FieldButtons field_buttons(int field_idx, float panel_x, float edit_top) {
-        float row_y = edit_top + 40.0f + field_idx * EDIT_ROW_HEIGHT;
+        float row_y = edit_top + EDIT_FIELDS_TOP + field_idx * EDIT_ROW_HEIGHT;
         float btn_size = EDIT_ROW_HEIGHT - 6.0f;
         ray::Rectangle minus = {panel_x + 40, row_y + 3, btn_size, btn_size};
         ray::Rectangle value = {minus.x + btn_size + 6, row_y + 2, 60.0f, btn_size + 2};
@@ -440,11 +483,15 @@ private:
 
         ray::DrawText(selected_name.c_str(), (int)panel_x + 8, (int)edit_top + 8, 16, ray::WHITE);
 
-        TextureObject* obj = selected_obj();
-        if (!obj) {
-            ray::DrawText("(no attributes)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
+        const DrawLogEntry* entry = find_selected_entry();
+        if (!entry) {
+            ray::DrawText("(not drawn this frame)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
             return;
         }
+        draw_verdict(*entry, panel_x, edit_top + VERDICT_TOP);
+
+        TextureObject* obj = entry->tex_obj;
+        if (!obj) return;
 
         const char* info = ray::TextFormat("%dx%d px, %d frame(s)", obj->width,
                                             obj->height, obj->frame_count());
@@ -454,7 +501,7 @@ private:
             int* value = field_ptr(i);
             if (!value) continue;
             FieldButtons b = field_buttons(i, panel_x, edit_top);
-            float row_y = edit_top + 40.0f + i * EDIT_ROW_HEIGHT;
+            float row_y = edit_top + EDIT_FIELDS_TOP + i * EDIT_ROW_HEIGHT;
 
             ray::DrawText(field_label(i), (int)panel_x + 8, (int)row_y + 4, 14, ray::WHITE);
 
