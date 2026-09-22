@@ -41,7 +41,7 @@ skin_file_url() {
     local base="${repo_url%.git}"
     if [[ "$base" == *"github.com"* ]]; then
         local path="${base#*github.com/}"
-        echo "https://raw.githubusercontent.com/$path/$branch/$filepath"
+        echo "https://media.githubusercontent.com/media/$path/$branch/$filepath"
     else
         echo "$base/raw/branch/$branch/$filepath"
     fi

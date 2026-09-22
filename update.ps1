@@ -32,7 +32,7 @@ function Get-SkinFileUrl {
     $base = $RepoUrl -replace '\.git$', ''
     if ($base -match 'github\.com') {
         $ownerRepo = ($base -split 'github\.com/')[-1]
-        return "https://raw.githubusercontent.com/$ownerRepo/$Branch/$FilePath"
+        return "https://media.githubusercontent.com/media/$ownerRepo/$Branch/$FilePath"
     } else {
         return "$base/raw/branch/$Branch/$FilePath"
     }
