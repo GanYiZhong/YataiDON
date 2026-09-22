@@ -12,10 +12,8 @@ private:
     TextureObject* t_kusudama = nullptr;
     TextureObject* t_renda = nullptr;
     TextureObject* t_counter = nullptr;
-    MoveAnimation* move_down;
-    MoveAnimation* move_up;
-    MoveAnimation* renda_move_up;
-    MoveAnimation* renda_move_down;
+    MoveAnimation* move;
+    MoveAnimation* renda_move;
     FadeAnimation* renda_fade_in;
     FadeAnimation* renda_fade_out;
     TextStretchAnimation* stretch;

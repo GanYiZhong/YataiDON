@@ -24,10 +24,7 @@ DiffSortSelect::DiffSortSelect(Statistics statistics, int prev_diff, int prev_le
     bg_resize = (TextureResizeAnimation*)tex.get_animation(19);
     diff_fade_in = (FadeAnimation*)tex.get_animation(20);
     box_flicker = (FadeAnimation*)tex.get_animation(21);
-    bounce_up_1 = (MoveAnimation*)tex.get_animation(22);
-    bounce_down_1 = (MoveAnimation*)tex.get_animation(23);
-    bounce_up_2 = (MoveAnimation*)tex.get_animation(24);
-    bounce_down_2 = (MoveAnimation*)tex.get_animation(25);
+    confirmation_bounce = (MoveAnimation*)tex.get_animation(22);
     blue_arrow_fade = (FadeAnimation*)tex.get_animation(29);
     blue_arrow_move = (MoveAnimation*)tex.get_animation(30);
 
@@ -158,10 +155,7 @@ void DiffSortSelect::update(double current_ms) {
     bg_resize->update(current_ms);
     diff_fade_in->update(current_ms);
     box_flicker->update(current_ms);
-    bounce_up_1->update(current_ms);
-    bounce_down_1->update(current_ms);
-    bounce_up_2->update(current_ms);
-    bounce_down_2->update(current_ms);
+    confirmation_bounce->update(current_ms);
 }
 
 std::optional<std::pair<int, int>> DiffSortSelect::input_select() {
@@ -188,10 +182,7 @@ std::optional<std::pair<int, int>> DiffSortSelect::input_select() {
         }
     } else if (in_level_select) {
         confirmation = true;
-        bounce_up_1->start();
-        bounce_down_1->start();
-        bounce_up_2->start();
-        bounce_down_2->start();
+        confirmation_bounce->start();
         confirm_index = 1;
         audio.play_sound("voice_diff_sort_confirm", VolumePreset::VOICE);
         return std::nullopt;
@@ -383,7 +374,7 @@ void DiffSortSelect::draw_level_select() {
 
     if (confirmation) {
         ray::DrawRectangle(t_level_box->x[0], t_level_box->y[0], t_level_box->x2[0], t_level_box->y2[0], ray::Fade(ray::BLACK, 0.5));
-        float y = -bounce_up_1->attribute + bounce_down_1->attribute - bounce_up_2->attribute + bounce_down_2->attribute;
+        float y = confirmation_bounce->attribute;
         float offset = tex.skin_config[SC::DIFF_SORT_OFFSET_2].x;
         for (size_t i = 0; i < 3; i++) {
             if (i == confirm_index) {

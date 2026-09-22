@@ -23,10 +23,7 @@ private:
     TextureResizeAnimation* bg_resize;
     FadeAnimation* diff_fade_in;
     FadeAnimation* box_flicker;
-    MoveAnimation* bounce_up_1;
-    MoveAnimation* bounce_down_1;
-    MoveAnimation* bounce_up_2;
-    MoveAnimation* bounce_down_2;
+    MoveAnimation* confirmation_bounce;
     FadeAnimation* blue_arrow_fade;
     MoveAnimation* blue_arrow_move;
 

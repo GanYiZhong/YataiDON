@@ -9,18 +9,16 @@ ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, 
     y_pos_list.resize(counter_str.length(), 0.0f);
 
     fade_animation_1 = (FadeAnimation*)tex.get_animation(35, true);
-    move_animation_1 = (MoveAnimation*)tex.get_animation(36, true);
+    move_animation_x = (MoveAnimation*)tex.get_animation(36, true);
     fade_animation_2 = (FadeAnimation*)tex.get_animation(37, true);
-    move_animation_2 = (MoveAnimation*)tex.get_animation(38, true);
-    move_animation_3 = (MoveAnimation*)tex.get_animation(39, true);
-    move_animation_4 = (MoveAnimation*)tex.get_animation(40, true);
+    move_animation_y_pre = (MoveAnimation*)tex.get_animation(38, true);
+    move_animation_y_fan = (MoveAnimation*)tex.get_animation(39, true);
 
     fade_animation_1->start();
-    move_animation_1->start();
+    move_animation_x->start();
     fade_animation_2->start();
-    move_animation_2->start();
-    move_animation_3->start();
-    move_animation_4->start();
+    move_animation_y_pre->start();
+    move_animation_y_fan->start();
 
     if (player_num == PlayerNum::P2) {
         base_color = ray::Color{84, 250, 238, 255};
@@ -34,10 +32,9 @@ ScoreCounterAnimation::ScoreCounterAnimation(PlayerNum player_num, int counter, 
 
 void ScoreCounterAnimation::update(double current_ms) {
     fade_animation_1->update(current_ms);
-    move_animation_1->update(current_ms);
-    move_animation_2->update(current_ms);
-    move_animation_3->update(current_ms);
-    move_animation_4->update(current_ms);
+    move_animation_x->update(current_ms);
+    move_animation_y_pre->update(current_ms);
+    move_animation_y_fan->update(current_ms);
     fade_animation_2->update(current_ms);
 
     float fade_value = fade_animation_1->is_finished ? fade_animation_2->attribute : fade_animation_1->attribute;
@@ -45,12 +42,12 @@ void ScoreCounterAnimation::update(double current_ms) {
 
     // Cache y positions
     for (int i = 0; i < counter_str.length(); i++) {
-        y_pos_list[i] = move_animation_4->attribute + (i + 1) * 5;
+        y_pos_list[i] = move_animation_y_fan->attribute + (i + 1) * 5;
     }
 }
 
 void ScoreCounterAnimation::draw(float y) {
-    float x = move_animation_1->is_finished ? move_animation_2->attribute : move_animation_1->attribute;
+    float x = move_animation_x->attribute;
     if (std::fabs(x) < 1e-6f) {
         return;
     }
@@ -58,14 +55,7 @@ void ScoreCounterAnimation::draw(float y) {
     float start_x = x - total_width;
 
     for (int i = 0; i < counter_str.length(); i++) {
-        float y_pos;
-        if (move_animation_3->is_finished) {
-            y_pos = y_pos_list[i];
-        } else if (move_animation_2->is_finished) {
-            y_pos = move_animation_3->attribute;
-        } else {
-            y_pos = tex.skin_config[SC::SCORE_COUNTER_ANIMATION_START_Y].y;
-        }
+        float y_pos = move_animation_y_pre->is_finished ? y_pos_list[i] : move_animation_y_pre->attribute;
 
         float y_offset = (y_pos * direction) + y + (tex.skin_config[SC::SCORE_COUNTER_ANIMATION_P2_OFFSET].y * (direction == -1));
 

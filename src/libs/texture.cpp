@@ -181,11 +181,14 @@ BaseAnimation* TextureWrapper::get_animation(const int id, const std::string& sc
                         else if (anim["total_distance"].IsDouble())
                             anim["total_distance"].SetDouble(anim["total_distance"].GetDouble() * screen_scale);
                     }
-                    if (anim.HasMember("waypoint") && !anim["waypoint"].IsObject()) {
-                        if (anim["waypoint"].IsInt())
-                            anim["waypoint"].SetInt(static_cast<int>(json_number(anim["waypoint"]) * screen_scale));
-                        else if (anim["waypoint"].IsDouble())
-                            anim["waypoint"].SetDouble(anim["waypoint"].GetDouble() * screen_scale);
+                    if (anim.HasMember("waypoints") && anim["waypoints"].IsArray()) {
+                        for (auto& wp : anim["waypoints"].GetArray()) {
+                            if (!wp.IsObject() || !wp.HasMember("value")) continue;
+                            if (wp["value"].IsInt())
+                                wp["value"].SetInt(static_cast<int>(json_number(wp["value"]) * screen_scale));
+                            else if (wp["value"].IsDouble())
+                                wp["value"].SetDouble(wp["value"].GetDouble() * screen_scale);
+                        }
                     }
                     if (anim.HasMember("start_position") && !anim["start_position"].IsObject()) {
                         if (anim["start_position"].IsInt())

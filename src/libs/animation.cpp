@@ -175,13 +175,15 @@ MoveAnimation::MoveAnimation(double duration, int total_distance, bool loop,
               std::optional<double> reverse_delay,
               std::optional<EaseType> ease_in,
               std::optional<EaseType> ease_out,
-              std::optional<int> waypoint, double waypoint_at)
+              std::vector<Waypoint> waypoints)
     : BaseAnimation(duration, delay, loop, lock_input),
       total_distance(total_distance), start_position(start_position),
       total_distance_saved(total_distance), start_position_saved(start_position),
       ease_in(ease_in), ease_out(ease_out),
       reverse_delay(reverse_delay), reverse_delay_saved(reverse_delay),
-      waypoint(waypoint), waypoint_at(std::clamp(waypoint_at, 0.001, 0.999)) {
+      waypoints(std::move(waypoints)) {
+    std::stable_sort(this->waypoints.begin(), this->waypoints.end(),
+                      [](const Waypoint& a, const Waypoint& b) { return a.at < b.at; });
     attribute = start_position;
 }
 
@@ -212,17 +214,27 @@ void MoveAnimation::update(double current_time_ms) {
         } else {
             is_finished = true;
         }
-    } else {
-        double progress = (elapsed_time - delay) / duration;
-        if (waypoint.has_value()) {
-            double w = (double)waypoint.value();
-            attribute = (progress <= waypoint_at)
-                ? start_position + w * (progress / waypoint_at)
-                : start_position + w + ((double)total_distance - w) * ((progress - waypoint_at) / (1.0 - waypoint_at));
-        } else {
-            progress = applyEasing(progress, ease_in, ease_out);
-            attribute = start_position + (total_distance * progress);
+    } else if (!waypoints.empty()) {
+        double t = elapsed_time - delay;
+        double prev_at = 0.0;
+        int prev_val = 0;
+        size_t i = 0;
+        for (; i < waypoints.size() && t >= waypoints[i].at; i++) {
+            prev_at = waypoints[i].at;
+            prev_val = waypoints[i].value;
         }
+        bool is_last_segment = (i == waypoints.size());
+        double next_at = is_last_segment ? duration : waypoints[i].at;
+        int next_val = is_last_segment ? total_distance : waypoints[i].value;
+
+        double seg_progress = (next_at > prev_at) ? (t - prev_at) / (next_at - prev_at) : 1.0;
+        seg_progress = is_last_segment
+            ? applyEasing(seg_progress, ease_in, ease_out)
+            : applyEasing(seg_progress, waypoints[i].ease_in, waypoints[i].ease_out);
+        attribute = start_position + prev_val + (next_val - prev_val) * seg_progress;
+    } else {
+        double progress = applyEasing((elapsed_time - delay) / duration, ease_in, ease_out);
+        attribute = start_position + (total_distance * progress);
     }
 }
 
@@ -230,7 +242,7 @@ std::unique_ptr<BaseAnimation> MoveAnimation::copy() const {
     return std::make_unique<MoveAnimation>(
         duration, total_distance_saved, loop, lock_input,
         start_position_saved, delay_saved, reverse_delay_saved, ease_in, ease_out,
-        waypoint, waypoint_at
+        waypoints
     );
 }
 
@@ -518,20 +530,6 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         return anim_obj.HasMember(key) && anim_obj[key].IsBool() ? anim_obj[key].GetBool() : def;
     };
 
-    auto get_int_opt = [&](const char* key) -> std::optional<int> {
-        if (!anim_obj.HasMember(key)) return std::nullopt;
-        if (anim_obj[key].IsInt())    return anim_obj[key].GetInt();
-        if (anim_obj[key].IsDouble()) return static_cast<int>(anim_obj[key].GetDouble());
-        return std::nullopt;
-    };
-
-    auto get_string_opt = [&](const char* key) -> std::optional<std::string> {
-        if (anim_obj.HasMember(key) && anim_obj[key].IsString()) {
-            return std::string(anim_obj[key].GetString());
-        }
-        return std::nullopt;
-    };
-
     auto get_double_opt = [&](const char* key) -> std::optional<double> {
         if (anim_obj.HasMember(key)) {
             if (anim_obj[key].IsDouble()) {
@@ -543,13 +541,32 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         return std::nullopt;
     };
 
-    auto get_ease_opt = [&](const char* key) -> std::optional<EaseType> {
-        auto str = get_string_opt(key);
-        if (!str.has_value()) return std::nullopt;
+    auto get_ease_opt_from = [&](const Value& obj, const char* key) -> std::optional<EaseType> {
+        if (!obj.HasMember(key) || !obj[key].IsString()) return std::nullopt;
+        std::string str = obj[key].GetString();
         if (str == "quadratic") return EaseType::Quadratic;
         if (str == "cubic") return EaseType::Cubic;
         if (str == "exponential") return EaseType::Exponential;
-        throw std::runtime_error("Unknown ease type: " + str.value());
+        throw std::runtime_error("Unknown ease type: " + str);
+    };
+
+    auto get_ease_opt = [&](const char* key) -> std::optional<EaseType> {
+        return get_ease_opt_from(anim_obj, key);
+    };
+
+    auto get_waypoints = [&]() -> std::vector<MoveAnimation::Waypoint> {
+        std::vector<MoveAnimation::Waypoint> result;
+        if (!anim_obj.HasMember("waypoints") || !anim_obj["waypoints"].IsArray()) return result;
+        for (const auto& wp : anim_obj["waypoints"].GetArray()) {
+            if (!wp.IsObject() || !wp.HasMember("at") || !wp.HasMember("value") ||
+                !wp["at"].IsNumber() || !wp["value"].IsNumber()) {
+                throw std::runtime_error("Each 'waypoints' entry requires numeric 'at' and 'value'");
+            }
+            double at = wp["at"].IsDouble() ? wp["at"].GetDouble() : static_cast<double>(wp["at"].GetInt());
+            int value = wp["value"].IsInt() ? wp["value"].GetInt() : static_cast<int>(wp["value"].GetDouble());
+            result.push_back({at, value, get_ease_opt_from(wp, "ease_in"), get_ease_opt_from(wp, "ease_out")});
+        }
+        return result;
     };
 
     double delay = get_double("delay", 0.0);
@@ -579,8 +596,7 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_double_opt("reverse_delay"),
             get_ease_opt("ease_in"),
             get_ease_opt("ease_out"),
-            get_int_opt("waypoint"),
-            get_double("waypoint_at", 0.5)
+            get_waypoints()
         );
     } else if (type == "texture_change") {
         std::vector<std::tuple<double, double, int>> textures;

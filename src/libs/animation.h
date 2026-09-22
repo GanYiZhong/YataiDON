@@ -86,6 +86,17 @@ public:
 };
 
 class MoveAnimation : public BaseAnimation {
+public:
+    struct Waypoint {
+        double at;
+        int value;
+        // Eases the segment ending at this waypoint (previous point -> this one).
+        // The animation's own ease_in/ease_out instead ease the final segment
+        // (last waypoint -> the implicit end point at duration/total_distance).
+        std::optional<EaseType> ease_in;
+        std::optional<EaseType> ease_out;
+    };
+
 private:
     int total_distance;
     int total_distance_saved;
@@ -94,8 +105,7 @@ private:
     std::optional<EaseType> ease_out;
     std::optional<double> reverse_delay;
     std::optional<double> reverse_delay_saved;
-    std::optional<int> waypoint;
-    double waypoint_at = 0.5;
+    std::vector<Waypoint> waypoints;
 
 public:
     int start_position;
@@ -104,8 +114,7 @@ public:
                   std::optional<double> reverse_delay = std::nullopt,
                   std::optional<EaseType> ease_in = std::nullopt,
                   std::optional<EaseType> ease_out = std::nullopt,
-                  std::optional<int> waypoint = std::nullopt,
-                  double waypoint_at = 0.5);
+                  std::vector<Waypoint> waypoints = {});
 
     void restart() override;
 

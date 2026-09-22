@@ -2,10 +2,8 @@
 
 KusudamaCounter::KusudamaCounter(int total)
     : balloon_total(total), balloon_count(0), is_popped(false) {
-    move_down = dynamic_cast<MoveAnimation*>(tex.get_animation(11));
-    move_up = dynamic_cast<MoveAnimation*>(tex.get_animation(12));
-    renda_move_up = dynamic_cast<MoveAnimation*>(tex.get_animation(13));
-    renda_move_down = dynamic_cast<MoveAnimation*>(tex.get_animation(18));
+    move = dynamic_cast<MoveAnimation*>(tex.get_animation(11));
+    renda_move = dynamic_cast<MoveAnimation*>(tex.get_animation(13));
     renda_fade_in = dynamic_cast<FadeAnimation*>(tex.get_animation(14));
     renda_fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(20));
     stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(15));
@@ -14,10 +12,8 @@ KusudamaCounter::KusudamaCounter(int total)
     open = dynamic_cast<TextureChangeAnimation*>(tex.get_animation(19));
     fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(21));
 
-    move_down->start();
-    move_up->start();
-    renda_move_up->start();
-    renda_move_down->start();
+    move->start();
+    renda_move->start();
     renda_fade_in->start();
     renda_breathe->start();
 
@@ -45,10 +41,8 @@ void KusudamaCounter::update_count(int count) {
 }
 
 void KusudamaCounter::update(double current_ms, int count) {
-    move_down->update(current_ms);
-    move_up->update(current_ms);
-    renda_move_up->update(current_ms);
-    renda_move_down->update(current_ms);
+    move->update(current_ms);
+    renda_move->update(current_ms);
     renda_fade_in->update(current_ms);
     renda_fade_out->update(current_ms);
     fade_out->update(current_ms);
@@ -60,12 +54,12 @@ void KusudamaCounter::update(double current_ms, int count) {
 }
 
 void KusudamaCounter::draw() {
-    float y = move_down->attribute - move_up->attribute;
-    float renda_y = -renda_move_up->attribute + renda_move_down->attribute + renda_breathe->attribute;
+    float y = move->attribute;
+    float renda_y = renda_move->attribute + renda_breathe->attribute;
     tex.draw_texture(t_kusudama, {.frame=(int)open->attribute, .scale=(float)breathing->attribute, .center=true, .y=y, .fade=fade_out->attribute});
     tex.draw_texture(t_renda, {.y=renda_y, .fade=std::min(renda_fade_in->attribute, renda_fade_out->attribute)});
 
-    if (move_up->is_finished && !is_popped) {
+    if (move->is_finished && !is_popped) {
         int int_counter = std::max(0, balloon_total - balloon_count);
         if (int_counter == 0) return;
         std::string counter = std::to_string(int_counter);
