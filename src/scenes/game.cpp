@@ -5,6 +5,7 @@
 #include "../libs/network.h"
 #include "../libs/script.h"
 #include "../libs/filesystem.h"
+#include <algorithm>
 #include <cmath>
 
 
@@ -30,6 +31,24 @@ void GameScreen::on_screen_start() {
         SetShaderValueTexture(mask_shader, GetShaderLocation(mask_shader, "texture1"), rainbow->texture);
     }
     SessionData& session_data = global_data.session_data[(int)global_data.player_num];
+    if (session_data.selected_song.empty() || !exists(session_data.selected_song)) {
+        auto songs = get_song_files(global_data.config->paths.tja_path);
+        session_data.selected_song = songs.front();
+        session_data.selected_difficulty = static_cast<int>(Difficulty::EASY);
+        try {
+            SongParser probe(session_data.selected_song, 0);
+            auto& course_data = probe.metadata.course_data;
+            if (!course_data.empty()) {
+                session_data.selected_difficulty = std::max_element(
+                    course_data.begin(), course_data.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; }
+                )->first;
+            }
+        } catch (const std::exception& e) {
+            spdlog::warn("Failed to probe difficulty for fallback song {}: {}", session_data.selected_song.string(), e.what());
+        }
+        spdlog::info("GameScreen auto-loaded fallback song: {}", session_data.selected_song.string());
+    }
     init_tja(session_data.selected_song);
     spdlog::info("TJA initialized for song: {}", session_data.selected_song.string());
     load_hitsounds();

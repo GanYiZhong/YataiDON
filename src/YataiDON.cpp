@@ -332,6 +332,11 @@ static void run_frame() {
     network.update(g_frame_ms);
     std::optional<Screens> next_screen = screen->update();
 
+    if (!next_screen.has_value() && debug_menu.requested_screen.has_value()) {
+        next_screen = screen->on_screen_end(debug_menu.requested_screen.value());
+        debug_menu.requested_screen.reset();
+    }
+
     if (screen->screen_init) {
         screen->_do_draw();
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../libs/texture.h"
+#include "../../libs/screen.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -32,6 +33,15 @@ public:
 
     int editing_field = -1;
     std::string edit_buffer;
+
+    std::optional<Screens> requested_screen;
+
+    static constexpr Screens ALL_SCREENS[] = {
+        Screens::TITLE, Screens::ENTRY, Screens::SONG_SELECT, Screens::GAME, Screens::GAME_2P,
+        Screens::RESULT, Screens::RESULT_2P, Screens::SONG_SELECT_2P, Screens::DAN_SELECT,
+        Screens::GAME_DAN, Screens::DAN_RESULT, Screens::PRACTICE_SELECT, Screens::GAME_PRACTICE,
+        Screens::SETTINGS, Screens::LOADING, Screens::INPUT_CALI, Screens::GAME_OVER, Screens::INPUT_TEST
+    };
 
     void clear_selection() {
         commit_edit();
@@ -93,6 +103,14 @@ public:
         if (clicked && mouse_over_panel && mouse.y < TAB_HEIGHT) {
             int hit = (int)((mouse.x - panel_x) / tab_width);
             if (hit >= 0 && hit < TAB_COUNT) active_tab = hit;
+        }
+
+        if (active_tab == 1) {
+            if (clicked && mouse_over_panel && mouse.y >= TAB_HEIGHT) {
+                int row = (int)((mouse.y - TAB_HEIGHT) / ROW_HEIGHT);
+                if (row >= 0 && row < (int)std::size(ALL_SCREENS)) requested_screen = ALL_SCREENS[row];
+            }
+            return;
         }
 
         if (!textures_tab_active) return;
@@ -201,7 +219,7 @@ public:
 
         ray::DrawRectangle((int)panel_x, 0, (int)PANEL_WIDTH, (int)screen_h, ray::Fade(ray::BLACK, 0.85f));
 
-        static const char* tab_labels[TAB_COUNT] = {"Textures", "", "", ""};
+        static const char* tab_labels[TAB_COUNT] = {"Textures", "Scenes", "", ""};
         for (int i = 0; i < TAB_COUNT; i++) {
             float tab_x = panel_x + i * tab_width;
             ray::Color tab_color = (i == active_tab) ? ray::Fade(ray::WHITE, 0.3f) : ray::Fade(ray::WHITE, 0.1f);
@@ -216,9 +234,27 @@ public:
         }
 
         if (active_tab == 0) draw_textures_tab(panel_x, screen_h);
+        else if (active_tab == 1) draw_scenes_tab(panel_x);
     }
 
 private:
+    void draw_scenes_tab(float panel_x) {
+        for (size_t i = 0; i < std::size(ALL_SCREENS); i++) {
+            float row_y = TAB_HEIGHT + i * ROW_HEIGHT;
+            std::string name = screens_to_string(ALL_SCREENS[i]);
+            bool is_current = name == global_data.current_screen;
+            bool is_pending = requested_screen.has_value() && *requested_screen == ALL_SCREENS[i];
+
+            if (is_current) {
+                ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::SKYBLUE, 0.35f));
+            } else if (is_pending) {
+                ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::YELLOW, 0.3f));
+            }
+            ray::Color color = is_current ? ray::SKYBLUE : (is_pending ? ray::YELLOW : ray::WHITE);
+            ray::DrawText(name.c_str(), (int)panel_x + 4, (int)row_y + 3, 14, color);
+        }
+    }
+
     struct FieldButtons { ray::Rectangle minus, plus, value; };
 
     struct VisualRow {
