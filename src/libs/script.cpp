@@ -554,15 +554,6 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
         "finish",         &OutlinedText::finish,
         "draw",           [](OutlinedText& self, sol::optional<sol::table> params_table) {
             DrawTextureParams params = parse_draw_params(params_table, false);
-            if (debug_log_draws) {
-                ray::Rectangle rect = {
-                    params.x + self.x_offset, params.y + self.y_offset,
-                    self.width + params.x2, self.height + params.y2
-                };
-                std::string label = self.get_text();
-                if (label.size() > 40) label = label.substr(0, 40) + "...";
-                debug_draw_log.push_back({"\"" + label + "\"", rect});
-            }
             self.draw(params);
         }
     );
