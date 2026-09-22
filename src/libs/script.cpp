@@ -12,6 +12,33 @@
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
 
+namespace {
+constexpr int LUA_SITE_MAX_LEVELS = 8;
+
+struct LuaStackGuard {
+    lua_State* state;
+    int top;
+    explicit LuaStackGuard(lua_State* state) : state(state), top(lua_gettop(state)) {}
+    ~LuaStackGuard() { lua_settop(state, top); }
+};
+}
+
+void log_lua_site(DrawLogEntry& entry, lua_State* state) {
+    if (!state) return;
+    LuaStackGuard guard(state);
+    lua_Debug frame;
+    for (int level = 0; level < LUA_SITE_MAX_LEVELS; level++) {
+        if (!lua_getstack(state, level, &frame) || !lua_getinfo(state, "Sln", &frame)) return;
+        if (frame.what && frame.what[0] == 'C') continue;
+        entry.from_lua = true;
+        entry.lua_line = frame.currentline;
+        entry.lua_defined_line = frame.linedefined;
+        entry.lua_function = frame.name ? frame.name : "";
+        if (frame.source && frame.source[0] == '@') entry.lua_source = frame.source + 1;
+        return;
+    }
+}
+
 static std::optional<EaseType> parse_ease_type(const sol::optional<std::string>& ease_str) {
     if (!ease_str) return std::nullopt;
     if (ease_str == "quadratic") return EaseType::Quadratic;
@@ -419,9 +446,12 @@ void ScriptManager::register_lua_bindings() {
         return {script_manager.tex.draw_offset_x, script_manager.tex.draw_offset_y};
     });
 
-    tex.set_function("draw_rect", [](float x, float y, float w, float h, int r, int g, int b, int a) {
+    tex.set_function("draw_rect", [](float x, float y, float w, float h, int r, int g, int b, int a, sol::this_state state) {
         auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
-        if (debug_log_draws) debug_draw_log.push_back({"rect", {x, y, w, h}});
+        if (debug_log_draws) {
+            debug_draw_log.push_back({"rect", {x, y, w, h}});
+            log_lua_site(debug_draw_log.back(), state);
+        }
         ray::DrawRectangle((int)x, (int)y, (int)w, (int)h, ray::Color{to_u8(r), to_u8(g), to_u8(b), to_u8(a)});
     });
 
@@ -554,15 +584,6 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
         "finish",         &OutlinedText::finish,
         "draw",           [](OutlinedText& self, sol::optional<sol::table> params_table) {
             DrawTextureParams params = parse_draw_params(params_table, false);
-            if (debug_log_draws) {
-                ray::Rectangle rect = {
-                    params.x + self.x_offset, params.y + self.y_offset,
-                    self.width + params.x2, self.height + params.y2
-                };
-                std::string label = self.get_text();
-                if (label.size() > 40) label = label.substr(0, 40) + "...";
-                debug_draw_log.push_back({"\"" + label + "\"", rect});
-            }
             self.draw(params);
         }
     );

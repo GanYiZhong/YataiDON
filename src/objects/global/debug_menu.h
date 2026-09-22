@@ -2,8 +2,11 @@
 
 #include "../../libs/texture.h"
 #include "../../libs/screen.h"
+#include "../../libs/script.h"
+#include "../../libs/filesystem.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <map>
 
 class DebugMenu {
@@ -13,13 +16,24 @@ public:
     static constexpr float TAB_HEIGHT       = 36.0f;
     static constexpr float ROW_HEIGHT       = 20.0f;
     static constexpr float SCROLLBAR_WIDTH  = 6.0f;
-    static constexpr float EDIT_PANEL_HEIGHT = 150.0f;
     static constexpr float EDIT_ROW_HEIGHT   = 24.0f;
+    static constexpr float VERDICT_TOP       = 44.0f;
+    static constexpr float VERDICT_HEIGHT    = 34.0f;
+    static constexpr float EDIT_FIELDS_TOP   = VERDICT_TOP + VERDICT_HEIGHT + 4.0f;
+    static constexpr float EDIT_PANEL_HEIGHT = EDIT_FIELDS_TOP + 4 * EDIT_ROW_HEIGHT + 6.0f;
     static constexpr float FRAME_CELL_WIDTH      = 56.0f;
     static constexpr float FRAME_THUMB_SIZE      = 40.0f;
     static constexpr float FRAME_BTN_ROW_HEIGHT  = 20.0f;
     static constexpr float FRAMES_HEADER_HEIGHT  = 20.0f;
     static constexpr float FRAME_ROW_HEIGHT      = FRAME_THUMB_SIZE + 4.0f + FRAME_BTN_ROW_HEIGHT;
+    static constexpr int   LUA_TEXT_SIZE         = 12;
+    static constexpr float LUA_LINE_HEIGHT       = 15.0f;
+    static constexpr float LUA_BTN_HEIGHT        = 22.0f;
+    static constexpr float LUA_BTN_GAP           = 6.0f;
+    static constexpr int   CALL_TEXT_MAX_ROWS    = 6;
+    static constexpr size_t SOURCE_MAX_FILES     = 8;
+    static constexpr std::uintmax_t SOURCE_MAX_BYTES = 1 << 20;
+    static constexpr double SOURCE_RESTAT_SECONDS = 0.5;
 
     bool open = false;
     int active_tab = 0;
@@ -28,8 +42,8 @@ public:
 
     bool has_selection = false;
     std::string selected_name;
-    TextureObject* selected_tex_obj = nullptr;
     int selected_tex_index = 0;
+    int selected_log_index = -1;
 
     int editing_field = -1;
     std::string edit_buffer;
@@ -46,12 +60,13 @@ public:
     void clear_selection() {
         commit_edit();
         has_selection = false;
-        selected_tex_obj = nullptr;
         selected_name.clear();
+        selected_log_index = -1;
+        source_cache.clear();
     }
 
     FramedTexture* get_selected_framed() const {
-        return selected_tex_obj ? dynamic_cast<FramedTexture*>(selected_tex_obj) : nullptr;
+        return dynamic_cast<FramedTexture*>(selected_obj());
     }
 
     static int frame_grid_cols() { return std::max(1, (int)(PANEL_WIDTH / FRAME_CELL_WIDTH)); }
@@ -87,7 +102,7 @@ public:
         debug_draw_log.clear();
 
         const bool textures_tab_active = open && active_tab == 0;
-        debug_log_draws = textures_tab_active;
+        debug_log_draws = open && (active_tab == 0 || active_tab == 2);
         if (!open) { commit_edit(); return; }
 
         const float panel_x   = tex.screen_width - PANEL_WIDTH;
@@ -109,6 +124,19 @@ public:
             if (clicked && mouse_over_panel && mouse.y >= TAB_HEIGHT) {
                 int row = (int)((mouse.y - TAB_HEIGHT) / ROW_HEIGHT);
                 if (row >= 0 && row < (int)std::size(ALL_SCREENS)) requested_screen = ALL_SCREENS[row];
+            }
+            return;
+        }
+
+        if (active_tab == 2) {
+            const DrawLogEntry* entry = clicked && mouse_over_panel ? find_selected_entry() : nullptr;
+            if (entry && entry->from_lua && !entry->lua_source.empty()) {
+                LuaButtons buttons = lua_buttons(panel_x, (float)tex.screen_height);
+                std::string path = resolve_lua_path(entry->lua_source).string();
+                if (path.empty()) return;
+                if (in_rect(mouse, buttons.copy_path)) ray::SetClipboardText(path.c_str());
+                else if (in_rect(mouse, buttons.copy_path_line))
+                    ray::SetClipboardText((path + ":" + std::to_string(entry->lua_line)).c_str());
             }
             return;
         }
@@ -153,13 +181,13 @@ public:
                     const DrawLogEntry& e = debug_draw_log_prev[vr.log_index];
                     has_selection = true;
                     selected_name = e.name;
-                    selected_tex_obj = e.tex_obj;
                     selected_tex_index = e.index;
+                    selected_log_index = vr.log_index;
                 }
             }
         }
 
-        if (clicked && selected_tex_obj && mouse_over_panel && mouse.y >= list_bottom) {
+        if (clicked && has_selection && mouse_over_panel && mouse.y >= list_bottom) {
             const int step = ray::IsKeyDown(ray::KEY_LEFT_SHIFT) ? 10 : 1;
             for (int i = 0; i < 4; i++) {
                 int* value = field_ptr(i);
@@ -219,7 +247,7 @@ public:
 
         ray::DrawRectangle((int)panel_x, 0, (int)PANEL_WIDTH, (int)screen_h, ray::Fade(ray::BLACK, 0.85f));
 
-        static const char* tab_labels[TAB_COUNT] = {"Textures", "Scenes", "", ""};
+        static const char* tab_labels[TAB_COUNT] = {"Textures", "Scenes", "Lua", ""};
         for (int i = 0; i < TAB_COUNT; i++) {
             float tab_x = panel_x + i * tab_width;
             ray::Color tab_color = (i == active_tab) ? ray::Fade(ray::WHITE, 0.3f) : ray::Fade(ray::WHITE, 0.1f);
@@ -235,9 +263,156 @@ public:
 
         if (active_tab == 0) draw_textures_tab(panel_x, screen_h);
         else if (active_tab == 1) draw_scenes_tab(panel_x);
+        else if (active_tab == 2) draw_lua_tab(panel_x, screen_h);
     }
 
 private:
+    struct LuaButtons { ray::Rectangle copy_path, copy_path_line; };
+
+    static LuaButtons lua_buttons(float panel_x, float screen_h) {
+        float width = (PANEL_WIDTH - LUA_BTN_GAP * 3) / 2;
+        float row_y = screen_h - LUA_BTN_HEIGHT - LUA_BTN_GAP;
+        ray::Rectangle left  = {panel_x + LUA_BTN_GAP, row_y, width, LUA_BTN_HEIGHT};
+        ray::Rectangle right = {left.x + width + LUA_BTN_GAP, row_y, width, LUA_BTN_HEIGHT};
+        return {left, right};
+    }
+
+    static fs::path resolve_lua_path(const std::string& source) {
+        std::error_code ec;
+        fs::path path = fs::weakly_canonical(source, ec);
+        if (fs::exists(path, ec)) return path;
+        path = fs::weakly_canonical(resolve_skin_path(fs::path("Scripts") / fs::path(source).filename()), ec);
+        return fs::exists(path, ec) ? path : fs::path();
+    }
+
+    static const char* loaded_by(const std::string& name) {
+        if (script_manager.tex.textures.count(name)) return "a lua script (tex.load_folder)";
+        if (tex.textures.count(name)) return "c++ (load_screen_textures)";
+        if (global_tex.textures.count(name)) return "c++ (global textures)";
+        return "unknown";
+    }
+
+    static std::string call_text(const std::vector<std::string>& lines, int first_line) {
+        std::string text;
+        int depth = 0;
+        for (int i = first_line - 1; i >= 0 && i < (int)lines.size() && i < first_line - 1 + CALL_TEXT_MAX_ROWS; i++) {
+            text += lines[i];
+            for (char c : lines[i]) depth += (c == '(') - (c == ')');
+            if (depth <= 0) break;
+            text += ' ';
+        }
+        size_t start = text.find_first_not_of(" \t");
+        return start == std::string::npos ? std::string() : text.substr(start);
+    }
+
+    static int lua_chars_per_row() {
+        int ten_chars = std::max(1, ray::MeasureText("ABCDEFGHIJ", LUA_TEXT_SIZE));
+        return std::max(1, (int)((PANEL_WIDTH - 12.0f) * 10.0f / ten_chars));
+    }
+
+    static float draw_lua_rows(const std::string& text, float x, float y, int max_rows, ray::Color color) {
+        int budget = lua_chars_per_row();
+        for (int row = 0; row < max_rows && (size_t)row * budget < text.size(); row++) {
+            ray::DrawText(text.substr((size_t)row * budget, budget).c_str(), (int)x, (int)y, LUA_TEXT_SIZE, color);
+            y += LUA_LINE_HEIGHT;
+        }
+        return y;
+    }
+
+    static void draw_lua_button(const ray::Rectangle& box, const char* label, bool enabled) {
+        ray::DrawRectangleRec(box, ray::Fade(ray::WHITE, enabled ? 0.2f : 0.05f));
+        ray::DrawRectangleLinesEx(box, 1.0f, ray::Fade(ray::WHITE, 0.4f));
+        int label_w = ray::MeasureText(label, LUA_TEXT_SIZE);
+        ray::DrawText(label, (int)(box.x + (box.width - label_w) * 0.5f), (int)box.y + 5, LUA_TEXT_SIZE,
+                      enabled ? ray::WHITE : ray::GRAY);
+    }
+
+    struct SourceFile {
+        std::vector<std::string> lines;
+        fs::file_time_type mtime;
+        double checked_at = -1.0;
+    };
+    std::map<std::string, SourceFile> source_cache;
+
+    const std::vector<std::string>* source_lines(const fs::path& path) {
+        auto it = source_cache.find(path.string());
+        if (it == source_cache.end()) {
+            if (source_cache.size() >= SOURCE_MAX_FILES) source_cache.clear();
+            it = source_cache.emplace(path.string(), SourceFile{}).first;
+        }
+        SourceFile& file = it->second;
+        if (ray::GetTime() - file.checked_at < SOURCE_RESTAT_SECONDS) return file.lines.empty() ? nullptr : &file.lines;
+
+        file.checked_at = ray::GetTime();
+        std::error_code ec;
+        fs::file_time_type mtime = fs::last_write_time(path, ec);
+        if (!ec && (file.lines.empty() || mtime != file.mtime)) {
+            file.mtime = mtime;
+            file.lines.clear();
+            if (fs::file_size(path, ec) <= SOURCE_MAX_BYTES && !ec) {
+                std::ifstream in(path);
+                for (std::string line; std::getline(in, line); ) {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    file.lines.push_back(line);
+                }
+            }
+        }
+        return file.lines.empty() ? nullptr : &file.lines;
+    }
+
+    int selected_draw_count() const {
+        int count = 0;
+        for (const DrawLogEntry& entry : debug_draw_log_prev)
+            if (entry.name == selected_name && entry.index == selected_tex_index) count++;
+        return count;
+    }
+
+    void draw_lua_tab(float panel_x, float screen_h) {
+        const float x = panel_x + 6.0f;
+        float y = TAB_HEIGHT + 8.0f;
+
+        if (!has_selection) {
+            draw_lua_rows("Select an element on the Textures tab.", x, y, 1, ray::GRAY);
+            return;
+        }
+
+        y = draw_lua_rows(selected_name, x, y, 2, ray::WHITE) + 4.0f;
+
+        const DrawLogEntry* entry = find_selected_entry();
+        if (!entry) {
+            draw_lua_rows("Not drawn this frame.", x, y, 1, ray::GRAY);
+            return;
+        }
+
+        y = draw_lua_rows(ray::TextFormat("%d draw(s) with this name this frame", selected_draw_count()), x, y, 1, ray::GRAY);
+        if (entry->tex_obj)
+            y = draw_lua_rows(ray::TextFormat("texture loaded by %s", loaded_by(entry->name)), x, y, 2, ray::GRAY);
+        y += 6.0f;
+
+        if (!entry->from_lua) {
+            draw_lua_rows("Drawn from C++: no lua frame was on the stack.", x, y, 2, ray::SKYBLUE);
+            return;
+        }
+
+        fs::path path = entry->lua_source.empty() ? fs::path() : resolve_lua_path(entry->lua_source);
+        std::string shown = path.empty() ? entry->lua_source : path.string();
+        if (shown.empty()) shown = "(chunk has no file)";
+        std::string file = fs::path(shown).filename().string();
+        y = draw_lua_rows(entry->lua_function.empty()
+                              ? ray::TextFormat("%s:%d, in the function defined at line %d", file.c_str(), entry->lua_line, entry->lua_defined_line)
+                              : ray::TextFormat("%s:%d, in %s()", file.c_str(), entry->lua_line, entry->lua_function.c_str()),
+                          x, y, 2, ray::ORANGE);
+        y = draw_lua_rows(shown, x, y, 4, ray::Fade(ray::ORANGE, 0.6f)) + 6.0f;
+
+        if (!path.empty())
+            if (const std::vector<std::string>* lines = source_lines(path))
+                draw_lua_rows(call_text(*lines, entry->lua_line), x, y, CALL_TEXT_MAX_ROWS, ray::WHITE);
+
+        LuaButtons buttons = lua_buttons(panel_x, screen_h);
+        draw_lua_button(buttons.copy_path, "copy path", !path.empty());
+        draw_lua_button(buttons.copy_path_line, "copy path:line", !path.empty());
+    }
+
     void draw_scenes_tab(float panel_x) {
         for (size_t i = 0; i < std::size(ALL_SCREENS); i++) {
             float row_y = TAB_HEIGHT + i * ROW_HEIGHT;
@@ -253,6 +428,66 @@ private:
             ray::Color color = is_current ? ray::SKYBLUE : (is_pending ? ray::YELLOW : ray::WHITE);
             ray::DrawText(name.c_str(), (int)panel_x + 4, (int)row_y + 3, 14, color);
         }
+    }
+
+    bool is_selected_entry(const DrawLogEntry& entry) const {
+        return entry.name == selected_name && entry.index == selected_tex_index;
+    }
+
+    const DrawLogEntry* find_selected_entry() const {
+        if (!has_selection) return nullptr;
+        if (selected_log_index >= 0 && selected_log_index < (int)debug_draw_log_prev.size()) {
+            const DrawLogEntry& entry = debug_draw_log_prev[selected_log_index];
+            if (is_selected_entry(entry)) return &entry;
+        }
+        for (const DrawLogEntry& entry : debug_draw_log_prev)
+            if (is_selected_entry(entry)) return &entry;
+        return nullptr;
+    }
+
+    TextureObject* selected_obj() const {
+        const DrawLogEntry* entry = find_selected_entry();
+        return entry ? entry->tex_obj : nullptr;
+    }
+
+    enum class Position { Json, JsonPlusOffset, NoJson, Unknown };
+
+    static Position position_of(const DrawLogEntry& entry) {
+        if (!entry.tex_obj) return Position::NoJson;
+        if (entry.origin.x != 0 || entry.origin.y != 0 || entry.rotation != 0) return Position::Unknown;
+        if (entry.offset_x == 0 && entry.offset_y == 0 && !(entry.center && entry.scale != 1.0f)) return Position::Json;
+        return Position::JsonPlusOffset;
+    }
+
+    void draw_verdict(const DrawLogEntry& entry, float panel_x, float top) {
+        ray::Color color = ray::GRAY;
+        std::string headline, advice;
+        switch (position_of(entry)) {
+            case Position::Json:
+                color = ray::GREEN;
+                headline = "position comes from texture.json";
+                break;
+            case Position::JsonPlusOffset:
+                color = ray::ORANGE;
+                headline = ray::TextFormat("caller adds x%+.0f y%+.0f to the json base", entry.offset_x, entry.offset_y);
+                break;
+            case Position::NoJson:
+                color = ray::RED;
+                headline = "no texture.json behind this draw";
+                advice = "x/y here do nothing; the position is set in code";
+                break;
+            case Position::Unknown:
+                headline = "origin/rotation in use";
+                advice = "the box and these numbers are approximate";
+                break;
+        }
+        if (advice.empty())
+            advice = entry.scale != 1.0f
+                ? ray::TextFormat("x/y move it 1:1; x2/y2 change by x%.2f", entry.scale)
+                : "x/y move it 1:1 whatever the caller adds";
+        ray::DrawRectangle((int)panel_x, (int)top, (int)PANEL_WIDTH, (int)VERDICT_HEIGHT, ray::Fade(color, 0.3f));
+        ray::DrawText(headline.c_str(), (int)panel_x + 6, (int)top + 3, 12, ray::WHITE);
+        ray::DrawText(advice.c_str(), (int)panel_x + 6, (int)top + 18, 12, ray::Fade(ray::WHITE, 0.75f));
     }
 
     struct FieldButtons { ray::Rectangle minus, plus, value; };
@@ -271,7 +506,8 @@ private:
             size_t slash = e.name.find('/');
             if (slash != std::string::npos) return {e.name.substr(0, slash), e.name.substr(slash + 1)};
         }
-        return {"[lua]", e.name};
+        if (!e.from_lua) return {"[c++]", e.name};
+        return {e.lua_source.empty() ? "[lua]" : fs::path(e.lua_source).stem().string(), e.name};
     }
 
     void rebuild_visible_rows() {
@@ -298,14 +534,14 @@ private:
     }
 
     int* field_ptr(int field_idx) {
-        if (!selected_tex_obj) return nullptr;
-        TextureObject& o = *selected_tex_obj;
+        TextureObject* obj = selected_obj();
+        if (!obj) return nullptr;
         size_t idx = (size_t)selected_tex_index;
         switch (field_idx) {
-            case 0: return idx < o.x.size()  ? &o.x[idx]  : nullptr;
-            case 1: return idx < o.y.size()  ? &o.y[idx]  : nullptr;
-            case 2: return idx < o.x2.size() ? &o.x2[idx] : nullptr;
-            case 3: return idx < o.y2.size() ? &o.y2[idx] : nullptr;
+            case 0: return idx < obj->x.size()  ? &obj->x[idx]  : nullptr;
+            case 1: return idx < obj->y.size()  ? &obj->y[idx]  : nullptr;
+            case 2: return idx < obj->x2.size() ? &obj->x2[idx] : nullptr;
+            case 3: return idx < obj->y2.size() ? &obj->y2[idx] : nullptr;
         }
         return nullptr;
     }
@@ -316,7 +552,7 @@ private:
     }
 
     static FieldButtons field_buttons(int field_idx, float panel_x, float edit_top) {
-        float row_y = edit_top + 40.0f + field_idx * EDIT_ROW_HEIGHT;
+        float row_y = edit_top + EDIT_FIELDS_TOP + field_idx * EDIT_ROW_HEIGHT;
         float btn_size = EDIT_ROW_HEIGHT - 6.0f;
         ray::Rectangle minus = {panel_x + 40, row_y + 3, btn_size, btn_size};
         ray::Rectangle value = {minus.x + btn_size + 6, row_y + 2, 60.0f, btn_size + 2};
@@ -338,11 +574,8 @@ private:
     }
 
     const ray::Rectangle* find_selected_rect() const {
-        if (!selected_tex_obj) return nullptr;
-        for (const auto& e : debug_draw_log_prev) {
-            if (e.tex_obj == selected_tex_obj && e.index == selected_tex_index) return &e.rect;
-        }
-        return nullptr;
+        const DrawLogEntry* entry = find_selected_entry();
+        return entry ? &entry->rect : nullptr;
     }
 
     void draw_textures_tab(float panel_x, float screen_h) {
@@ -350,6 +583,8 @@ private:
         const float list_bottom = screen_h - edit_panel_height();
         const int   row_count   = (int)visible_rows.size();
         const int   rows_shown  = std::max(0, (int)((list_bottom - list_top) / ROW_HEIGHT));
+
+        const DrawLogEntry* selected = find_selected_entry();
 
         ray::BeginScissorMode((int)panel_x, (int)list_top, (int)PANEL_WIDTH, (int)(list_bottom - list_top));
         for (int row = 0; row < rows_shown; row++) {
@@ -368,8 +603,7 @@ private:
 
             const DrawLogEntry& e = debug_draw_log_prev[vr.log_index];
             bool is_hovered  = (vr.log_index == hovered_log_index);
-            bool is_selected = has_selection && e.tex_obj == selected_tex_obj && e.index == selected_tex_index &&
-                                (selected_tex_obj || e.name == selected_name);
+            bool is_selected = (&e == selected);
             if (is_selected) {
                 ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::SKYBLUE, 0.35f));
             } else if (is_hovered) {
@@ -422,20 +656,25 @@ private:
 
         ray::DrawText(selected_name.c_str(), (int)panel_x + 8, (int)edit_top + 8, 16, ray::WHITE);
 
-        if (!selected_tex_obj) {
-            ray::DrawText("(lua item, no attributes)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
+        const DrawLogEntry* entry = find_selected_entry();
+        if (!entry) {
+            ray::DrawText("(not drawn this frame)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
             return;
         }
+        draw_verdict(*entry, panel_x, edit_top + VERDICT_TOP);
 
-        const char* info = ray::TextFormat("%dx%d px, %d frame(s)", selected_tex_obj->width,
-                                            selected_tex_obj->height, selected_tex_obj->frame_count());
+        TextureObject* obj = entry->tex_obj;
+        if (!obj) return;
+
+        const char* info = ray::TextFormat("%dx%d px, %d frame(s)", obj->width,
+                                            obj->height, obj->frame_count());
         ray::DrawText(info, (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
 
         for (int i = 0; i < 4; i++) {
             int* value = field_ptr(i);
             if (!value) continue;
             FieldButtons b = field_buttons(i, panel_x, edit_top);
-            float row_y = edit_top + 40.0f + i * EDIT_ROW_HEIGHT;
+            float row_y = edit_top + EDIT_FIELDS_TOP + i * EDIT_ROW_HEIGHT;
 
             ray::DrawText(field_label(i), (int)panel_x + 8, (int)row_y + 4, 14, ray::WHITE);
 
