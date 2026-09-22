@@ -36,8 +36,6 @@ enum class Screens {
     SETTINGS,
     LOADING,
     INPUT_CALI,
-    SKIN_VIEWER,
-    SANDBOX,
     GAME_OVER,
     INPUT_TEST
 };
