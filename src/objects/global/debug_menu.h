@@ -28,8 +28,8 @@ public:
 
     bool has_selection = false;
     std::string selected_name;
-    TextureObject* selected_tex_obj = nullptr;
     int selected_tex_index = 0;
+    int selected_log_index = -1;
 
     int editing_field = -1;
     std::string edit_buffer;
@@ -46,12 +46,12 @@ public:
     void clear_selection() {
         commit_edit();
         has_selection = false;
-        selected_tex_obj = nullptr;
         selected_name.clear();
+        selected_log_index = -1;
     }
 
     FramedTexture* get_selected_framed() const {
-        return selected_tex_obj ? dynamic_cast<FramedTexture*>(selected_tex_obj) : nullptr;
+        return dynamic_cast<FramedTexture*>(selected_obj());
     }
 
     static int frame_grid_cols() { return std::max(1, (int)(PANEL_WIDTH / FRAME_CELL_WIDTH)); }
@@ -153,13 +153,13 @@ public:
                     const DrawLogEntry& e = debug_draw_log_prev[vr.log_index];
                     has_selection = true;
                     selected_name = e.name;
-                    selected_tex_obj = e.tex_obj;
                     selected_tex_index = e.index;
+                    selected_log_index = vr.log_index;
                 }
             }
         }
 
-        if (clicked && selected_tex_obj && mouse_over_panel && mouse.y >= list_bottom) {
+        if (clicked && has_selection && mouse_over_panel && mouse.y >= list_bottom) {
             const int step = ray::IsKeyDown(ray::KEY_LEFT_SHIFT) ? 10 : 1;
             for (int i = 0; i < 4; i++) {
                 int* value = field_ptr(i);
@@ -255,6 +255,26 @@ private:
         }
     }
 
+    bool is_selected_entry(const DrawLogEntry& entry) const {
+        return entry.name == selected_name && entry.index == selected_tex_index;
+    }
+
+    const DrawLogEntry* find_selected_entry() const {
+        if (!has_selection) return nullptr;
+        if (selected_log_index >= 0 && selected_log_index < (int)debug_draw_log_prev.size()) {
+            const DrawLogEntry& entry = debug_draw_log_prev[selected_log_index];
+            if (is_selected_entry(entry)) return &entry;
+        }
+        for (const DrawLogEntry& entry : debug_draw_log_prev)
+            if (is_selected_entry(entry)) return &entry;
+        return nullptr;
+    }
+
+    TextureObject* selected_obj() const {
+        const DrawLogEntry* entry = find_selected_entry();
+        return entry ? entry->tex_obj : nullptr;
+    }
+
     struct FieldButtons { ray::Rectangle minus, plus, value; };
 
     struct VisualRow {
@@ -298,14 +318,14 @@ private:
     }
 
     int* field_ptr(int field_idx) {
-        if (!selected_tex_obj) return nullptr;
-        TextureObject& o = *selected_tex_obj;
+        TextureObject* obj = selected_obj();
+        if (!obj) return nullptr;
         size_t idx = (size_t)selected_tex_index;
         switch (field_idx) {
-            case 0: return idx < o.x.size()  ? &o.x[idx]  : nullptr;
-            case 1: return idx < o.y.size()  ? &o.y[idx]  : nullptr;
-            case 2: return idx < o.x2.size() ? &o.x2[idx] : nullptr;
-            case 3: return idx < o.y2.size() ? &o.y2[idx] : nullptr;
+            case 0: return idx < obj->x.size()  ? &obj->x[idx]  : nullptr;
+            case 1: return idx < obj->y.size()  ? &obj->y[idx]  : nullptr;
+            case 2: return idx < obj->x2.size() ? &obj->x2[idx] : nullptr;
+            case 3: return idx < obj->y2.size() ? &obj->y2[idx] : nullptr;
         }
         return nullptr;
     }
@@ -338,11 +358,8 @@ private:
     }
 
     const ray::Rectangle* find_selected_rect() const {
-        if (!selected_tex_obj) return nullptr;
-        for (const auto& e : debug_draw_log_prev) {
-            if (e.tex_obj == selected_tex_obj && e.index == selected_tex_index) return &e.rect;
-        }
-        return nullptr;
+        const DrawLogEntry* entry = find_selected_entry();
+        return entry ? &entry->rect : nullptr;
     }
 
     void draw_textures_tab(float panel_x, float screen_h) {
@@ -350,6 +367,8 @@ private:
         const float list_bottom = screen_h - edit_panel_height();
         const int   row_count   = (int)visible_rows.size();
         const int   rows_shown  = std::max(0, (int)((list_bottom - list_top) / ROW_HEIGHT));
+
+        const DrawLogEntry* selected = find_selected_entry();
 
         ray::BeginScissorMode((int)panel_x, (int)list_top, (int)PANEL_WIDTH, (int)(list_bottom - list_top));
         for (int row = 0; row < rows_shown; row++) {
@@ -368,8 +387,7 @@ private:
 
             const DrawLogEntry& e = debug_draw_log_prev[vr.log_index];
             bool is_hovered  = (vr.log_index == hovered_log_index);
-            bool is_selected = has_selection && e.tex_obj == selected_tex_obj && e.index == selected_tex_index &&
-                                (selected_tex_obj || e.name == selected_name);
+            bool is_selected = (&e == selected);
             if (is_selected) {
                 ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::SKYBLUE, 0.35f));
             } else if (is_hovered) {
@@ -422,13 +440,14 @@ private:
 
         ray::DrawText(selected_name.c_str(), (int)panel_x + 8, (int)edit_top + 8, 16, ray::WHITE);
 
-        if (!selected_tex_obj) {
-            ray::DrawText("(lua item, no attributes)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
+        TextureObject* obj = selected_obj();
+        if (!obj) {
+            ray::DrawText("(no attributes)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
             return;
         }
 
-        const char* info = ray::TextFormat("%dx%d px, %d frame(s)", selected_tex_obj->width,
-                                            selected_tex_obj->height, selected_tex_obj->frame_count());
+        const char* info = ray::TextFormat("%dx%d px, %d frame(s)", obj->width,
+                                            obj->height, obj->frame_count());
         ray::DrawText(info, (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
 
         for (int i = 0; i < 4; i++) {

@@ -140,6 +140,8 @@ void TextureWrapper::unload_textures() {
     screen_animations.clear();
     subset_loaded_ids().clear();
     tex_id_refcount().clear();
+    debug_draw_log.clear();
+    debug_draw_log_prev.clear();
 }
 
 BaseAnimation* TextureWrapper::get_animation(const int id, bool is_copy) {
