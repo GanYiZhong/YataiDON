@@ -89,6 +89,8 @@ public:
 
     bool is_ready() const { return texture.has_value(); }
 
+    const std::string& get_text() const { return text; }
+
     void finish();
 
     void draw(const DrawTextureParams& = {});

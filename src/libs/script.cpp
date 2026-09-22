@@ -421,6 +421,7 @@ void ScriptManager::register_lua_bindings() {
 
     tex.set_function("draw_rect", [](float x, float y, float w, float h, int r, int g, int b, int a) {
         auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
+        if (debug_log_draws) debug_draw_log.push_back({"rect", {x, y, w, h}});
         ray::DrawRectangle((int)x, (int)y, (int)w, (int)h, ray::Color{to_u8(r), to_u8(g), to_u8(b), to_u8(a)});
     });
 
@@ -553,6 +554,15 @@ tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
         "finish",         &OutlinedText::finish,
         "draw",           [](OutlinedText& self, sol::optional<sol::table> params_table) {
             DrawTextureParams params = parse_draw_params(params_table, false);
+            if (debug_log_draws) {
+                ray::Rectangle rect = {
+                    params.x + self.x_offset, params.y + self.y_offset,
+                    self.width + params.x2, self.height + params.y2
+                };
+                std::string label = self.get_text();
+                if (label.size() > 40) label = label.substr(0, 40) + "...";
+                debug_draw_log.push_back({"\"" + label + "\"", rect});
+            }
             self.draw(params);
         }
     );

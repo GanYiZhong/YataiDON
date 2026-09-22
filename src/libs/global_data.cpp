@@ -5,6 +5,7 @@
 #include "script.h"
 #include "text.h"
 #include "audio.h"
+#include "../objects/global/debug_menu.h"
 #include <spdlog/spdlog.h>
 
 GlobalData global_data;
@@ -45,6 +46,7 @@ void load_skin() {
 }
 
 void unload_skin() {
+    debug_menu.clear_selection();
     tex.unload_textures();
     global_tex.unload_textures();
     script_manager.shutdown();

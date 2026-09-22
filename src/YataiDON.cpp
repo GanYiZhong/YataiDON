@@ -30,15 +30,14 @@
 #include "scenes/loading.h"
 #include "scenes/result.h"
 #include "scenes/result_2p.h"
-#include "scenes/sandbox.h"
 #include "scenes/settings.h"
-#include "scenes/skin_viewer.h"
 #include "scenes/song_select.h"
 #include "scenes/song_select_2p.h"
 #include "scenes/song_select_practice.h"
 #include "scenes/title.h"
 #include "scenes/game_over.h"
 
+#include "objects/global/debug_menu.h"
 #include "objects/global/fps_counter.h"
 
 #ifdef _WIN32
@@ -107,10 +106,6 @@ Screens check_args(int argc, char* argv[]) {
             auto_play = true;
         } else if (arg == "--practice") {
             practice = true;
-        } else if (arg == "--sandbox") {
-            return Screens::SANDBOX;
-        } else if (arg == "--skin-viewer") {
-            return Screens::SKIN_VIEWER;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " <song_path> [difficulty] [--auto] [--practice]\n";
             std::cout << "  song_path   : Path to the TJA song file\n";
@@ -241,8 +236,6 @@ static void populate_screens(std::unordered_map<Screens, std::unique_ptr<Screen>
     if (except != Screens::DAN_RESULT)      screens[Screens::DAN_RESULT]      = std::make_unique<DanResultScreen>();
     if (except != Screens::SETTINGS)        screens[Screens::SETTINGS]        = std::make_unique<SettingsScreen>();
     if (except != Screens::INPUT_CALI)      screens[Screens::INPUT_CALI]      = std::make_unique<InputCaliScreen>();
-    if (except != Screens::SKIN_VIEWER)     screens[Screens::SKIN_VIEWER]     = std::make_unique<SkinViewerScreen>();
-    if (except != Screens::SANDBOX)         screens[Screens::SANDBOX]         = std::make_unique<SandboxScreen>();
     if (except != Screens::GAME_OVER)       screens[Screens::GAME_OVER]       = std::make_unique<GameOverScreen>();
     if (except != Screens::INPUT_TEST)      screens[Screens::INPUT_TEST]      = std::make_unique<InputTestScreen>();
 }
@@ -302,11 +295,8 @@ static void run_frame() {
 
 #endif
 
-    // Read tex.screen_width/height live, not a cached copy -- a skin change
-    // (settings.cpp's unload_skin()+load_skin()) can change the virtual
-    // canvas size for a skin of a different resolution mid-session, and a
-    // stale copy here would misalign the camera against it from then on.
     L.camera = compute_camera2d(tex.screen_width, tex.screen_height);
+    debug_menu.update(L.camera);
 
     ray::BeginDrawing();
 
@@ -371,8 +361,6 @@ static void run_frame() {
     }
 
     if (global_data.config->general.touch_input) {
-        // Settings reloads global_tex and destroys its animations. Resolve the
-        // current animation each frame instead of retaining a pointer across reloads.
         auto* touch_drum_resize = static_cast<TextureResizeAnimation*>(global_tex.get_animation(66));
         if (touch_drum_resize) {
         if (!touch_drum_resize->isStarted()) touch_drum_resize->start();
@@ -392,6 +380,8 @@ static void run_frame() {
         L.fps_counter.update();
         L.fps_counter.draw();
     }
+
+    debug_menu.draw();
 
     draw_outer_border(tex.screen_width, tex.screen_height, L.last_color);
 

@@ -567,8 +567,8 @@ void TextureWrapper::load_folder(const std::string& screen_name, const std::stri
                     }
 
                     std::shared_ptr<TextureObject> obj;
-                    if (p.framed) obj = std::make_shared<FramedTexture>(p.name, texs);
-                    else          obj = std::make_shared<SingleTexture>(p.name, texs[0]);
+                    if (p.framed) obj = std::make_shared<FramedTexture>(p.id, texs);
+                    else          obj = std::make_shared<SingleTexture>(p.id, texs[0]);
 
                     read_tex_obj_data(*p.mapping, obj.get(), tex_scale);
                     textures[p.id] = obj;
@@ -772,6 +772,8 @@ void TextureWrapper::draw_texture(TextureObject* tex_obj, const DrawTextureParam
             tex_obj->y2[params.index] * params.scale + params.y2
         };
     }
+
+    if (debug_log_draws) debug_draw_log.push_back({tex_obj->name, dest_rect, tex_obj, params.index});
 
     const ray::Texture2D* frame_tex = tex_obj->frame_texture(params.frame);
     if (frame_tex) {

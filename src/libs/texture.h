@@ -130,6 +130,17 @@ struct FramedTexture : public TextureObject {
     }
 };
 
+struct DrawLogEntry {
+    std::string name;
+    ray::Rectangle rect;
+    TextureObject* tex_obj = nullptr;
+    int index = 0;
+};
+
+inline bool debug_log_draws = false;
+inline std::vector<DrawLogEntry> debug_draw_log;
+inline std::vector<DrawLogEntry> debug_draw_log_prev;
+
 class TextureWrapper {
 private:
     std::unordered_map<int, std::unique_ptr<BaseAnimation>> animations;
