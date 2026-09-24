@@ -76,7 +76,9 @@ FetchContent_Declare(
   GIT_TAG        master
   GIT_SHALLOW    TRUE
   UPDATE_DISCONNECTED TRUE
+  UPDATE_COMMAND "" # patch dirties the tree; disconnected update still stashes/pops it on every reconfigure and conflicts with itself
   PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patch_raylib_ctype.cmake
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patch_raylib_drop_event.cmake
 )
 FetchContent_GetProperties(raylib)
 FetchContent_MakeAvailable(raylib)
