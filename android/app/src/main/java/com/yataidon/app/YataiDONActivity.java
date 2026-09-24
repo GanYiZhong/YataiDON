@@ -4,8 +4,6 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowInsets;
@@ -17,18 +15,13 @@ import java.io.File;
 
 import org.libsdl.app.SDLActivity;
 
+// SplashActivity (the actual launcher entry point) extracts bundled Skins/Songs
+// to /sdcard/YataiDON before starting this activity, so they're on disk before
+// SDL_main() ever looks for them.
 public class YataiDONActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Request MANAGE_EXTERNAL_STORAGE on Android 11+ so we can read /sdcard/YataiDON/
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
-            }
-        }
         super.onCreate(savedInstanceState);
         hideSystemUI();
     }

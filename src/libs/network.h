@@ -15,7 +15,9 @@
 #endif
 #endif
 
+#include <atomic>
 #include <string>
+#include <thread>
 
 enum class InputLogType {
     KAT_L = 0,
@@ -55,14 +57,11 @@ public:
     bool fetch_title_bg(const std::string& access_code, int& title_bg);
 
     bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
-    // Android only, no-op elsewhere: kicks off (async, non-blocking) a check of
-    // the GitHub release for a newer YataiDON-Android.apk (by sha256, since the
-    // release tag is a fixed "latest") and, if found, downloads it and hands it
-    // to the OS install flow. Progresses via update(); safe to call unconditionally.
+
     void check_and_install_android_update();
-    // One short synchronous /health round-trip. The boot-time sync fetches each wait
-    // out their 5 s timeout when the server is unreachable (20+ s of black screen
-    // offline); probe once and skip them all instead.
+
+    void check_android_skin_updates();
+
     bool probe_online();
     void update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume);
 
@@ -71,10 +70,6 @@ public:
 
     std::vector<RemoteScore> fetch_scores(const std::string& access_code);
 
-    // Blocks until any in-flight request finishes (bounded by its cpr::Timeout).
-    // Call before process exit so nothing is left running past main() -- an
-    // async request whose future outlives the process can touch already-
-    // destroyed globals (spdlog, etc.) during static teardown.
     void shutdown();
 
 private:
@@ -97,6 +92,8 @@ private:
     std::optional<cpr::AsyncResponse> pending_update_apk;
     std::string pending_update_expected_sha256;
     bool android_update_checked = false;
+    std::thread skin_update_thread;
+    std::atomic<bool> skin_update_done{false};
 #endif
 #endif
 };

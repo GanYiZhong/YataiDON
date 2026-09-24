@@ -18,9 +18,12 @@
 #include <random>
 
 #if defined(NETWORK_ENABLED) && defined(__ANDROID__)
+#include "filesystem.h"
 #include <SDL3/SDL.h>
 #include <jni.h>
 #include <fstream>
+#include <sstream>
+#include <vector>
 #endif
 
 NetworkClient network;
@@ -388,6 +391,18 @@ constexpr char kUpdateChecksumUrl[] = "https://github.com/yonokid/YataiDON/relea
 constexpr char kUpdateApkUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/YataiDON-Android.apk";
 constexpr char kUpdateMarkerPath[] = "update_apk.sha256";
 constexpr char kUpdateApkPath[] = "/sdcard/YataiDON/update.apk";
+constexpr char kUpdateApkTmpPath[] = "/sdcard/YataiDON/update.apk.part";
+
+std::optional<std::string> sha256_of_file(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return std::nullopt;
+    crypto::Sha256 hasher;
+    std::vector<char> buf(1 << 16);
+    while (in.read(buf.data(), static_cast<std::streamsize>(buf.size())) || in.gcount() > 0) {
+        hasher.update(reinterpret_cast<const uint8_t*>(buf.data()), static_cast<std::size_t>(in.gcount()));
+    }
+    return crypto::to_hex(hasher.finalize());
+}
 }  // namespace
 
 void NetworkClient::check_and_install_android_update() {
@@ -397,6 +412,110 @@ void NetworkClient::check_and_install_android_update() {
 }
 #else
 void NetworkClient::check_and_install_android_update() {}
+#endif
+
+#if defined(__ANDROID__)
+namespace {
+
+std::string strip_dot_git(std::string url) {
+    if (url.size() >= 4 && url.compare(url.size() - 4, 4, ".git") == 0) url.resize(url.size() - 4);
+    return url;
+}
+
+void trim(std::string& s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+}
+
+cpr::Response get_classical_tls(const std::string& url, int32_t timeout_ms, int32_t connect_timeout_ms) {
+    cpr::Session session;
+    session.SetUrl(cpr::Url{url});
+    session.SetTimeout(cpr::Timeout{timeout_ms});
+    session.SetConnectTimeout(cpr::ConnectTimeout{connect_timeout_ms});
+    session.SetOption(android_ca());
+    curl_easy_setopt(session.GetCurlHolder()->handle, CURLOPT_SSL_EC_CURVES, "X25519:P-256:P-384");
+    return session.Get();
+}
+
+void update_one_skin(const fs::path& skin_dir, const std::string& repo_url, const std::string& branch) {
+    auto raw_url = [&](const std::string& rel_path) {
+        return repo_url + "/raw/branch/" + branch + "/" + rel_path;
+    };
+
+    cpr::Response checksums = get_classical_tls(raw_url("checksums.sha256"), 10000, 5000);
+    if (checksums.status_code != 200) {
+        spdlog::warn("Skin update ({}): could not fetch checksums.sha256 (HTTP {}, curl error {}: {})",
+                     skin_dir.filename().string(), checksums.status_code,
+                     static_cast<int>(checksums.error.code), checksums.error.message);
+        return;
+    }
+
+    std::istringstream lines(checksums.text);
+    std::string hash, rel_path;
+    int updated = 0;
+    while (lines >> hash >> rel_path) {
+        if (!rel_path.empty() && rel_path.front() == '*') rel_path.erase(0, 1);
+        if (fs::path(rel_path).filename() == "checksums.sha256") continue;
+
+        fs::path local_file = skin_dir / rel_path;
+        std::error_code size_ec;
+        uintmax_t size = fs::file_size(local_file, size_ec);
+        if (!size_ec) {
+            std::ifstream in(local_file, std::ios::binary);
+            std::string contents(size, '\0');
+            in.read(contents.data(), static_cast<std::streamsize>(size));
+            if (crypto::to_hex(crypto::sha256(contents)) == hash) continue;
+        }
+
+        cpr::Response file_resp = get_classical_tls(raw_url(rel_path), 15000, 5000);
+        if (file_resp.status_code != 200) {
+            spdlog::warn("Skin update ({}): failed to download {} (HTTP {})", skin_dir.filename().string(), rel_path, file_resp.status_code);
+            continue;
+        }
+        std::error_code mkdir_ec;
+        fs::create_directories(local_file.parent_path(), mkdir_ec);
+        std::ofstream out(local_file, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            spdlog::warn("Skin update ({}): failed to write {}", skin_dir.filename().string(), rel_path);
+            continue;
+        }
+        out << file_resp.text;
+        ++updated;
+    }
+    spdlog::info("Skin update ({}): {} file(s) updated", skin_dir.filename().string(), updated);
+}
+
+void scan_skins() {
+    std::error_code ec;
+    if (!fs::exists("Skins", ec)) return;
+    for (const auto& entry : fs::directory_iterator("Skins", ec)) {
+        if (ec || !entry.is_directory()) continue;
+
+        std::ifstream repo_file(entry.path() / ".skin-repo");
+        if (!repo_file) continue;
+        std::string repo_url, branch;
+        std::getline(repo_file, repo_url);
+        std::getline(repo_file, branch);
+        trim(repo_url);
+        trim(branch);
+        if (repo_url.empty()) continue;
+        if (branch.empty()) branch = "main";
+
+        update_one_skin(entry.path(), strip_dot_git(repo_url), branch);
+    }
+}
+
+}  // namespace
+
+void NetworkClient::check_android_skin_updates() {
+    if (skin_update_thread.joinable()) return;
+    skin_update_done = false;
+    skin_update_thread = std::thread([this] {
+        scan_skins();
+        skin_update_done = true;
+    });
+}
+#else
+void NetworkClient::check_android_skin_updates() {}
 #endif
 
 void NetworkClient::update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume) {
@@ -599,7 +718,10 @@ void NetworkClient::update(double current_ms) {
             } else {
                 spdlog::info("Update check: newer APK available, downloading");
                 pending_update_expected_sha256 = expected_sha256;
-                pending_update_apk = cpr::GetAsync(cpr::Url{kUpdateApkUrl}, cpr::Timeout{30000} NETWORK_CA_OPT);
+                // Streams straight to disk (cpr::Download, not Get) -- the APK now
+                // bundles Skins/Songs and can be well over a GB; buffering the whole
+                // body in a cpr::Response.text std::string risked an OOM.
+                pending_update_apk = cpr::DownloadAsync(fs::path(kUpdateApkTmpPath), cpr::Url{kUpdateApkUrl}, cpr::Timeout{600000}, cpr::ConnectTimeout{5000} NETWORK_CA_OPT);
             }
         }
     }
@@ -609,17 +731,23 @@ void NetworkClient::update(double current_ms) {
         cpr::Response response = pending_update_apk->get();
         pending_update_apk.reset();
 
+        std::optional<std::string> actual_sha256 = response.status_code == 200
+            ? sha256_of_file(kUpdateApkTmpPath) : std::nullopt;
+
         if (response.status_code != 200) {
             spdlog::error("Update: APK download failed (HTTP {})", response.status_code);
-        } else if (crypto::to_hex(crypto::sha256(response.text)) != pending_update_expected_sha256) {
+            std::error_code ec;
+            fs::remove(kUpdateApkTmpPath, ec);
+        } else if (!actual_sha256 || *actual_sha256 != pending_update_expected_sha256) {
             spdlog::error("Update: downloaded APK sha256 mismatch, discarding");
+            std::error_code ec;
+            fs::remove(kUpdateApkTmpPath, ec);
         } else {
-            std::ofstream out(kUpdateApkPath, std::ios::binary | std::ios::trunc);
-            if (!out) {
-                spdlog::error("Update: failed to open {} for writing", kUpdateApkPath);
+            std::error_code ec;
+            fs::rename(kUpdateApkTmpPath, kUpdateApkPath, ec);
+            if (ec) {
+                spdlog::error("Update: failed to move {} to {}: {}", kUpdateApkTmpPath, kUpdateApkPath, ec.message());
             } else {
-                out << response.text;
-                out.close();
                 std::ofstream(kUpdateMarkerPath, std::ios::trunc) << pending_update_expected_sha256;
                 install_apk(kUpdateApkPath);
             }
@@ -698,6 +826,17 @@ void NetworkClient::shutdown() {
         pending_update_apk->wait();
         pending_update_apk.reset();
     }
+    if (skin_update_thread.joinable()) {
+        for (int waited_ms = 0; waited_ms < 5000 && !skin_update_done.load(); waited_ms += 50) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (skin_update_done.load()) {
+            skin_update_thread.join();
+        } else {
+            spdlog::warn("Skin update: still running after 5s at shutdown, detaching");
+            skin_update_thread.detach();
+        }
+    }
 #endif
     if (pending_score_submit.has_value()) {
         cpr::Response response = pending_score_submit->get();
@@ -722,6 +861,7 @@ bool NetworkClient::fetch_title(const std::string&, std::string&) { return false
 bool NetworkClient::fetch_title_bg(const std::string&, int&) { return false; }
 bool NetworkClient::fetch_costume(const std::string&, int&, int&, int&, bool&) { return false; }
 void NetworkClient::check_and_install_android_update() {}
+void NetworkClient::check_android_skin_updates() {}
 void NetworkClient::update_costume(const std::string&, int, int, int, bool) {}
 std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { return {}; }
 void NetworkClient::poll_song_jump(const std::string&) {}

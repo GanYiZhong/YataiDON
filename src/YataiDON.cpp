@@ -479,6 +479,7 @@ int main(int argc, char* argv[]) {
 
 #ifdef PLATFORM_ANDROID
     network.check_and_install_android_update();
+    network.check_android_skin_updates();
 #endif
     const bool net_ok = network.probe_online();
     if (net_ok && global_data.config->network.access_code.empty()) {

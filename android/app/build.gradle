@@ -54,16 +54,29 @@ android {
         into shaderOutDir
     }
 
+    // Bundle Skins/ and Songs/ into the APK so a fresh install has assets to
+    // load immediately (matching the iOS build's GameData bundle -- see
+    // cmake/ios_assets.cmake). Extracted to /sdcard/YataiDON on first launch
+    // by YataiDONActivity.
+    def gameDataOutDir = layout.buildDirectory.dir('generated/game_data_assets')
+
+    task copyGameDataAssets(type: Copy) {
+        from(rootProject.file('../Skins')) { into 'Skins' }
+        from(rootProject.file('../Songs')) { into 'Songs' }
+        into gameDataOutDir
+    }
+
     sourceSets {
         main {
             assets.srcDirs = [
                 'src/main/assets',
-                layout.buildDirectory.dir('generated/shader_assets').get()
+                layout.buildDirectory.dir('generated/shader_assets').get(),
+                gameDataOutDir.get()
             ]
         }
     }
 
-    preBuild.dependsOn copyShaderAssets
+    preBuild.dependsOn copyShaderAssets, copyGameDataAssets
 
     lint {
         abortOnError false
