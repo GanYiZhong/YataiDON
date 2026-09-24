@@ -10,6 +10,10 @@
 #include <fstream>
 #include <map>
 
+#ifdef DrawTextEx
+    #undef DrawTextEx
+#endif
+
 class DebugMenu {
 public:
     static const int TAB_COUNT = 4;
