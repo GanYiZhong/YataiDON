@@ -22,15 +22,18 @@ private:
     FadeAnimation* fade;
     std::unique_ptr<OutlinedText> song_title;
     std::unique_ptr<OutlinedText> song_subtitle;
+    std::unique_ptr<OutlinedText> genre_text;
     std::unique_ptr<SongNum> song_num;
     std::unique_ptr<SongNum> song_max;
 
     TextureObject* t_genre = nullptr;
     TextureObject* t_song_num_plate = nullptr;
+    ray::Shader genre_shader{};
+    bool genre_shader_loaded = false;
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0);
+    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0, const std::string& genre_label = "");
 
     void update(double current_ms);
     void draw();

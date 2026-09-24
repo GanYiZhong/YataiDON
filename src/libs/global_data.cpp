@@ -35,18 +35,20 @@ void load_skin() {
         {"zh", "cn"}, {"ko", "kr"}, {"ja", "jp"}, {"zh_tw", "tw"}, {"zh-tw", "tw"}, {"zh_cn", "cn"}, {"zh-cn", "cn"},
     };
     const std::string& lang = global_data.config->general.language;
-    fs::path font_path = resolve_skin_path("Graphics/font_" + lang + ".ttf");
+    fs::path font_path = resolve_skin_path("Fonts/font_" + lang + ".ttf");
     if (!fs::exists(font_path) && font_family.count(lang))
-        font_path = resolve_skin_path("Graphics/font_" + font_family.at(lang) + ".ttf");
-    if (!fs::exists(font_path)) font_path = resolve_skin_path("Graphics/font.ttf");
+        font_path = resolve_skin_path("Fonts/font_" + font_family.at(lang) + ".ttf");
+    if (!fs::exists(font_path)) font_path = resolve_skin_path("Fonts/font.ttf");
     if (!fs::exists(font_path))
         spdlog::error("No skin font found (tried font_{}.ttf and font.ttf) in {}", lang, root_skin_path.string());
     font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
+    debug_menu.load_fonts();
 }
 
 void unload_skin() {
     debug_menu.clear_selection();
+    debug_menu.unload_fonts();
     tex.unload_textures();
     global_tex.unload_textures();
     script_manager.shutdown();

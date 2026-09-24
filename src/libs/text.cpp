@@ -750,7 +750,7 @@ void OutlinedText::draw(const DrawTextureParams& params) {
 
     if (!texture.has_value()) return;
 
-    ray::Rectangle src = {0, 0, (float)texture->width, (float)texture->height};
+    ray::Rectangle src = params.src.value_or(ray::Rectangle{0, 0, (float)texture->width, (float)texture->height});
     float dx = params.x + x_offset;
     float dy = params.y + y_offset;
 
@@ -759,11 +759,20 @@ void OutlinedText::draw(const DrawTextureParams& params) {
         dy = roundf(dy);
     }
 
-    ray::Rectangle dst = {
-        dx, dy,
-        (float)texture->width  + params.x2,
-        (float)texture->height + params.y2
-    };
+    // dst is sized off src (not the full texture) so a caller can pass a
+    // shorter/narrower src to hard-crop the text instead of stretching it.
+    float dst_w = src.width  * params.scale + params.x2;
+    float dst_h = src.height * params.scale + params.y2;
+    ray::Rectangle dst;
+    if (params.center) {
+        dst = {
+            dx + (src.width  - src.width  * params.scale) * 0.5f,
+            dy + (src.height - src.height * params.scale) * 0.5f,
+            dst_w, dst_h
+        };
+    } else {
+        dst = { dx, dy, dst_w, dst_h };
+    }
     if (debug_log_draws) {
         std::string label = text.size() > 40 ? text.substr(0, 40) + "..." : text;
         debug_draw_log.push_back({"\"" + label + "\"", dst});

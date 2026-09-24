@@ -8,6 +8,7 @@
 #include "input.h"
 #include "filesystem.h"
 #include "webcam.h"
+#include "screen.h"
 #include "../objects/song_select/file_navigator/box_lua_bindings.h"
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
@@ -456,7 +457,11 @@ void ScriptManager::register_lua_bindings() {
     });
 
 tex.set_function("begin_scissor", [](float x, float y, float w, float h) {
-        ray::BeginScissorMode((int)x, (int)y, (int)w, (int)h);
+        int sx = virtual_to_screen_x(x);
+        int ex = virtual_to_screen_x(x + w);
+        int sy = virtual_to_screen_y(y);
+        int ey = virtual_to_screen_y(y + h);
+        ray::BeginScissorMode(sx, sy, ex - sx, ey - sy);
     });
 
     tex.set_function("end_scissor", []() {

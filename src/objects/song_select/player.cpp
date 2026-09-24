@@ -4,6 +4,43 @@
 #include "../../libs/audio.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
+#include "../../libs/text.h"
+
+namespace {
+    OutlinedText* selected_diff_label(int diff) {
+        static std::array<std::unique_ptr<OutlinedText>, 4> cache;
+        static std::string cached_lang;
+        const std::string& lang = global_data.config->general.language;
+        if (lang != cached_lang) {
+            static constexpr std::array<SC, 4> keys = {
+                SC::DIFF_TOWER_EASY, SC::DIFF_TOWER_NORMAL, SC::DIFF_TOWER_HARD, SC::DIFF_TOWER_ONI,
+            };
+            std::array<std::string, 4> labels;
+            for (size_t i = 0; i < 4; i++) {
+                const SkinInfo& cfg = tex.skin_config[keys[i]];
+                auto it = cfg.text.find(lang);
+                labels[i] = it != cfg.text.end() ? it->second
+                          : !cfg.text.empty()    ? cfg.text.begin()->second
+                                                  : "";
+            }
+            const SkinInfo& box_cfg = tex.skin_config[SC::SELECTED_DIFF_TEXT_BOX];
+            int font_size = (int)box_cfg.height;
+            while (font_size > 8) {
+                bool fits = true;
+                for (auto& l : labels) {
+                    float w = ray::MeasureTextEx(font_manager.get_font(l, font_size), l.c_str(), (float)font_size, 2.0f).x;
+                    if (w > box_cfg.width) { fits = false; break; }
+                }
+                if (fits) break;
+                font_size--;
+            }
+            for (size_t i = 0; i < 4; i++)
+                cache[i] = std::make_unique<OutlinedText>(labels[i], font_size + 3, ray::WHITE, ray::BLACK, false);
+            cached_lang = lang;
+        }
+        return cache[diff].get();
+    }
+}
 
 void SongSelectPlayer::try_lua_selector(bool is_half, float fade_in, int pass) {
     selector_handled_by_lua = script && script->draw_selector(this, is_half, fade_in, pass);
@@ -55,7 +92,6 @@ SongSelectPlayer::SongSelectPlayer(PlayerNum player_num)
     t_background_diff = tex.get_texture("global/background_diff");
     t_background_diff_highlight = tex.get_texture("global/background_diff_highlight");
     t_bg_diff_text_bg = tex.get_texture("global/bg_diff_text_bg");
-    t_bg_diff_text = tex.get_texture("global/bg_diff_text");
 }
 
 void SongSelectPlayer::update(double current_time) {
@@ -555,7 +591,16 @@ void SongSelectPlayer::draw_background_diffs(SongSelectState state) {
         tex.draw_texture(t_background_diff, {.frame=diff_frame, .x=x_offset, .y=bounce_y, .y2=bounce_y2});
     tex.draw_texture(t_background_diff_highlight,  {.frame=diff_frame_oni, .x=x_offset, .fade=selected_diff_highlight_fade->attribute});
     tex.draw_texture(t_bg_diff_text_bg, {.scale=(float)selected_diff_text_resize->attribute, .center=true, .x=x_offset, .fade=std::min(0.5f, (float)selected_diff_text_fadein->attribute)});
-    tex.draw_texture(t_bg_diff_text,    {.frame=diff_frame_oni, .scale=(float)selected_diff_text_resize->attribute, .center=true, .x=x_offset, .fade=selected_diff_text_fadein->attribute});
+
+    OutlinedText* diff_label = selected_diff_label(diff_frame_oni);
+    const SkinInfo& diff_text_pos = tex.skin_config[SC::SELECTED_DIFF_TEXT_BOX];
+    diff_label->draw({
+        .scale = (float)selected_diff_text_resize->attribute,
+        .center = true,
+        .x = diff_text_pos.x + x_offset - diff_label->width / 2.0f,
+        .y = diff_text_pos.y - diff_label->height / 2.0f,
+        .fade = selected_diff_text_fadein->attribute
+    });
 }
 
 void SongSelectPlayer::draw(SongSelectState state, bool is_half, float diff_fade_in) {

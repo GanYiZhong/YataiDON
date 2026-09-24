@@ -23,7 +23,6 @@ private:
     // tex.get_texture() every frame from draw_long()/draw_short().
     TextureObject* t_background_2 = nullptr;
     TextureObject* t_background = nullptr;
-    TextureObject* t_title = nullptr;
     TextureObject* t_shinuchi_ura = nullptr;
     TextureObject* t_shinuchi = nullptr;
     TextureObject* t_pts = nullptr;

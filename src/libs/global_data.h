@@ -189,6 +189,7 @@ struct SessionData {
     std::string song_subtitle = "default_subtitle";
     bool song_subtitle_full_display = false;
     int genre_index = 0;
+    std::string genre_label;
     ResultData result_data;
     DanResultData dan_result_data;
 };

@@ -68,6 +68,7 @@ void SongBoxOsu::draw_open() {
         if (!parser.metadata.course_data.count(i))
             tex.draw_texture(t_difficulty_bar_shadow, {.frame=i, .x=i*offset, .fade=std::min((float)open_fade->attribute, 0.25f)});
     }
+    draw_difficulty_bar_labels(offset, open_fade->attribute);
 
     float offset_y = tex.skin_config[SC::YB_DIFF_OFFSET].y;
     for (const auto& [diff, course] : parser.metadata.course_data) {

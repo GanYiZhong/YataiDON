@@ -17,6 +17,18 @@ inline int virtual_to_screen_x(float virtual_x) {
     return static_cast<int>(virtual_x * effective_zoom + offset_x);
 }
 
+inline int virtual_to_screen_y(float virtual_y) {
+    int win_w = ray::GetScreenWidth();
+    int win_h = ray::GetScreenHeight();
+    float scale = std::min((float)win_w / tex.screen_width, (float)win_h / tex.screen_height);
+    float effective_zoom = scale * global_data.camera.zoom;
+    float zoom_off    = (tex.screen_height * scale * (global_data.camera.zoom    - 1.0f)) * 0.5f;
+    float v_scale_off = (tex.screen_height * scale * (global_data.camera.v_scale - 1.0f)) * 0.5f;
+    float offset_y = (win_h - tex.screen_height * scale) * 0.5f - zoom_off - v_scale_off
+                     + global_data.camera.offset.y * scale;
+    return static_cast<int>(virtual_y * effective_zoom + offset_y);
+}
+
 enum class Screens {
     TITLE,
     ENTRY,

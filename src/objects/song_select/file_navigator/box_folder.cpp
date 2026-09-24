@@ -9,8 +9,19 @@
 #include "../../../libs/audio.h"
 #include <deque>
 #include <mutex>
+#include <unordered_set>
+#include "text_layout.h"
 
 namespace {
+
+std::string format_song_count(TextureWrapper& tex, const std::string& language, int count) {
+    std::string text = tex.skin_text("song_count", language, "全{0}曲");
+    size_t placeholder = text.find("{0}");
+    if (placeholder != std::string::npos)
+        text.replace(placeholder, 3, std::to_string(count));
+    return text;
+}
+
 struct FolderScan {
     std::map<int, Crown> crown;
     std::map<int, Crown> crown_p2;
@@ -115,10 +126,7 @@ void FolderBox::load_textures() {
     t_genre_overlay_large = tex.get_texture("box/genre_overlay_large");
     t_diff_overlay_large = tex.get_texture("box/diff_overlay_large");
     t_song_count_back = tex.get_texture("yellow_box/song_count_back");
-    t_song_count_num = tex.get_texture("yellow_box/song_count_num");
-    t_song_count_songs = tex.get_texture("yellow_box/song_count_songs");
     t_folder_graphic = tex.get_texture("box/folder_graphic");
-    t_folder_text = tex.get_texture("box/folder_text");
 }
 
 void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files) {
@@ -185,7 +193,18 @@ FolderBox::~FolderBox() = default;
 void FolderBox::load_text() {
     BaseBox::load_text();
     hori_name = std::make_unique<OutlinedText>(text_name, tex.skin_config[SC::SONG_HORI_NAME].font_size, ray::WHITE, ray::BLACK, false);
-    tja_count_text = std::make_unique<OutlinedText>(std::to_string(tja_count), tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
+    std::string language = global_data.config->general.language;
+    tja_count_text = std::make_unique<OutlinedText>(format_song_count(tex, language, tja_count), tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
+    bool vertical_explanation = language_is_cjk(language);
+    int explanation_font_size = tex.skin_config[SC::BOX_FOLDER_EXPLANATION].font_size;
+    float explanation_box_width = tex.skin_config[SC::BOX_FOLDER_EXPLANATION_BOX].width;
+    for (int i = 0; i < 3; i++) {
+        if (explanation[i].empty()) continue;
+        std::string text = vertical_explanation
+            ? explanation[i]
+            : word_wrap(explanation[i], explanation_font_size, 2.0f, explanation_box_width - 20.0f);
+        explanation_text[i] = std::make_unique<OutlinedText>(text, explanation_font_size, ray::WHITE, ray::BLACK, vertical_explanation);
+    }
     if (is_osu_folder) {
         auto it = fs::directory_iterator(path);
         while (it->path().extension() != ".jpg" && it->path().extension() != ".png") {
@@ -213,7 +232,8 @@ void FolderBox::update(double current_time) {
             scan_pending = false;
             // The count text may already be baked with the placeholder.
             if (text_loaded)
-                tja_count_text = std::make_unique<OutlinedText>(std::to_string(tja_count),
+                tja_count_text = std::make_unique<OutlinedText>(
+                    format_song_count(tex, global_data.config->general.language, tja_count),
                     tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
         }
     }
@@ -339,11 +359,10 @@ void FolderBox::draw_open_fg(float fade) {
     if (genre_index == GenreIndex::DIFFICULTY)
         tex.draw_texture(t_diff_overlay_large,  {.fade=fade});
 
-    // Song count
+    // Song count: tja_count_text holds the localized "song_count" template
+    // ("全{0}曲", "{0} Songs", ...) with {0} already substituted.
     if (genre_index != GenreIndex::DIFFICULTY) {
-        tex.draw_texture(t_song_count_back,  {.fade=std::min(fade, 0.5f)});
-        tex.draw_texture(t_song_count_num,   {.fade=fade});
-        tex.draw_texture(t_song_count_songs, {.fade=fade});
+        tex.draw_texture(t_song_count_back, {.fade=std::min(fade, 0.5f)});
 
         float dest_width = std::min(tex.skin_config[SC::SONG_TJA_COUNT].width,
                                     (float)tja_count_text->width);
@@ -374,7 +393,38 @@ void FolderBox::draw_open_fg(float fade) {
         ray::DrawTexturePro(box_texture.value(), src, dest, ray::Vector2(0, 0), 0, ray::Fade(ray::WHITE, fade));
     } else if (texture_index != TextureIndex::DEFAULT) {
         tex.draw_texture(t_folder_graphic, {.frame=(int)genre_index, .fade=fade});
-        tex.draw_texture(t_folder_text,    {.frame=(int)genre_index, .fade=fade});
+
+        const SkinInfo& exp_cfg = tex.skin_config[SC::BOX_FOLDER_EXPLANATION];
+        bool vertical_explanation = language_is_cjk(global_data.config->general.language);
+        if (vertical_explanation) {
+            for (int i = 0; i < 3; i++) {
+                if (!explanation_text[i]) continue;
+                float center_x = exp_cfg.x - exp_cfg.width * i;
+                explanation_text[i]->draw({
+                    .x  = center_x - (explanation_text[i]->width / 2.0f),
+                    .y  = exp_cfg.y + exp_cfg.height * i,
+                    .fade = fade
+                });
+            }
+        } else {
+            const SkinInfo& box_cfg = tex.skin_config[SC::BOX_FOLDER_EXPLANATION_BOX];
+            float total_h = 0.0f;
+            for (int i = 0; i < 3; i++) if (explanation_text[i]) total_h += explanation_text[i]->height;
+            // Last-resort safety net if the wrapped text still overflows the frame.
+            float scale = total_h > box_cfg.height ? box_cfg.height / total_h : 1.0f;
+            float y = box_cfg.y;
+            for (int i = 0; i < 3; i++) {
+                if (!explanation_text[i]) continue;
+                float dest_h = explanation_text[i]->height * scale;
+                explanation_text[i]->draw({
+                    .x  = box_cfg.x + (box_cfg.width - explanation_text[i]->width) / 2.0f,
+                    .y  = y,
+                    .y2 = dest_h - explanation_text[i]->height,
+                    .fade = fade
+                });
+                y += dest_h;
+            }
+        }
     }
 }
 

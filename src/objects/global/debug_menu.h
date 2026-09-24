@@ -4,6 +4,7 @@
 #include "../../libs/screen.h"
 #include "../../libs/script.h"
 #include "../../libs/filesystem.h"
+#include "../../libs/animation.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -38,7 +39,29 @@ public:
     static constexpr double SOURCE_RESTAT_SECONDS = 0.5;
 
     bool open = false;
+    static constexpr double SLIDE_DURATION_MS = 180.0;
+    std::unique_ptr<MoveAnimation> slide_anim;
     int active_tab = 0;
+
+    float slide_offset() const {
+        if (slide_anim) return (float)slide_anim->attribute;
+        return open ? 0.0f : PANEL_WIDTH;
+    }
+
+    void toggle_open() {
+        const float current = slide_offset();
+        open = !open;
+        const float target = open ? 0.0f : PANEL_WIDTH;
+        slide_anim = std::make_unique<MoveAnimation>(
+            SLIDE_DURATION_MS, (int)(target - current), false, false, (int)current,
+            0.0, std::nullopt, std::nullopt, EaseType::Quadratic);
+        slide_anim->start();
+        if (open) ray::ShowCursor(); else ray::HideCursor();
+    }
+
+    bool is_visible() const {
+        return open || (slide_anim && !slide_anim->is_finished);
+    }
     int hovered_log_index = -1;
     int scroll_offset = 0;
 
@@ -65,6 +88,41 @@ public:
         selected_name.clear();
         selected_log_index = -1;
         source_cache.clear();
+    }
+
+    ray::Font ui_font{};
+    ray::Font code_font{};
+    bool fonts_loaded = false;
+
+    void load_fonts() {
+        ui_font = ray::LoadFontEx(resolve_skin_path("Fonts/debug_ui.ttf").string().c_str(), 32, nullptr, 0);
+        code_font = ray::LoadFontEx(resolve_skin_path("Fonts/debug_code.ttf").string().c_str(), 32, nullptr, 0);
+        ray::SetTextureFilter(ui_font.texture, ray::TEXTURE_FILTER_BILINEAR);
+        ray::SetTextureFilter(code_font.texture, ray::TEXTURE_FILTER_BILINEAR);
+        fonts_loaded = true;
+    }
+
+    void unload_fonts() {
+        if (!fonts_loaded) return;
+        ray::UnloadFont(ui_font);
+        ray::UnloadFont(code_font);
+        fonts_loaded = false;
+    }
+
+    void draw_text(const char* text, int x, int y, int font_size, ray::Color color) const {
+        ray::DrawTextEx(ui_font, text, {(float)x, (float)y}, (float)font_size, font_size / 10.0f, color);
+    }
+
+    int measure_text(const char* text, int font_size) const {
+        return (int)ray::MeasureTextEx(ui_font, text, (float)font_size, font_size / 10.0f).x;
+    }
+
+    void draw_code_text(const char* text, int x, int y, int font_size, ray::Color color) const {
+        ray::DrawTextEx(code_font, text, {(float)x, (float)y}, (float)font_size, font_size / 10.0f, color);
+    }
+
+    int measure_code_text(const char* text, int font_size) const {
+        return (int)ray::MeasureTextEx(code_font, text, (float)font_size, font_size / 10.0f).x;
     }
 
     FramedTexture* get_selected_framed() const {
@@ -108,10 +166,8 @@ public:
     }
 
     void update(const ray::Camera2D& camera) {
-        if (ray::IsKeyPressed(ray::KEY_F7)) {
-            open = !open;
-            if (open) ray::ShowCursor(); else ray::HideCursor();
-        }
+        if (ray::IsKeyPressed(ray::KEY_F7)) toggle_open();
+        if (slide_anim) slide_anim->update(get_frame_ms());
 
         debug_draw_log_prev.swap(debug_draw_log);
         debug_draw_log.clear();
@@ -120,7 +176,7 @@ public:
         debug_log_draws = open && (active_tab == 0 || active_tab == 2);
         if (!open) { commit_edit(); commit_data_edit(); return; }
 
-        const float panel_x   = tex.screen_width - PANEL_WIDTH;
+        const float panel_x   = tex.screen_width - PANEL_WIDTH + slide_offset();
         const float tab_width = PANEL_WIDTH / TAB_COUNT;
         const ray::Vector2 mouse = ray::GetScreenToWorld2D(ray::GetMousePosition(), camera);
         const bool clicked = ray::IsMouseButtonPressed(ray::MOUSE_BUTTON_LEFT);
@@ -335,11 +391,11 @@ public:
     }
 
     void draw() {
-        if (!open) return;
+        if (!is_visible()) return;
 
         const float screen_w  = (float)tex.screen_width;
         const float screen_h  = (float)tex.screen_height;
-        const float panel_x   = screen_w - PANEL_WIDTH;
+        const float panel_x   = screen_w - PANEL_WIDTH + slide_offset();
         const float tab_width = PANEL_WIDTH / TAB_COUNT;
 
         ray::DrawRectangle((int)panel_x, 0, (int)PANEL_WIDTH, (int)screen_h, ray::Fade(ray::BLACK, 0.85f));
@@ -352,10 +408,10 @@ public:
             ray::DrawRectangleLines((int)tab_x, 0, (int)tab_width, (int)TAB_HEIGHT, ray::Fade(ray::WHITE, 0.4f));
 
             const char* label = tab_labels[i];
-            int label_w = ray::MeasureText(label, 16);
+            int label_w = measure_text(label, 16);
             int label_x = (int)(tab_x + (tab_width - label_w) * 0.5f);
             int label_y = (int)((TAB_HEIGHT - 16) * 0.5f);
-            ray::DrawText(label, label_x, label_y, 16, ray::WHITE);
+            draw_text(label, label_x, label_y, 16, ray::WHITE);
         }
 
         if (active_tab == 0) draw_textures_tab(panel_x, screen_h);
@@ -402,25 +458,25 @@ private:
         return start == std::string::npos ? std::string() : text.substr(start);
     }
 
-    static int lua_chars_per_row() {
-        int ten_chars = std::max(1, ray::MeasureText("ABCDEFGHIJ", LUA_TEXT_SIZE));
+    int lua_chars_per_row() const {
+        int ten_chars = std::max(1, measure_code_text("ABCDEFGHIJ", LUA_TEXT_SIZE));
         return std::max(1, (int)((PANEL_WIDTH - 12.0f) * 10.0f / ten_chars));
     }
 
-    static float draw_lua_rows(const std::string& text, float x, float y, int max_rows, ray::Color color) {
+    float draw_lua_rows(const std::string& text, float x, float y, int max_rows, ray::Color color) const {
         int budget = lua_chars_per_row();
         for (int row = 0; row < max_rows && (size_t)row * budget < text.size(); row++) {
-            ray::DrawText(text.substr((size_t)row * budget, budget).c_str(), (int)x, (int)y, LUA_TEXT_SIZE, color);
+            draw_code_text(text.substr((size_t)row * budget, budget).c_str(), (int)x, (int)y, LUA_TEXT_SIZE, color);
             y += LUA_LINE_HEIGHT;
         }
         return y;
     }
 
-    static void draw_lua_button(const ray::Rectangle& box, const char* label, bool enabled) {
+    void draw_lua_button(const ray::Rectangle& box, const char* label, bool enabled) const {
         ray::DrawRectangleRec(box, ray::Fade(ray::WHITE, enabled ? 0.2f : 0.05f));
         ray::DrawRectangleLinesEx(box, 1.0f, ray::Fade(ray::WHITE, 0.4f));
-        int label_w = ray::MeasureText(label, LUA_TEXT_SIZE);
-        ray::DrawText(label, (int)(box.x + (box.width - label_w) * 0.5f), (int)box.y + 5, LUA_TEXT_SIZE,
+        int label_w = measure_code_text(label, LUA_TEXT_SIZE);
+        draw_code_text(label, (int)(box.x + (box.width - label_w) * 0.5f), (int)box.y + 5, LUA_TEXT_SIZE,
                       enabled ? ray::WHITE : ray::GRAY);
     }
 
@@ -625,7 +681,11 @@ private:
         const int   scene_count = (int)std::size(ALL_SCREENS);
         const int   scene_shown = std::max(0, (int)(SCENE_LIST_HEIGHT / ROW_HEIGHT));
 
-        ray::BeginScissorMode((int)panel_x, (int)list_top, (int)PANEL_WIDTH, (int)SCENE_LIST_HEIGHT);
+        const int scissor_x0 = virtual_to_screen_x(panel_x);
+        const int scissor_x1 = virtual_to_screen_x(panel_x + PANEL_WIDTH);
+        int scissor_y0 = virtual_to_screen_y(list_top);
+        int scissor_y1 = virtual_to_screen_y(list_bottom);
+        ray::BeginScissorMode(scissor_x0, scissor_y0, scissor_x1 - scissor_x0, scissor_y1 - scissor_y0);
         for (int row = 0; row < scene_shown; row++) {
             int idx = row + scene_scroll;
             if (idx >= scene_count) break;
@@ -640,7 +700,7 @@ private:
                 ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::SKYBLUE, 0.35f));
             }
             ray::Color color = is_selected ? ray::YELLOW : (is_current ? ray::SKYBLUE : ray::WHITE);
-            ray::DrawText(name.c_str(), (int)panel_x + 4, (int)row_y + 3, 14, color);
+            draw_text(name.c_str(), (int)panel_x + 4, (int)row_y + 3, 14, color);
         }
         ray::EndScissorMode();
 
@@ -659,8 +719,8 @@ private:
         ray::DrawRectangleRec(button, ray::Fade(ray::WHITE, enabled ? 0.25f : 0.08f));
         ray::DrawRectangleLinesEx(button, 1.0f, enabled ? ray::YELLOW : ray::Fade(ray::WHITE, 0.3f));
         std::string label = enabled ? ("Switch to " + screens_to_string(*selected_screen)) : "Select a scene above";
-        int label_w = ray::MeasureText(label.c_str(), 14);
-        ray::DrawText(label.c_str(), (int)(button.x + (button.width - label_w) * 0.5f), (int)button.y + 6, 14,
+        int label_w = measure_text(label.c_str(), 14);
+        draw_text(label.c_str(), (int)(button.x + (button.width - label_w) * 0.5f), (int)button.y + 6, 14,
                       enabled ? ray::YELLOW : ray::GRAY);
 
         const float data_top    = button_top + SWITCH_BTN_HEIGHT;
@@ -670,7 +730,9 @@ private:
         const int   data_shown  = std::max(0, (int)((data_bottom - data_top) / ROW_HEIGHT));
 
         ray::DrawLine((int)panel_x, (int)data_top, (int)(panel_x + PANEL_WIDTH), (int)data_top, ray::Fade(ray::WHITE, 0.4f));
-        ray::BeginScissorMode((int)panel_x, (int)data_top, (int)PANEL_WIDTH, (int)(data_bottom - data_top));
+        scissor_y0 = virtual_to_screen_y(data_top);
+        scissor_y1 = virtual_to_screen_y(data_bottom);
+        ray::BeginScissorMode(scissor_x0, scissor_y0, scissor_x1 - scissor_x0, scissor_y1 - scissor_y0);
         for (int row = 0; row < data_shown; row++) {
             int idx = row + data_scroll;
             if (idx >= field_count) break;
@@ -678,39 +740,39 @@ private:
             float row_y = data_top + row * ROW_HEIGHT;
             DataFieldRects r = data_field_rects(f, panel_x, row_y);
 
-            ray::DrawText(f.label.c_str(), (int)panel_x + 4, (int)row_y + 4, 12, ray::WHITE);
+            draw_text(f.label.c_str(), (int)panel_x + 4, (int)row_y + 4, 12, ray::WHITE);
 
             if (f.kind == DataField::Kind::BOOL) {
                 bool v = *f.b;
                 ray::DrawRectangleRec(r.value, ray::Fade(v ? ray::GREEN : ray::RED, 0.25f));
                 ray::DrawRectangleLinesEx(r.value, 1.0f, ray::Fade(ray::WHITE, 0.4f));
-                ray::DrawText(v ? "true" : "false", (int)r.value.x + 4, (int)r.value.y + 3, 13, ray::WHITE);
+                draw_text(v ? "true" : "false", (int)r.value.x + 4, (int)r.value.y + 3, 13, ray::WHITE);
             } else if (f.kind == DataField::Kind::STRING) {
                 bool is_editing = editing_data_ptr == static_cast<void*>(f.s);
                 ray::DrawRectangleRec(r.value, ray::Fade(ray::WHITE, is_editing ? 0.25f : 0.1f));
                 ray::DrawRectangleLinesEx(r.value, 1.0f, is_editing ? ray::SKYBLUE : ray::Fade(ray::WHITE, 0.4f));
                 std::string text = is_editing ? edit_data_buffer : *f.s;
                 if (is_editing && std::fmod(ray::GetTime(), 1.0) < 0.5) text += "|";
-                ray::DrawText(text.c_str(), (int)r.value.x + 4, (int)r.value.y + 3, 13, ray::WHITE);
+                draw_text(text.c_str(), (int)r.value.x + 4, (int)r.value.y + 3, 13, ray::WHITE);
             } else if (f.kind == DataField::Kind::PLAYER_NUM) {
                 ray::DrawRectangleRec(r.minus, ray::Fade(ray::WHITE, 0.2f));
-                ray::DrawText("-", (int)r.minus.x + 5, (int)r.minus.y, 14, ray::WHITE);
+                draw_text("-", (int)r.minus.x + 5, (int)r.minus.y, 14, ray::WHITE);
                 ray::DrawRectangleRec(r.plus, ray::Fade(ray::WHITE, 0.2f));
-                ray::DrawText("+", (int)r.plus.x + 4, (int)r.plus.y, 14, ray::WHITE);
+                draw_text("+", (int)r.plus.x + 4, (int)r.plus.y, 14, ray::WHITE);
                 const char* name = player_num_name(*f.pn);
-                int name_w = ray::MeasureText(name, 13);
-                ray::DrawText(name, (int)(r.value.x + (r.value.width - name_w) * 0.5f), (int)r.value.y + 3, 13, ray::WHITE);
+                int name_w = measure_text(name, 13);
+                draw_text(name, (int)(r.value.x + (r.value.width - name_w) * 0.5f), (int)r.value.y + 3, 13, ray::WHITE);
             } else { // INT
                 bool is_editing = editing_data_ptr == static_cast<void*>(f.i);
                 ray::DrawRectangleRec(r.minus, ray::Fade(ray::WHITE, 0.2f));
-                ray::DrawText("-", (int)r.minus.x + 5, (int)r.minus.y, 14, ray::WHITE);
+                draw_text("-", (int)r.minus.x + 5, (int)r.minus.y, 14, ray::WHITE);
                 ray::DrawRectangleRec(r.plus, ray::Fade(ray::WHITE, 0.2f));
-                ray::DrawText("+", (int)r.plus.x + 4, (int)r.plus.y, 14, ray::WHITE);
+                draw_text("+", (int)r.plus.x + 4, (int)r.plus.y, 14, ray::WHITE);
                 ray::DrawRectangleRec(r.value, ray::Fade(ray::WHITE, is_editing ? 0.25f : 0.1f));
                 ray::DrawRectangleLinesEx(r.value, 1.0f, is_editing ? ray::SKYBLUE : ray::Fade(ray::WHITE, 0.4f));
                 std::string text = is_editing ? edit_data_buffer : data_field_display(f);
                 if (is_editing && std::fmod(ray::GetTime(), 1.0) < 0.5) text += "|";
-                ray::DrawText(text.c_str(), (int)r.value.x + 4, (int)r.value.y + 3, 12, ray::WHITE);
+                draw_text(text.c_str(), (int)r.value.x + 4, (int)r.value.y + 3, 12, ray::WHITE);
             }
         }
         ray::EndScissorMode();
@@ -782,8 +844,8 @@ private:
                 ? ray::TextFormat("x/y move it 1:1; x2/y2 change by x%.2f", entry.scale)
                 : "x/y move it 1:1 whatever the caller adds";
         ray::DrawRectangle((int)panel_x, (int)top, (int)PANEL_WIDTH, (int)VERDICT_HEIGHT, ray::Fade(color, 0.3f));
-        ray::DrawText(headline.c_str(), (int)panel_x + 6, (int)top + 3, 12, ray::WHITE);
-        ray::DrawText(advice.c_str(), (int)panel_x + 6, (int)top + 18, 12, ray::Fade(ray::WHITE, 0.75f));
+        draw_text(headline.c_str(), (int)panel_x + 6, (int)top + 3, 12, ray::WHITE);
+        draw_text(advice.c_str(), (int)panel_x + 6, (int)top + 18, 12, ray::Fade(ray::WHITE, 0.75f));
     }
 
     struct FieldButtons { ray::Rectangle minus, plus, value; };
@@ -882,7 +944,11 @@ private:
 
         const DrawLogEntry* selected = find_selected_entry();
 
-        ray::BeginScissorMode((int)panel_x, (int)list_top, (int)PANEL_WIDTH, (int)(list_bottom - list_top));
+        int scissor_x0 = virtual_to_screen_x(panel_x);
+        int scissor_x1 = virtual_to_screen_x(panel_x + PANEL_WIDTH);
+        int scissor_y0 = virtual_to_screen_y(list_top);
+        int scissor_y1 = virtual_to_screen_y(list_bottom);
+        ray::BeginScissorMode(scissor_x0, scissor_y0, scissor_x1 - scissor_x0, scissor_y1 - scissor_y0);
         for (int row = 0; row < rows_shown; row++) {
             int ridx = row + scroll_offset;
             if (ridx >= row_count) break;
@@ -892,8 +958,8 @@ private:
             if (vr.is_header) {
                 bool expanded = expanded_subsets.count(vr.subset) != 0;
                 ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::WHITE, 0.12f));
-                ray::DrawText(expanded ? "v" : ">", (int)panel_x + 4, (int)row_y + 3, 14, ray::WHITE);
-                ray::DrawText(vr.label.c_str(), (int)panel_x + 18, (int)row_y + 3, 14, ray::WHITE);
+                draw_text(expanded ? "v" : ">", (int)panel_x + 4, (int)row_y + 3, 14, ray::WHITE);
+                draw_text(vr.label.c_str(), (int)panel_x + 18, (int)row_y + 3, 14, ray::WHITE);
                 continue;
             }
 
@@ -906,7 +972,7 @@ private:
                 ray::DrawRectangle((int)panel_x, (int)row_y, (int)PANEL_WIDTH, (int)ROW_HEIGHT, ray::Fade(ray::YELLOW, 0.3f));
             }
             ray::Color color = is_selected ? ray::SKYBLUE : (is_hovered ? ray::YELLOW : ray::WHITE);
-            ray::DrawText(vr.label.c_str(), (int)panel_x + 20, (int)row_y + 3, 14, color);
+            draw_text(vr.label.c_str(), (int)panel_x + 20, (int)row_y + 3, 14, color);
         }
         ray::EndScissorMode();
 
@@ -933,9 +999,9 @@ private:
             ray::DrawRectangleLinesEx(*box_rect, 2.0f, ray::YELLOW);
             float label_y = box_rect->y - 20.0f;
             if (label_y < 0) label_y = box_rect->y + box_rect->height + 2.0f;
-            int label_w = ray::MeasureText(box_name.c_str(), 18);
+            int label_w = measure_text(box_name.c_str(), 18);
             ray::DrawRectangle((int)box_rect->x - 2, (int)label_y - 2, label_w + 4, 22, ray::Fade(ray::BLACK, 0.8f));
-            ray::DrawText(box_name.c_str(), (int)box_rect->x, (int)label_y, 18, ray::YELLOW);
+            draw_text(box_name.c_str(), (int)box_rect->x, (int)label_y, 18, ray::YELLOW);
         }
 
         draw_edit_panel(panel_x, list_bottom);
@@ -946,15 +1012,15 @@ private:
         ray::DrawLine((int)panel_x, (int)edit_top, (int)(panel_x + PANEL_WIDTH), (int)edit_top, ray::Fade(ray::WHITE, 0.4f));
 
         if (!has_selection) {
-            ray::DrawText("Click a texture to select it", (int)panel_x + 8, (int)edit_top + 8, 14, ray::GRAY);
+            draw_text("Click a texture to select it", (int)panel_x + 8, (int)edit_top + 8, 14, ray::GRAY);
             return;
         }
 
-        ray::DrawText(selected_name.c_str(), (int)panel_x + 8, (int)edit_top + 8, 16, ray::WHITE);
+        draw_text(selected_name.c_str(), (int)panel_x + 8, (int)edit_top + 8, 16, ray::WHITE);
 
         const DrawLogEntry* entry = find_selected_entry();
         if (!entry) {
-            ray::DrawText("(not drawn this frame)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
+            draw_text("(not drawn this frame)", (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
             return;
         }
         draw_verdict(*entry, panel_x, edit_top + VERDICT_TOP);
@@ -964,7 +1030,7 @@ private:
 
         const char* info = ray::TextFormat("%dx%d px, %d frame(s)", obj->width,
                                             obj->height, obj->frame_count());
-        ray::DrawText(info, (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
+        draw_text(info, (int)panel_x + 8, (int)edit_top + 26, 14, ray::GRAY);
 
         for (int i = 0; i < 4; i++) {
             int* value = field_ptr(i);
@@ -972,12 +1038,12 @@ private:
             FieldButtons b = field_buttons(i, panel_x, edit_top);
             float row_y = edit_top + EDIT_FIELDS_TOP + i * EDIT_ROW_HEIGHT;
 
-            ray::DrawText(field_label(i), (int)panel_x + 8, (int)row_y + 4, 14, ray::WHITE);
+            draw_text(field_label(i), (int)panel_x + 8, (int)row_y + 4, 14, ray::WHITE);
 
             ray::DrawRectangleRec(b.minus, ray::Fade(ray::WHITE, 0.2f));
-            ray::DrawText("-", (int)b.minus.x + 6, (int)b.minus.y + 1, 16, ray::WHITE);
+            draw_text("-", (int)b.minus.x + 6, (int)b.minus.y + 1, 16, ray::WHITE);
             ray::DrawRectangleRec(b.plus, ray::Fade(ray::WHITE, 0.2f));
-            ray::DrawText("+", (int)b.plus.x + 5, (int)b.plus.y + 1, 16, ray::WHITE);
+            draw_text("+", (int)b.plus.x + 5, (int)b.plus.y + 1, 16, ray::WHITE);
 
             bool is_editing = (editing_field == i);
             ray::DrawRectangleRec(b.value, ray::Fade(ray::WHITE, is_editing ? 0.25f : 0.1f));
@@ -985,7 +1051,7 @@ private:
 
             std::string text = is_editing ? edit_buffer : std::to_string(*value);
             if (is_editing && std::fmod(ray::GetTime(), 1.0) < 0.5) text += "|";
-            ray::DrawText(text.c_str(), (int)b.value.x + 4, (int)b.value.y + 4, 14, ray::WHITE);
+            draw_text(text.c_str(), (int)b.value.x + 4, (int)b.value.y + 4, 14, ray::WHITE);
         }
 
         draw_frames_section(panel_x, edit_top);
@@ -999,7 +1065,7 @@ private:
         const float frames_top = edit_top + EDIT_PANEL_HEIGHT;
         const int cols = frame_grid_cols();
 
-        ray::DrawText(ray::TextFormat("Frames (%d)", frame_count), (int)panel_x + 8, (int)frames_top + 2, 14, ray::WHITE);
+        draw_text(ray::TextFormat("Frames (%d)", frame_count), (int)panel_x + 8, (int)frames_top + 2, 14, ray::WHITE);
 
         for (int idx = 0; idx < frame_count; idx++) {
             float cell_x = panel_x + (idx % cols) * FRAME_CELL_WIDTH;
@@ -1015,14 +1081,14 @@ private:
 
             FrameCellButtons b = frame_cell_buttons(idx, panel_x, frames_top);
             ray::DrawRectangleRec(b.left, ray::Fade(ray::WHITE, idx > 0 ? 0.2f : 0.05f));
-            ray::DrawText("<", (int)b.left.x + 4, (int)b.left.y, 14, idx > 0 ? ray::WHITE : ray::GRAY);
+            draw_text("<", (int)b.left.x + 4, (int)b.left.y, 14, idx > 0 ? ray::WHITE : ray::GRAY);
 
             const char* index_text = ray::TextFormat("%d", idx);
-            int index_w = ray::MeasureText(index_text, 14);
-            ray::DrawText(index_text, (int)(cell_x + (FRAME_CELL_WIDTH - index_w) * 0.5f), (int)b.left.y + 2, 14, ray::WHITE);
+            int index_w = measure_text(index_text, 14);
+            draw_text(index_text, (int)(cell_x + (FRAME_CELL_WIDTH - index_w) * 0.5f), (int)b.left.y + 2, 14, ray::WHITE);
 
             ray::DrawRectangleRec(b.right, ray::Fade(ray::WHITE, idx < frame_count - 1 ? 0.2f : 0.05f));
-            ray::DrawText(">", (int)b.right.x + 4, (int)b.right.y, 14, idx < frame_count - 1 ? ray::WHITE : ray::GRAY);
+            draw_text(">", (int)b.right.x + 4, (int)b.right.y, 14, idx < frame_count - 1 ? ray::WHITE : ray::GRAY);
         }
     }
 };

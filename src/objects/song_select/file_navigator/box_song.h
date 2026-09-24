@@ -33,6 +33,7 @@ public:
     FadeAnimation* diff_fade_in;
     bool is_ura = false;
     GenreIndex song_genre_index = GenreIndex::DEFAULT;
+    std::string song_genre_label;
 
     SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser);
     ~SongBox() override { release_preview_slot(); }
@@ -110,6 +111,7 @@ protected:
     void draw_box_crown(float x, float y, double fade_val);
     void draw_diff_crown(int diff, float x, float y, double fade_val);
     void draw_diff_outline(float x, float y, double fade_val);
+    static void draw_difficulty_bar_labels(float offset, float fade_val);
 
     // Fixed-path textures resolved once in the constructor instead of calling
     // tex.get_texture() every frame from draw_*(). Language-suffixed paths (which

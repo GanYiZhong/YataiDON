@@ -92,5 +92,4 @@ private:
     TextureObject* t_background_diff = nullptr;
     TextureObject* t_background_diff_highlight = nullptr;
     TextureObject* t_bg_diff_text_bg = nullptr;
-    TextureObject* t_bg_diff_text = nullptr;
 };

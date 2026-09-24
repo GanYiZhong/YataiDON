@@ -9,10 +9,12 @@ struct BoxDef {
     std::string name;
     TextureIndex texture_index;
     GenreIndex genre_index;
+    std::string genre_label;
     std::string collection;
     std::optional<ray::Color> back_color;
     std::optional<ray::Color> fore_color;
     std::optional<ray::Color> box_color;
+    std::array<std::string, 3> explanation;
 };
 
 inline size_t utf8_char_count(const std::string& s) {
@@ -27,8 +29,10 @@ class BaseBox {
 public:
     bool text_loaded = false;
     GenreIndex genre_index;
+    std::string genre_label;
     std::string text_name;
     std::string collection;
+    std::array<std::string, 3> explanation;
 
     TextureIndex texture_index;
     std::optional<ray::Color> back_color;
@@ -62,8 +66,7 @@ public:
     virtual ~BaseBox();
 
     virtual void load_text();
-    // Rasterize this box's glyphs into the font caches ahead of load_text(), so a
-    // whole folder of new titles costs one atlas rebuild instead of one per box.
+
     virtual void preregister_text();
     virtual void get_scores() {}
     virtual void draw_score_history() {}
@@ -71,11 +74,7 @@ public:
     virtual void draw_diff_select_bg() {}
 
     virtual void reset();
-    // Re-fetches every cached TextureObject*. Navigator reuses existing boxes
-    // across a game-round screen transition (see navigator.h's comment on
-    // Navigator being a global) instead of reconstructing them, and that
-    // transition unloads/reloads tex's textures -- so the pointers cached in
-    // the constructor go stale unless reset() re-resolves them.
+
     virtual void load_textures();
     void set_position(float target_position);
     virtual void expand_box();

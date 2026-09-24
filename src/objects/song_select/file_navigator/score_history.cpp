@@ -1,4 +1,30 @@
 #include "score_history.h"
+#include "../../../libs/text.h"
+
+namespace {
+    OutlinedText* leaderboard_title() {
+        static std::unique_ptr<OutlinedText> cache;
+        static std::string cached_lang;
+        const std::string& lang = global_data.config->general.language;
+        if (lang != cached_lang) {
+            const SkinInfo& cfg = tex.skin_config[SC::LEADERBOARD_TITLE];
+            const SkinInfo& box_cfg = tex.skin_config[SC::LEADERBOARD_TITLE_LONG];
+            auto it = cfg.text.find(lang);
+            std::string label = it != cfg.text.end() ? it->second
+                               : !cfg.text.empty()   ? cfg.text.begin()->second
+                                                      : "";
+            int font_size = (int)box_cfg.height;
+            while (font_size > 8) {
+                float w = ray::MeasureTextEx(font_manager.get_font(label, font_size), label.c_str(), (float)font_size, 2.0f).x;
+                if (w <= box_cfg.width) break;
+                font_size--;
+            }
+            cache = std::make_unique<OutlinedText>(label, font_size, ray::BLACK, ray::BLANK, false);
+            cached_lang = lang;
+        }
+        return cache.get();
+    }
+}
 
 ScoreHistory::ScoreHistory(const std::array<std::optional<Score>, 5>& scores, double current_ms)
     : last_ms(current_ms)
@@ -12,7 +38,6 @@ ScoreHistory::ScoreHistory(const std::array<std::optional<Score>, 5>& scores, do
 
     t_background_2 = tex.get_texture("leaderboard/background_2");
     t_background = tex.get_texture("leaderboard/background");
-    t_title = tex.get_texture("leaderboard/title");
     t_shinuchi_ura = tex.get_texture("leaderboard/shinuchi_ura");
     t_shinuchi = tex.get_texture("leaderboard/shinuchi");
     t_pts = tex.get_texture("leaderboard/pts");
@@ -49,7 +74,8 @@ void ScoreHistory::draw_long() {
     float margin_x = tex.skin_config[SC::SCORE_INFO_COUNTER_MARGIN].x;
 
     tex.draw_texture(t_background_2, {});
-    tex.draw_texture(t_title, {.index = 1});
+    const SkinInfo& title_pos = tex.skin_config[SC::LEADERBOARD_TITLE_LONG];
+    leaderboard_title()->draw({.x = title_pos.x, .y = title_pos.y});
 
     if (score_method == ScoreMethod::SHINUCHI) {
         if (curr_diff == (int)Difficulty::URA)
@@ -101,7 +127,8 @@ void ScoreHistory::draw_short() {
     float margin_w = tex.skin_config[SC::SCORE_INFO_COUNTER_MARGIN].width;
 
     tex.draw_texture(t_background, {});
-    tex.draw_texture(t_title, {});
+    const SkinInfo& title_pos = tex.skin_config[SC::LEADERBOARD_TITLE_SHORT];
+    leaderboard_title()->draw({.x = title_pos.x, .y = title_pos.y});
 
     ray::Color color = ray::BLACK;
     if (curr_diff == (int)Difficulty::URA) {

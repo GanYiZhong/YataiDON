@@ -123,6 +123,7 @@ static bool alpha_less(const std::string& a, const std::string& b) {
 
 static void apply_song_genre(SongBox* song, const BoxDef& box_def) {
     song->song_genre_index = box_def.genre_index;
+    song->song_genre_label = box_def.genre_label;
     if (!box_def.box_color.has_value() && !box_def.back_color.has_value() && !box_def.fore_color.has_value())
         return;
     BoxColors colors = resolve_box_colors(box_def.box_color, box_def.back_color, box_def.fore_color);
@@ -1210,6 +1211,7 @@ BoxDef Navigator::parse_box_def_uncached(const fs::path& path) {
     result.genre_index = GenreIndex::DEFAULT;
     result.collection = "";
     bool title_localized = false;
+    std::array<bool, 3> explanation_localized = {false, false, false};
 
     while (std::getline(boxDef, line)) {
         if (line.size() >= 3 && (unsigned char)line[0] == 0xEF &&
@@ -1226,6 +1228,7 @@ BoxDef Navigator::parse_box_def_uncached(const fs::path& path) {
             auto it = TEXTURE_MAP.find(genre);
             if (it != TEXTURE_MAP.end()) result.texture_index = it->second;
             result.genre_index = get_genre_index(genre);
+            result.genre_label = genre;
         } else if (line.starts_with("#TITLE:")) {
             if (!title_localized)
                 result.name = get_value("#TITLE:");
@@ -1251,6 +1254,22 @@ BoxDef Navigator::parse_box_def_uncached(const fs::path& path) {
             result.texture_index = TextureIndex::NONE;
         } else if (line.starts_with("#FORECOLOR:")) {
             result.fore_color = parse_hex_color(get_value("#FORECOLOR:"));
+        } else if (line.starts_with("#BOXEXPLANATION")) {
+            for (int n = 0; n < 3; n++) {
+                std::string plain_prefix = "#BOXEXPLANATION" + std::to_string(n + 1) + ":";
+                if (line.starts_with(plain_prefix) && !explanation_localized[n])
+                    result.explanation[n] = get_value(plain_prefix);
+            }
+            const std::string& lang = global_data.config->general.language;
+            std::string lang_upper = lang;
+            std::transform(lang_upper.begin(), lang_upper.end(), lang_upper.begin(), ::toupper);
+            for (int n = 0; n < 3; n++) {
+                std::string lang_prefix = "#BOXEXPLANATION" + lang_upper + std::to_string(n + 1) + ":";
+                if (line.starts_with(lang_prefix)) {
+                    result.explanation[n] = get_value(lang_prefix);
+                    explanation_localized[n] = true;
+                }
+            }
         }
     }
     return result;
