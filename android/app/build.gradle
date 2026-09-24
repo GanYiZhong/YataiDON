@@ -96,3 +96,8 @@ android {
         }
     }
 }
+
+dependencies {
+    // FileProvider, for handing the downloaded update APK to the system installer.
+    implementation 'androidx.core:core:1.13.1'
+}

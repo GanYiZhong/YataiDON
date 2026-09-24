@@ -6,9 +6,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+
+import androidx.core.content.FileProvider;
+
+import java.io.File;
 
 import org.libsdl.app.SDLActivity;
 
@@ -57,5 +62,23 @@ public class YataiDONActivity extends SDLActivity {
     @Override
     protected String[] getLibraries() {
         return new String[] { "YataiDON" };
+    }
+
+    // Called from native code (network.cpp) after downloading a new build's
+    // APK. Wraps it in a FileProvider content:// URI (a plain file:// Uri
+    // throws FileUriExposedException on this targetSdk) and hands off to the
+    // system package installer, which owns the confirmation UI from here.
+    public void installApk(String path) {
+        runOnUiThread(() -> {
+            try {
+                Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", new File(path));
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            } catch (Exception e) {
+                Log.e("YataiDON", "installApk failed", e);
+            }
+        });
     }
 }

@@ -638,6 +638,10 @@ jobs:
           cp macos/checksums-macos.sha256     ./checksums-macos.sha256
           cp ios-out/checksums-ios.sha256     ./checksums-ios.sha256
 
+          # Android in-app updater compares against this (the "latest" tag is a
+          # fixed rolling release, so it can't tell apart which build is newer).
+          sha256sum YataiDON-Android.apk | awk '{print $1}' > checksums-android.sha256
+
           # Linux update package: binary + updater + shader + lib
           UPDATE_LINUX="YataiDON update.sh shader/"
           [ -d linux/lib ] && UPDATE_LINUX="$UPDATE_LINUX lib/"
@@ -671,6 +675,7 @@ jobs:
             checksums-windows.sha256
             checksums-macos.sha256
             checksums-ios.sha256
+            checksums-android.sha256
           name: "YataiDON [Latest Release]"
           tag_name: "latest"
           make_latest: true

@@ -477,6 +477,9 @@ int main(int argc, char* argv[]) {
     if (auto pd = scores_manager.get_player_data(scores_manager.player_2))
         scores_manager.player_2_data = *pd;
 
+#ifdef PLATFORM_ANDROID
+    network.check_and_install_android_update();
+#endif
     const bool net_ok = network.probe_online();
     if (net_ok && global_data.config->network.access_code.empty()) {
         std::string access_code = network.register_user(scores_manager.player_1_data.username);

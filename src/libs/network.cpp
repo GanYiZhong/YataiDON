@@ -19,6 +19,7 @@
 
 #if defined(NETWORK_ENABLED) && defined(__ANDROID__)
 #include <SDL3/SDL.h>
+#include <jni.h>
 #include <fstream>
 #endif
 
@@ -178,6 +179,29 @@ cpr::SslOptions android_ca() {
     return cpr::Ssl(cpr::ssl::CaInfo{path}, cpr::ssl::VerifyPeer{true}, cpr::ssl::VerifyHost{true});
 }
 #define NETWORK_CA_OPT , android_ca()
+
+void install_apk(const std::string& path) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+    if (!env || !activity) {
+        spdlog::error("Update: could not get JNI env/activity");
+        return;
+    }
+    jclass clazz = env->GetObjectClass(activity);
+    jmethodID mid = env->GetMethodID(clazz, "installApk", "(Ljava/lang/String;)V");
+    if (!mid) {
+        spdlog::error("Update: YataiDONActivity.installApk(String) not found");
+        env->ExceptionClear();
+        env->DeleteLocalRef(clazz);
+        env->DeleteLocalRef(activity);
+        return;
+    }
+    jstring jpath = env->NewStringUTF(path.c_str());
+    env->CallVoidMethod(activity, mid, jpath);
+    env->DeleteLocalRef(jpath);
+    env->DeleteLocalRef(clazz);
+    env->DeleteLocalRef(activity);
+}
 #else
 #define NETWORK_CA_OPT
 #endif
@@ -358,6 +382,23 @@ bool NetworkClient::fetch_costume(const std::string& access_code, int& head_inde
     return true;
 }
 
+#if defined(__ANDROID__)
+namespace {
+constexpr char kUpdateChecksumUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/checksums-android.sha256";
+constexpr char kUpdateApkUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/YataiDON-Android.apk";
+constexpr char kUpdateMarkerPath[] = "update_apk.sha256";
+constexpr char kUpdateApkPath[] = "/sdcard/YataiDON/update.apk";
+}  // namespace
+
+void NetworkClient::check_and_install_android_update() {
+    if (android_update_checked) return;
+    android_update_checked = true;
+    pending_update_checksum = cpr::GetAsync(cpr::Url{kUpdateChecksumUrl}, cpr::Timeout{5000} NETWORK_CA_OPT);
+}
+#else
+void NetworkClient::check_and_install_android_update() {}
+#endif
+
 void NetworkClient::update_costume(const std::string& access_code, int head_index, int body_index, int cos_index, bool is_costume) {
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
@@ -537,6 +578,55 @@ std::optional<std::string> NetworkClient::take_song_jump_result() {
 }
 
 void NetworkClient::update(double current_ms) {
+#if defined(__ANDROID__)
+    if (pending_update_checksum.has_value() &&
+        pending_update_checksum->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_update_checksum->get();
+        pending_update_checksum.reset();
+
+        if (response.status_code != 200) {
+            spdlog::warn("Update check: could not fetch checksums-android.sha256 (HTTP {})", response.status_code);
+        } else {
+            std::string expected_sha256 = response.text;
+            while (!expected_sha256.empty() && std::isspace(static_cast<unsigned char>(expected_sha256.back())))
+                expected_sha256.pop_back();
+
+            std::string installed_sha256;
+            if (std::ifstream marker(kUpdateMarkerPath); marker) std::getline(marker, installed_sha256);
+
+            if (installed_sha256 == expected_sha256) {
+                spdlog::info("Update check: APK up to date");
+            } else {
+                spdlog::info("Update check: newer APK available, downloading");
+                pending_update_expected_sha256 = expected_sha256;
+                pending_update_apk = cpr::GetAsync(cpr::Url{kUpdateApkUrl}, cpr::Timeout{30000} NETWORK_CA_OPT);
+            }
+        }
+    }
+
+    if (pending_update_apk.has_value() &&
+        pending_update_apk->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_update_apk->get();
+        pending_update_apk.reset();
+
+        if (response.status_code != 200) {
+            spdlog::error("Update: APK download failed (HTTP {})", response.status_code);
+        } else if (crypto::to_hex(crypto::sha256(response.text)) != pending_update_expected_sha256) {
+            spdlog::error("Update: downloaded APK sha256 mismatch, discarding");
+        } else {
+            std::ofstream out(kUpdateApkPath, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                spdlog::error("Update: failed to open {} for writing", kUpdateApkPath);
+            } else {
+                out << response.text;
+                out.close();
+                std::ofstream(kUpdateMarkerPath, std::ios::trunc) << pending_update_expected_sha256;
+                install_apk(kUpdateApkPath);
+            }
+        }
+    }
+#endif
+
     if (!network_enabled()) {
         online = false;
         return;
@@ -599,6 +689,16 @@ void NetworkClient::shutdown() {
         pending_song_jump->wait();
         pending_song_jump.reset();
     }
+#if defined(__ANDROID__)
+    if (pending_update_checksum.has_value()) {
+        pending_update_checksum->wait();
+        pending_update_checksum.reset();
+    }
+    if (pending_update_apk.has_value()) {
+        pending_update_apk->wait();
+        pending_update_apk.reset();
+    }
+#endif
     if (pending_score_submit.has_value()) {
         cpr::Response response = pending_score_submit->get();
         pending_score_submit.reset();
@@ -621,6 +721,7 @@ void NetworkClient::update_username(const std::string&, const std::string&) {}
 bool NetworkClient::fetch_title(const std::string&, std::string&) { return false; }
 bool NetworkClient::fetch_title_bg(const std::string&, int&) { return false; }
 bool NetworkClient::fetch_costume(const std::string&, int&, int&, int&, bool&) { return false; }
+void NetworkClient::check_and_install_android_update() {}
 void NetworkClient::update_costume(const std::string&, int, int, int, bool) {}
 std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { return {}; }
 void NetworkClient::poll_song_jump(const std::string&) {}

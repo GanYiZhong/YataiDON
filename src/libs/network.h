@@ -55,6 +55,11 @@ public:
     bool fetch_title_bg(const std::string& access_code, int& title_bg);
 
     bool fetch_costume(const std::string& access_code, int& head_index, int& body_index, int& cos_index, bool& is_costume);
+    // Android only, no-op elsewhere: kicks off (async, non-blocking) a check of
+    // the GitHub release for a newer YataiDON-Android.apk (by sha256, since the
+    // release tag is a fixed "latest") and, if found, downloads it and hands it
+    // to the OS install flow. Progresses via update(); safe to call unconditionally.
+    void check_and_install_android_update();
     // One short synchronous /health round-trip. The boot-time sync fetches each wait
     // out their 5 s timeout when the server is unreachable (20+ s of black screen
     // offline); probe once and skip them all instead.
@@ -86,6 +91,13 @@ private:
     std::optional<std::string> song_jump_result;
 
     std::optional<cpr::AsyncResponse> pending_score_submit;
+
+#if defined(__ANDROID__)
+    std::optional<cpr::AsyncResponse> pending_update_checksum;
+    std::optional<cpr::AsyncResponse> pending_update_apk;
+    std::string pending_update_expected_sha256;
+    bool android_update_checked = false;
+#endif
 #endif
 };
 
