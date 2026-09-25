@@ -50,14 +50,23 @@ void SongInfo::draw() {
     float text_x = tex.skin_config[SC::SONG_INFO].x;
     float text_y = tex.skin_config[SC::SONG_INFO].y - song_title->height / 2.0f;
 
-    float title_x = text_x - song_title->width;
+    // Optional skin key song_info_max_width: a longer title is squeezed horizontally to fit.
+    float title_w = song_title->width;
+    float title_x2 = 0.0f;
+    if (const SkinInfo* m = tex.skin_entry("song_info_max_width")) {
+        if (m->width > 0 && title_w > m->width) {
+            title_x2 = m->width - title_w;
+            title_w = m->width;
+        }
+    }
+    float title_x = text_x - title_w;
     if (const SkinInfo* c = tex.skin_entry("song_info_center")) {
-        if (c->width > 0 && song_title->width <= c->width)
-            title_x = c->x - song_title->width / 2.0f;
+        if (c->width > 0 && title_w <= c->width)
+            title_x = c->x - title_w / 2.0f;
     }
 
     if (const SkinInfo* plate = tex.skin_entry("song_num_game")) {
-        song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
+        song_title->draw({.x=title_x, .y=text_y, .x2=title_x2, .fade=1 - fade->attribute});
         if (genre_text) {
             if (genre_shader_loaded) ray::BeginShaderMode(genre_shader);
             tex.draw_texture(t_genre, {.fade = 1 - fade->attribute});
@@ -80,7 +89,7 @@ void SongInfo::draw() {
 
     song_num->draw(text_x - song_num->width, text_y, fade->attribute);
 
-    song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
+    song_title->draw({.x=title_x, .y=text_y, .x2=title_x2, .fade=1 - fade->attribute});
 
     if (song_subtitle) {
         float sub_y = tex.skin_config[SC::SONG_INFO_SUBTITLE].y - song_subtitle->height / 2.0f;
