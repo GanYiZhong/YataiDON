@@ -731,6 +731,9 @@ void PracticeGameScreen::draw() {
             tex.draw_texture(t_bar_count, {.frame = tot_str[i] - '0', .x = div_x + divw + i * dw, .y = digit_y});
     }
 
+    // The song title goes under the paused veil and the practice menu, not over them.
+    song_info.draw();
+
     if (paused) {
         tex.draw_texture(t_paused, {.fade = 0.5});
         if (menu.open && !menu.editing_marks && !menu.jumping_marks) {
@@ -739,5 +742,5 @@ void PracticeGameScreen::draw() {
         }
     }
 
-    draw_overlay();
+    draw_overlay(false);
 }

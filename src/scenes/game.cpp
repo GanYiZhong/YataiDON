@@ -501,8 +501,8 @@ std::optional<Screens> GameScreen::update() {
     return std::nullopt;
 }
 
-void GameScreen::draw_overlay() {
-    song_info.draw();
+void GameScreen::draw_overlay(bool with_song_info) {
+    if (with_song_info) song_info.draw();
     draw_skip();
     bool over_transition = false;
     if (!transition->is_finished()) {
