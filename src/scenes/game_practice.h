@@ -83,6 +83,10 @@ private:
     std::vector<Note> scrobble_note_list;
     std::vector<double> markers;
 
+    NoteList base_chart;
+    std::vector<NoteList> branch_m_all, branch_e_all, branch_n_all;
+    size_t branch_display_synced = 0;
+
     int song_speed = 10;
 
     TextureResizeAnimation* pause_don_anim;
@@ -145,6 +149,7 @@ private:
     TextureObject* t_paused = nullptr;
 
     void init_tja_practice(const fs::path& song);
+    void sync_branch_display();
     void pause_song_practice();
     void restart_practice();
     std::optional<Screens> handle_menu_action(PracticeMenu::Action action);

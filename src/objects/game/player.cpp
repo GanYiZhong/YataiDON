@@ -266,9 +266,12 @@ void Player::autoplay_manager(double ms_from_start, double current_ms, std::opti
 }
 
 void Player::merge_branch_section(const NoteList& branch_section, double current_ms) {
-    draw_note_list.insert(draw_note_list.end(),
-                          branch_section.notes.begin(),
-                          branch_section.notes.end());
+    const double boundary_eps = 1.0;
+    std::deque<Note> notes;
+    for (const Note& note : branch_section.notes)
+        if (note.hit_ms >= resume_filter_ms - boundary_eps) notes.push_back(note);
+
+    draw_note_list.insert(draw_note_list.end(), notes.begin(), notes.end());
 
     std::sort(draw_note_list.begin(), draw_note_list.end(),
               [](const Note& a, const Note& b) { return a.load_ms < b.load_ms; });
@@ -278,7 +281,7 @@ void Player::merge_branch_section(const NoteList& branch_section, double current
     std::sort(timeline.begin(), timeline.end(),
               [](const TimelineObject& a, const TimelineObject& b) { return a.start_time < b.start_time; });
 
-    for (const auto& note : branch_section.notes) {
+    for (const auto& note : notes) {
 
         if (note.type == NoteType::DON || note.type == NoteType::DON_L) {
             auto pos = std::lower_bound(don_notes.begin(), don_notes.end(), note,
@@ -311,7 +314,17 @@ void Player::evaluate_branch(double current_ms) {
         if (branch_indicator.has_value()) {
             spdlog::info("Branch set to {} based on conditions {}, {}, {}", branch_diff_to_string(branch_indicator->difficulty), count, e_req, m_req);
         }
-        if (count >= e_req && count < m_req && e_req >= 0) {
+        BranchDifficulty chosen;
+        if (branch_checkpoint_index < branch_history.size()) {
+            chosen = branch_history[branch_checkpoint_index];
+        } else {
+            chosen = (count >= e_req && count < m_req && e_req >= 0) ? BranchDifficulty::EXPERT
+                    : (count >= m_req)                                ? BranchDifficulty::MASTER
+                                                                       : BranchDifficulty::NORMAL;
+            branch_history.push_back(chosen);
+        }
+        branch_checkpoint_index++;
+        if (chosen == BranchDifficulty::EXPERT) {
             if (!branch_e.empty()) {
                 merge_branch_section(branch_e.front(), current_ms);
                 branch_e.pop_front();
@@ -329,7 +342,7 @@ void Player::evaluate_branch(double current_ms) {
             if (!branch_n.empty()) {
                 branch_n.pop_front();
             }
-        } else if (count >= m_req) {
+        } else if (chosen == BranchDifficulty::MASTER) {
             if (!branch_m.empty()) {
                 merge_branch_section(branch_m.front(), current_ms);
                 branch_m.pop_front();
@@ -738,6 +751,7 @@ void Player::reset_chart() {
     branch_p_count = 0;
     branch_r_count = 0;
     branch_note_count = 0;
+    branch_checkpoint_index = 0;
 
     NoteList total_notes; //all notes including master branch
 
@@ -1805,6 +1819,7 @@ void Player::seek_to(double resume_time) {
     kusudama_shared_hits = 0;
 
     reset_chart();
+    resume_filter_ms = resume_time;
 
     const double boundary_eps = 1.0;
     auto filter = [resume_time, boundary_eps](std::deque<Note>& q) {

@@ -94,30 +94,82 @@ void PracticeGameScreen::init_tja_practice(const fs::path& song) {
     auto [notes, bm, be, bn] = parser->notes_to_position(difficulty);
     if (auto* tja = std::get_if<TJAParser>(&parser->impl))
         tja->scroll_disabled = true;
-    apply_modifiers(notes, get_player_modifiers(global_data.player_num));
+    const Modifiers& practice_modifiers = get_player_modifiers(global_data.player_num);
+    apply_modifiers(notes, practice_modifiers);
 
-    bars.clear();
-    scrobble_note_list.clear();
-    markers.clear();
+    base_chart = std::move(notes);
+    branch_m_all.assign(bm.begin(), bm.end());
+    branch_e_all.assign(be.begin(), be.end());
+    branch_n_all.assign(bn.begin(), bn.end());
+    for (auto* branch : {&branch_m_all, &branch_e_all, &branch_n_all})
+        for (NoteList& section : *branch)
+            apply_modifiers(section, practice_modifiers);
+    branch_display_synced = (size_t)-1;   // force a full rebuild below
 
-    for (const auto& note : notes.notes) {
-        scrobble_note_list.push_back(note);
-        if (note.type == NoteType::BARLINE) {
-            bars.push_back(note);
-        }
-    }
-
-    for (const auto& tl : notes.timeline) {
-        if (tl.gogo_time.has_value() && tl.gogo_time.value()) {
-            markers.push_back(tl.start_time);
-        }
-    }
+    sync_branch_display();
 
     if (!bars.empty()) {
         scrobble_index = 0;
         scrobble_time = bars[0].hit_ms;
     }
     scrobble_move = std::make_unique<MoveAnimation>(200.0, 0);
+}
+
+void PracticeGameScreen::sync_branch_display() {
+    size_t resolved = practice_player ? practice_player->branch_history.size() : 0;
+    if (branch_display_synced == resolved) return;
+
+    auto ms_of = [&](int index) -> double {
+        return (index >= 0 && index < (int)bars.size()) ? bars[index].hit_ms : -1.0;
+    };
+    double cursor_ms = ms_of(scrobble_index);
+    double jump_arrow_ms = ms_of(jump_arrow_bar);
+    std::array<double, PracticeMenu::MARK_SLOTS> mark_ms;
+    for (size_t i = 0; i < jump_bars.size(); ++i) mark_ms[i] = ms_of(jump_bars[i]);
+
+    scrobble_note_list.assign(base_chart.notes.begin(), base_chart.notes.end());
+    bars.clear();
+    markers.clear();
+
+    size_t checkpoints = std::max({branch_m_all.size(), branch_e_all.size(), branch_n_all.size()});
+    for (size_t i = 0; i < checkpoints; ++i) {
+        BranchDifficulty chosen = (practice_player && i < practice_player->branch_history.size())
+                                 ? practice_player->branch_history[i]
+                                 : BranchDifficulty::MASTER;   // not decided yet: preview the master branch
+        const NoteList* section = nullptr;
+        if      (chosen == BranchDifficulty::EXPERT && i < branch_e_all.size()) section = &branch_e_all[i];
+        else if (chosen == BranchDifficulty::MASTER && i < branch_m_all.size()) section = &branch_m_all[i];
+        else if (chosen == BranchDifficulty::NORMAL && i < branch_n_all.size()) section = &branch_n_all[i];
+
+        if (!section) {
+            if      (i < branch_m_all.size()) section = &branch_m_all[i];
+            else if (i < branch_n_all.size()) section = &branch_n_all[i];
+            else if (i < branch_e_all.size()) section = &branch_e_all[i];
+        }
+        if (!section) continue;
+
+        scrobble_note_list.insert(scrobble_note_list.end(), section->notes.begin(), section->notes.end());
+        for (const auto& tl : section->timeline)
+            if (tl.gogo_time.has_value() && tl.gogo_time.value()) markers.push_back(tl.start_time);
+    }
+
+    auto by_hit_ms = [](const Note& a, const Note& b) { return a.hit_ms < b.hit_ms; };
+    std::sort(scrobble_note_list.begin(), scrobble_note_list.end(), by_hit_ms);
+    std::sort(markers.begin(), markers.end());
+    for (const Note& note : scrobble_note_list)
+        if (note.type == NoteType::BARLINE) bars.push_back(note);
+
+    auto reindex = [&](double ms) {
+        if (ms < 0) return -1;
+        for (int i = 0; i < (int)bars.size(); ++i)
+            if (bars[i].hit_ms == ms) return i;
+        return -1;
+    };
+    if (cursor_ms >= 0) scrobble_index = std::max(0, reindex(cursor_ms));
+    jump_arrow_bar = reindex(jump_arrow_ms);
+    for (size_t i = 0; i < jump_bars.size(); ++i) jump_bars[i] = reindex(mark_ms[i]);
+
+    branch_display_synced = resolved;
 }
 
 void PracticeGameScreen::pause_song_practice() {
@@ -443,6 +495,7 @@ std::optional<Screens> PracticeGameScreen::update() {
 
     for (auto& player : players)
         player->update(ms_from_start, current_ms, background);
+    sync_branch_display();
     song_info.update(current_ms);
 
     scrobble_move->update(current_ms);

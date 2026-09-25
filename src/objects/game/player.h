@@ -51,6 +51,8 @@ public:
     double last_note_hit;
     std::map<double, InputLogType> input_log;
 
+    std::vector<BranchDifficulty> branch_history;
+
     Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param, int difficulty_param,
            bool is_2p_param, const Modifiers& modifiers_param);
 
@@ -186,7 +188,11 @@ private:
     float branch_p_count;
     int branch_r_count;
     int branch_note_count;
+
+    size_t branch_checkpoint_index = 0;
     std::string branch_condition;
+
+    double resume_filter_ms = -1e18;
 
     std::string don_hitsound;
     std::string kat_hitsound;
