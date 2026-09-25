@@ -54,10 +54,7 @@ android {
         into shaderOutDir
     }
 
-    // Bundle Skins/, Songs/ and a touch_input-forced config.toml into the APK
-    // so a fresh install has assets to load immediately (matching the iOS
-    // build's GameData bundle -- see cmake/ios_assets.cmake). Extracted to
-    // /sdcard/YataiDON on first launch by SplashActivity.
+    def bundleGameData = (findProperty('bundleGameData') ?: 'true').toBoolean()
     def gameDataOutDir = layout.buildDirectory.dir('generated/game_data_assets')
 
     task copyGameDataAssets(type: Copy) {
@@ -77,15 +74,14 @@ android {
 
     sourceSets {
         main {
-            assets.srcDirs = [
-                'src/main/assets',
-                layout.buildDirectory.dir('generated/shader_assets').get(),
-                gameDataOutDir.get()
-            ]
+            assets.srcDirs = bundleGameData
+                ? ['src/main/assets', layout.buildDirectory.dir('generated/shader_assets').get(), gameDataOutDir.get()]
+                : ['src/main/assets', layout.buildDirectory.dir('generated/shader_assets').get()]
         }
     }
 
-    preBuild.dependsOn copyShaderAssets, copyGameDataAssets
+    preBuild.dependsOn copyShaderAssets
+    if (bundleGameData) preBuild.dependsOn copyGameDataAssets
 
     lint {
         abortOnError false

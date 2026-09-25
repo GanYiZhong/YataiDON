@@ -393,7 +393,7 @@ bool NetworkClient::fetch_costume(const std::string& access_code, int& head_inde
 #if defined(__ANDROID__)
 namespace {
 constexpr char kUpdateChecksumUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/checksums-android.sha256";
-constexpr char kUpdateApkUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/YataiDON-Android.apk";
+constexpr char kUpdateApkUrl[] = "https://github.com/yonokid/YataiDON/releases/latest/download/YataiDON-Android-Update.apk";
 constexpr char kUpdateMarkerPath[] = "update_apk.sha256";
 constexpr char kUpdateApkPath[] = "/sdcard/YataiDON/update.apk";
 constexpr char kUpdateApkTmpPath[] = "/sdcard/YataiDON/update.apk.part";

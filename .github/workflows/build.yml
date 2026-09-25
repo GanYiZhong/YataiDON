@@ -456,6 +456,20 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
+      - name: Build Release APK (update, no bundled assets)
+        working-directory: android
+        env:
+          NETWORK_URL: ${{ secrets.NETWORK_URL }}
+          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
+        run: ./gradlew assembleRelease --no-daemon -PbundleGameData=false
+
+      - name: Upload update APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: YataiDON-Android-Update
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
   build-ios:
     name: Build unsigned iOS IPA
     runs-on: macos-15
@@ -614,6 +628,12 @@ jobs:
           name: YataiDON-Android
           path: android-out/
 
+      - name: Download Android update artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: YataiDON-Android-Update
+          path: android-update-out/
+
       - name: Download iOS artifact
         uses: actions/download-artifact@v4
         with:
@@ -627,6 +647,7 @@ jobs:
           (cd windows && zip -r ../YataiDON-Windows.zip .)
           (cd macos   && zip -r ../YataiDON-macOS.zip .)
           cp android-out/app-release.apk YataiDON-Android.apk
+          cp android-update-out/app-release.apk YataiDON-Android-Update.apk
           cp ios-out/YataiDON-iOS-unsigned.ipa YataiDON-iOS-unsigned.ipa
 
           # Metadata files
@@ -637,7 +658,10 @@ jobs:
 
           # Android in-app updater compares against this (the "latest" tag is a
           # fixed rolling release, so it can't tell apart which build is newer).
-          sha256sum YataiDON-Android.apk | awk '{print $1}' > checksums-android.sha256
+          # It downloads YataiDON-Android-Update.apk (no bundled Skins/Songs --
+          # those are already on disk and kept current separately), so hash that
+          # one, not the full YataiDON-Android.apk.
+          sha256sum YataiDON-Android-Update.apk | awk '{print $1}' > checksums-android.sha256
 
           # Linux update package: binary + updater + shader + lib
           UPDATE_LINUX="YataiDON update.sh shader/"
@@ -664,6 +688,7 @@ jobs:
             YataiDON-Windows.zip
             YataiDON-macOS.zip
             YataiDON-Android.apk
+            YataiDON-Android-Update.apk
             YataiDON-iOS-unsigned.ipa
             update-linux.tar.gz
             update-windows.tar.gz
