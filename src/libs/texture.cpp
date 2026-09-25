@@ -340,6 +340,17 @@ void TextureWrapper::read_tex_obj_data(const Value& tex_mapping, TextureObject* 
             }
         }
     }
+
+    // Crop-based sub-sprites share an atlas with neighbors packed edge-to-edge (no padding),
+    // so bilinear/mipmap sampling bleeds neighboring sprite pixels in at the crop boundary.
+    // Point filtering samples a single texel and never blends across that boundary.
+    ray::TextureFilter filter = tex_obj->crop_data.has_value() ? ray::TEXTURE_FILTER_POINT
+                                                                 : ray::TEXTURE_FILTER_BILINEAR;
+    for (int i = 0; i < tex_obj->frame_count(); i++) {
+        if (const ray::Texture2D* t = tex_obj->frame_texture(i)) {
+            SetTextureFilter(*const_cast<ray::Texture2D*>(t), filter);
+        }
+    }
 }
 
 void TextureWrapper::load_animations(const std::string& screen_name) {

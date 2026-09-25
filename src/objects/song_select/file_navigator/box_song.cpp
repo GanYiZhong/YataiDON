@@ -11,7 +11,9 @@ namespace {
     template <size_t N>
     std::array<std::unique_ptr<OutlinedText>, N> build_vertical_label_set(
         const std::array<SC, N>& keys, const std::string& lang,
-        float box_width, float box_height, float v_advance, float font_bonus = 0.0f)
+        float box_width, float box_height, float v_advance, float font_bonus,
+        const std::array<ray::Color, N>& fill_colors, const std::array<ray::Color, N>& outline_colors,
+        float outline_thickness = 0.0f)
     {
         std::array<std::string, N> labels;
         size_t max_chars = 1;
@@ -29,7 +31,7 @@ namespace {
 
         std::array<std::unique_ptr<OutlinedText>, N> result;
         for (size_t i = 0; i < N; i++)
-            result[i] = std::make_unique<OutlinedText>(labels[i], font_size, ray::BLACK, ray::BLACK, true, 0.0f, 2.0f, v_advance);
+            result[i] = std::make_unique<OutlinedText>(labels[i], font_size, fill_colors[i], outline_colors[i], true, outline_thickness, 2.0f, v_advance);
         return result;
     }
 
@@ -42,8 +44,14 @@ namespace {
                 SC::DIFF_TOWER_EASY, SC::DIFF_TOWER_NORMAL, SC::DIFF_TOWER_HARD,
                 SC::DIFF_TOWER_ONI, SC::DIFF_TOWER_URA,
             };
+            static const std::array<ray::Color, 5> fill_colors = {
+                ray::BLACK, ray::BLACK, ray::BLACK, ray::BLACK, ray::WHITE,
+            };
+            static const std::array<ray::Color, 5> outline_colors = {
+                ray::BLANK, ray::BLANK, ray::BLANK, ray::BLANK, ray::Color{0, 73, 90, 255},
+            };
             const SkinInfo& box_cfg = tex.skin_config[SC::DIFF_TOWER_LABEL_BOX];
-            cache = build_vertical_label_set<5>(keys, lang, box_cfg.width, box_cfg.height, 0.9f, 5.0f);
+            cache = build_vertical_label_set<5>(keys, lang, box_cfg.width, box_cfg.height, 0.9f, 5.0f, fill_colors, outline_colors, 3.0f);
             cached_lang = lang;
         }
         return cache[diff].get();
@@ -57,8 +65,9 @@ namespace {
             static constexpr std::array<SC, 4> keys = {
                 SC::DIFF_TOWER_EASY, SC::DIFF_TOWER_NORMAL, SC::DIFF_TOWER_HARD, SC::DIFF_TOWER_ONI,
             };
+            static const std::array<ray::Color, 4> colors = { ray::BLACK, ray::BLACK, ray::BLACK, ray::BLACK };
             const SkinInfo& box_cfg = tex.skin_config[SC::DIFFICULTY_BAR_LABEL_BOX];
-            cache = build_vertical_label_set<4>(keys, lang, box_cfg.width, box_cfg.height, 0.9f, 7.0f);
+            cache = build_vertical_label_set<4>(keys, lang, box_cfg.width, box_cfg.height, 0.9f, 7.0f, colors, colors);
             cached_lang = lang;
         }
         return cache[diff].get();

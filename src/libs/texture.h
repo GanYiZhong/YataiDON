@@ -88,8 +88,6 @@ struct SingleTexture : public TextureObject {
 
     SingleTexture(const std::string& name, const ray::Texture2D& tex)
         : TextureObject(name, tex.width, tex.height), texture(tex) {
-        GenTextureMipmaps(&texture);
-        SetTextureFilter(texture, ray::TEXTURE_FILTER_TRILINEAR);
         SetTextureWrap(texture, ray::TEXTURE_WRAP_CLAMP);
     }
 
@@ -107,8 +105,6 @@ struct FramedTexture : public TextureObject {
         : TextureObject(name, texs.empty() ? 0 : texs[0].width,
                        texs.empty() ? 0 : texs[0].height), textures(texs) {
         for (auto& tex : textures) {
-            GenTextureMipmaps(&const_cast<ray::Texture2D&>(tex));
-            SetTextureFilter(tex, ray::TEXTURE_FILTER_TRILINEAR);
             SetTextureWrap(tex, ray::TEXTURE_WRAP_CLAMP);
         }
     }

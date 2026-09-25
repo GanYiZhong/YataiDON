@@ -25,17 +25,8 @@ namespace {
             }
             const SkinInfo& box_cfg = tex.skin_config[SC::SELECTED_DIFF_TEXT_BOX];
             int font_size = (int)box_cfg.height;
-            while (font_size > 8) {
-                bool fits = true;
-                for (auto& l : labels) {
-                    float w = ray::MeasureTextEx(font_manager.get_font(l, font_size), l.c_str(), (float)font_size, 2.0f).x;
-                    if (w > box_cfg.width) { fits = false; break; }
-                }
-                if (fits) break;
-                font_size--;
-            }
             for (size_t i = 0; i < 4; i++)
-                cache[i] = std::make_unique<OutlinedText>(labels[i], font_size + 3, ray::WHITE, ray::BLACK, false);
+                cache[i] = std::make_unique<OutlinedText>(labels[i], font_size, ray::WHITE, ray::BLACK, false);
             cached_lang = lang;
         }
         return cache[diff].get();
