@@ -60,7 +60,6 @@ Download the latest release for your operating system from the [releases page](h
 
 #### Android
 1. Install `YataiDON-Android.apk` (enable "install from unknown sources" if needed)
-2. Place assets in `sdcard/YataiDON`. Specifically, you will need `Skins`, `Songs`, and `config.toml`.
 
 ## Building from Source
 
