@@ -619,10 +619,8 @@ void PracticeGameScreen::draw() {
         }
     }
 
-    // Player overlays after practice graphics (hit effects, combos, etc.)
-    if (players.size() == 1) {
-        players[0]->draw_overlays(184 * tex.screen_scale, mask_shader);
-    }
+    // Player::draw_practice already drew the overlays (drum, hit effects, combo) once, before
+    // the background's draw_fore, as Player::draw does in normal play.
 
     tex.draw_texture(t_large_drum, {.index = 0});
     tex.draw_texture(t_large_drum, {.index = 1});
