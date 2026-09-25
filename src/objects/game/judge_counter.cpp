@@ -66,12 +66,12 @@ void JudgeCounter::draw() {
 
     draw_counter(ok / (float)total_notes * 100,
                  tex.skin_config[SC::JUDGE_COUNTER_1].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_3].y,
+                 tex.skin_config[SC::JUDGE_COUNTER_2].y,
                  margin, orange);
 
     draw_counter(bad / (float)total_notes * 100,
                  tex.skin_config[SC::JUDGE_COUNTER_1].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_4].x,
+                 tex.skin_config[SC::JUDGE_COUNTER_3].y,
                  margin, orange);
 
     draw_counter((good + ok) / (float)total_notes * 100,
@@ -86,12 +86,12 @@ void JudgeCounter::draw() {
 
     draw_counter(ok,
                  tex.skin_config[SC::JUDGE_COUNTER_2].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_3].y,
+                 tex.skin_config[SC::JUDGE_COUNTER_2].y,
                  margin, white);
 
     draw_counter(bad,
                  tex.skin_config[SC::JUDGE_COUNTER_2].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_4].x,
+                 tex.skin_config[SC::JUDGE_COUNTER_3].y,
                  margin, white);
 
     draw_counter(drumrolls,

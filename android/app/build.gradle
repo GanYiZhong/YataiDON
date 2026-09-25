@@ -54,16 +54,25 @@ android {
         into shaderOutDir
     }
 
-    // Bundle Skins/ and Songs/ into the APK so a fresh install has assets to
-    // load immediately (matching the iOS build's GameData bundle -- see
-    // cmake/ios_assets.cmake). Extracted to /sdcard/YataiDON on first launch
-    // by YataiDONActivity.
+    // Bundle Skins/, Songs/ and a touch_input-forced config.toml into the APK
+    // so a fresh install has assets to load immediately (matching the iOS
+    // build's GameData bundle -- see cmake/ios_assets.cmake). Extracted to
+    // /sdcard/YataiDON on first launch by SplashActivity.
     def gameDataOutDir = layout.buildDirectory.dir('generated/game_data_assets')
 
     task copyGameDataAssets(type: Copy) {
         from(rootProject.file('../Skins')) { into 'Skins' }
         from(rootProject.file('../Songs')) { into 'Songs' }
+        from(rootProject.file('../config.toml')) {
+            filter { String line -> line.replaceFirst(/^(\s*)touch_input(\s*=\s*)false\b/, '$1touch_input$2true') }
+        }
         into gameDataOutDir
+    }
+    copyGameDataAssets.doLast {
+        def patched = new File(gameDataOutDir.get().asFile, 'config.toml').text
+        if (!(patched =~ /(?m)^\s*touch_input\s*=\s*true\s*$/)) {
+            throw new GradleException("config.toml no longer contains an overridable 'touch_input = false' entry; update copyGameDataAssets")
+        }
     }
 
     sourceSets {

@@ -64,6 +64,9 @@ public class SplashActivity extends Activity {
         AssetManager assets = getAssets();
         extractAssetDir(assets, "Skins", new File(GAME_DATA_DIR, "Skins"));
         extractAssetDir(assets, "Songs", new File(GAME_DATA_DIR, "Songs"));
+        // Skip if already present so an update doesn't clobber the user's saved config.
+        File configDest = new File(GAME_DATA_DIR, "config.toml");
+        if (!configDest.exists()) extractAssetFile(assets, "config.toml", configDest);
     }
 
     // Skips files that already exist so later app updates don't clobber

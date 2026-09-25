@@ -1341,14 +1341,9 @@ void Player::check_note(double ms_from_start, DrumType drum_type, double current
             bad_count++;
             combo = 0;
             branch_note_count++;
-            Note note;
-            if (drum_type == DrumType::DON) {
-                note = don_notes.front();
-                don_notes.pop_front();
-            } else {
-                note = kat_notes.front();
-                kat_notes.pop_front();
-            }
+            // Same note as the GOOD/OK branches: curr_note may be lane[1] (stale head).
+            const Note note = curr_note;
+            lane.erase(lane.begin() + lane_pos);
             note_judgments[note.index] = Judgments::BAD;
             auto it = std::lower_bound(draw_note_buffer.begin(), draw_note_buffer.end(),
                                        note.index, [](const Note& n, int idx) { return n.index < idx; });

@@ -442,9 +442,6 @@ jobs:
             "${{ secrets.ANDROID_KEY_PASSWORD }}" \
             > android/keystore.properties
 
-      - name: Patch config for Android
-        run: sed -i 's/^touch_input = false/touch_input = true/' config.toml
-
       - name: Build Release APK
         working-directory: android
         env:

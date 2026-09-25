@@ -30,8 +30,8 @@ public:
             // identical on the input test.
             TextureObject& drum = *t_large_drum;
             float left   = x_offset + (float)drum.x[0];
-            float centre = left + drum.width / 2.0f;
-            float right  = left + (float)drum.width;
+            float centre = left + drum.x2[0] / 2.0f;
+            float right  = left + (float)drum.x2[0];
             int sx = virtual_to_screen_x(side == Side::LEFT ? left   : centre);
             int ex = virtual_to_screen_x(side == Side::LEFT ? centre : right);
             ray::BeginScissorMode(sx, 0, ex - sx, ray::GetScreenHeight());
