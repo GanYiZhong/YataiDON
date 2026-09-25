@@ -27,6 +27,10 @@
 #include <vector>
 #endif
 
+#ifdef GetObject
+#undef GetObject
+#endif
+
 NetworkClient network;
 
 std::string modifiers_to_json(const Modifiers& m) {
