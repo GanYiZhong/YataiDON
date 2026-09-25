@@ -12,6 +12,8 @@
 #include "../objects/game/transition.h"
 #include "../objects/game/song_info.h"
 
+struct ReplayData;
+
 class SongSelectScreen : public Screen {
 protected:
     FadeAnimation* diff_fade_out;
@@ -54,6 +56,10 @@ protected:
 
     void poll_song_jump(double current_ms);
     double last_song_jump_poll_ms = -1e9;
+
+    std::optional<Screens> poll_replay_jump(double current_ms);
+    double last_replay_jump_poll_ms = -1e9;
+    std::optional<Screens> start_replay(const ReplayData& replay);
 
     virtual bool allows_second_player_join() { return true; }
     double join_request_ms = -1.0;

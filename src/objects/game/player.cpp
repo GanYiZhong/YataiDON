@@ -71,6 +71,14 @@ Player::Player(std::optional<SongParser>& parser_ref, PlayerNum player_num_param
     }
 }
 
+void Player::apply_replay_appearance(const PlayerData& pd) {
+    nameplate = Nameplate(pd.username, pd.title, player_num, pd.dan, pd.gold, pd.rainbow, pd.title_bg);
+    chara = make_chara_from_player_data(&pd, false, true);
+    chara->set_don_colors(pd.chara_color_1, pd.chara_color_2, pd.chara_color_3);
+    chara->apply_face(pd.chara_face_index);
+    chara->set_anim(AnimIndex::DON_NORMAL);
+}
+
 void Player::init_player_textures() {
     t_lane_background = tex.get_texture("lane/lane_background");
     t_ai_lane_background = tex.get_texture("lane/ai_lane_background");
@@ -1450,6 +1458,21 @@ void Player::spawn_hit_effects(DrumType drum_type, Side side) {
 
 void Player::handle_input(double ms_from_start, double current_ms, std::optional<Background>& background) {
     if (modifiers.auto_play) return;
+
+    if (replay_active) {
+        while (replay_cursor < replay_log.size() && replay_log[replay_cursor].first <= ms_from_start) {
+            auto [log_ms, log_type] = replay_log[replay_cursor];
+            DrumType drum_type = (log_type == InputLogType::DON_L || log_type == InputLogType::DON_R)
+                ? DrumType::DON : DrumType::KAT;
+            Side side = (log_type == InputLogType::DON_L || log_type == InputLogType::KAT_L)
+                ? Side::LEFT : Side::RIGHT;
+            spawn_hit_effects(drum_type, side);
+            audio.play_sound(drum_type == DrumType::DON ? don_hitsound : kat_hitsound, VolumePreset::HITSOUND);
+            check_note(log_ms, drum_type, current_ms, background);
+            ++replay_cursor;
+        }
+        return;
+    }
 
     struct InputCheck {
         bool (*check_func)(PlayerNum);

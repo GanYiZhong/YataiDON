@@ -124,6 +124,55 @@ void SongSelectScreen::poll_song_jump(double current_ms) {
     }
 }
 
+std::optional<Screens> SongSelectScreen::poll_replay_jump(double current_ms) {
+    static constexpr double REPLAY_JUMP_POLL_INTERVAL_MS = 3000.0;
+    const std::string& access_code = global_data.config->network.access_code;
+
+    if (!access_code.empty() && state == SongSelectState::BROWSING &&
+        current_ms - last_replay_jump_poll_ms >= REPLAY_JUMP_POLL_INTERVAL_MS) {
+        last_replay_jump_poll_ms = current_ms;
+        network.poll_replay_jump(access_code);
+    }
+
+    if (auto score_id = network.take_replay_jump_result()) {
+        network.request_replay(*score_id);
+    }
+    if (auto replay = network.take_replay_result()) {
+        return start_replay(*replay);
+    }
+    return std::nullopt;
+}
+
+std::optional<Screens> SongSelectScreen::start_replay(const ReplayData& replay) {
+    if (!replay.ok) {
+        spdlog::error("Replay: failed to fetch from server");
+        return std::nullopt;
+    }
+    auto song_path = scores_manager.get_path_by_diff_hash(replay.hash);
+    if (!song_path.has_value()) {
+        spdlog::error("Replay: chart {} not found in local library", replay.hash);
+        return std::nullopt;
+    }
+
+    SessionData& session_data = global_data.session_data[(int)PlayerNum::P1];
+    session_data.selected_song = *song_path;
+    session_data.selected_difficulty = replay.difficulty;
+    session_data.song_hash = replay.hash;
+    session_data.replay_input_log = replay.input_log;
+    session_data.replay_username = replay.player_data.username;
+    session_data.replay_title = replay.player_data.title;
+    session_data.replay_title_bg = replay.player_data.title_bg;
+    session_data.replay_chara_color_1 = replay.player_data.chara_color_1;
+    session_data.replay_chara_color_2 = replay.player_data.chara_color_2;
+    session_data.replay_chara_color_3 = replay.player_data.chara_color_3;
+    session_data.replay_chara_head_index = replay.player_data.chara_head_index;
+    session_data.replay_chara_body_index = replay.player_data.chara_body_index;
+    session_data.replay_chara_cos_index = replay.player_data.chara_cos_index;
+    session_data.replay_chara_is_costume = replay.player_data.chara_is_costume;
+    global_data.player_num = PlayerNum::P1;
+    return on_screen_end(Screens::GAME);
+}
+
 std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_ms) {
     static constexpr double JOIN_WAIT_MS = 1.5 * 1000.0;
     if (join_request_ms >= 0.0) {
@@ -207,6 +256,7 @@ std::optional<Screens> SongSelectScreen::update() {
     }
 
     poll_song_jump(current_time);
+    if (auto replay_screen = poll_replay_jump(current_time)) return replay_screen;
     if (auto join = poll_second_player_join(current_time)) return join;
     if (join_request_ms >= 0.0) {
         clear_input_buffers();

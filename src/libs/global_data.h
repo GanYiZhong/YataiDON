@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+#include <map>
+#include <optional>
 
 #include "config.h"
 #include "ray.h" // IWYU pragma: keep
@@ -192,6 +194,17 @@ struct SessionData {
     std::string genre_label;
     ResultData result_data;
     DanResultData dan_result_data;
+    std::optional<std::map<double, int>> replay_input_log;
+    std::string replay_username;
+    std::string replay_title;
+    int replay_title_bg = 0;
+    ray::Color replay_chara_color_1 = ray::Color{0x68, 0xBF, 0xC0, 0xFF};
+    ray::Color replay_chara_color_2 = ray::Color{0xF9, 0x47, 0x28, 0xFF};
+    ray::Color replay_chara_color_3 = ray::Color{0xF9, 0xF0, 0xE1, 0xFF};
+    int replay_chara_head_index = 0;
+    int replay_chara_body_index = 0;
+    int replay_chara_cos_index = 0;
+    bool replay_chara_is_costume = true;
 };
 
 struct CameraConfig {

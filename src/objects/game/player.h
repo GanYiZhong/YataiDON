@@ -77,6 +77,13 @@ public:
         return it != note_judgments.end() ? std::optional<Judgments>(it->second) : std::nullopt;
     }
     bool is_auto_play() const { return modifiers.auto_play; }
+    bool is_replay() const { return replay_active; }
+    void load_replay(const std::map<double, InputLogType>& log) {
+        replay_log.assign(log.begin(), log.end());
+        replay_cursor = 0;
+        replay_active = true;
+    }
+    void apply_replay_appearance(const PlayerData& pd);
     bool is_skip_enabled() const { return modifiers.skip; }
     void cut_to_end(double now, int prev_good = 0, int prev_ok = 0, int prev_bad = 0);
     bool was_skipped() const { return skipped_run; }
@@ -123,6 +130,9 @@ private:
     bool is_2p;
     int  judgeable_note_count = 0;
     bool skipped_run = false;
+    bool replay_active = false;
+    std::vector<std::pair<double, InputLogType>> replay_log;
+    size_t replay_cursor = 0;
     bool is_dan;
     int difficulty;
     int visual_offset;

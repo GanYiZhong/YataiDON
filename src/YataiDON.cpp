@@ -112,8 +112,6 @@ Screens check_args(int argc, char* argv[]) {
             std::cout << "  difficulty  : Difficulty level (optional, defaults to max difficulty)\n";
             std::cout << "  --auto      : Enable auto mode\n";
             std::cout << "  --practice  : Start in practice mode\n";
-            std::cout << "  --skin-viewer : Open skin viewer\n";
-            std::cout << "  --sandbox   : Open sandbox mode\n";
             exit_now(0);
         } else if (song_path.empty()) {
             song_path = arg;

@@ -32,6 +32,14 @@ struct RemoteScore {
     Score score;
 };
 
+struct ReplayData {
+    bool ok = false;
+    std::string hash;
+    int difficulty = 0;
+    std::map<double, int> input_log;
+    PlayerData player_data;
+};
+
 std::string modifiers_to_json(const Modifiers& modifiers);
 
 class NetworkClient {
@@ -68,7 +76,12 @@ public:
     void poll_song_jump(const std::string& access_code);
     std::optional<std::string> take_song_jump_result();
 
+    void poll_replay_jump(const std::string& access_code);
+    std::optional<int> take_replay_jump_result();
+
     std::vector<RemoteScore> fetch_scores(const std::string& access_code);
+    void request_replay(int score_id);
+    std::optional<ReplayData> take_replay_result();
 
     void shutdown();
 
@@ -84,6 +97,12 @@ private:
 
     std::optional<cpr::AsyncResponse> pending_song_jump;
     std::optional<std::string> song_jump_result;
+
+    std::optional<cpr::AsyncResponse> pending_replay_jump;
+    std::optional<int> replay_jump_result;
+
+    std::optional<cpr::AsyncResponse> pending_replay_fetch;
+    std::optional<ReplayData> replay_fetch_result;
 
     std::optional<cpr::AsyncResponse> pending_score_submit;
 

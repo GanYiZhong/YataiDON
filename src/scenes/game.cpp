@@ -144,6 +144,26 @@ void GameScreen::init_tja(fs::path song) {
     }
 
     players.push_back(std::make_unique<Player>(parser, global_data.player_num, global_data.session_data[(int)global_data.player_num].selected_difficulty, false, get_player_modifiers(global_data.player_num)));
+
+    SessionData& replay_session_data = global_data.session_data[(int)global_data.player_num];
+    if (replay_session_data.replay_input_log.has_value()) {
+        std::map<double, InputLogType> typed_log;
+        for (const auto& [ms, type] : *replay_session_data.replay_input_log) typed_log.emplace(ms, static_cast<InputLogType>(type));
+        players.back()->load_replay(typed_log);
+
+        PlayerData replay_pd;
+        replay_pd.username = replay_session_data.replay_username;
+        replay_pd.title = replay_session_data.replay_title;
+        replay_pd.title_bg = replay_session_data.replay_title_bg;
+        replay_pd.chara_color_1 = replay_session_data.replay_chara_color_1;
+        replay_pd.chara_color_2 = replay_session_data.replay_chara_color_2;
+        replay_pd.chara_color_3 = replay_session_data.replay_chara_color_3;
+        replay_pd.chara_head_index = replay_session_data.replay_chara_head_index;
+        replay_pd.chara_body_index = replay_session_data.replay_chara_body_index;
+        replay_pd.chara_cos_index = replay_session_data.replay_chara_cos_index;
+        replay_pd.chara_is_costume = replay_session_data.replay_chara_is_costume;
+        players.back()->apply_replay_appearance(replay_pd);
+    }
 }
 
 void GameScreen::poll_pending_song() {
@@ -245,9 +265,10 @@ void GameScreen::update_background(double current_ms) {
 }
 
 void GameScreen::save_score(int player_id, PlayerNum player_num) {
-    for (const auto& player : players)
-        if (player && player->player_num == player_num && player->is_auto_play())
+    for (const auto& player : players) {
+        if (player && player->player_num == player_num && (player->is_auto_play() || player->is_replay()))
             return;
+    }
 
     Score score;
     SessionData& session_data = global_data.session_data[(int)player_num];

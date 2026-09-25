@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <random>
 
@@ -575,6 +576,60 @@ std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string& access_c
     return result;
 }
 
+static ReplayData parse_replay_response(const cpr::Response& response) {
+    ReplayData result;
+    if (response.status_code != 200) return result;
+
+    rapidjson::Document doc;
+    if (doc.Parse(response.text.c_str()).HasParseError()) return result;
+    if (!doc.HasMember("hash") || !doc["hash"].IsString()) return result;
+    if (!doc.HasMember("difficulty") || !doc["difficulty"].IsInt()) return result;
+    if (!doc.HasMember("input_log") || !doc["input_log"].IsObject()) return result;
+
+    result.hash = doc["hash"].GetString();
+    result.difficulty = doc["difficulty"].GetInt();
+    for (auto& m : doc["input_log"].GetObject()) {
+        if (!m.value.IsInt()) continue;
+        result.input_log.emplace(std::atof(m.name.GetString()), m.value.GetInt());
+    }
+
+    if (doc.HasMember("username") && doc["username"].IsString()) result.player_data.username = doc["username"].GetString();
+    if (doc.HasMember("title") && doc["title"].IsString()) result.player_data.title = doc["title"].GetString();
+    if (doc.HasMember("title_bg") && doc["title_bg"].IsInt()) result.player_data.title_bg = doc["title_bg"].GetInt();
+    try {
+        if (doc.HasMember("chara_color_1") && doc["chara_color_1"].IsString()) result.player_data.chara_color_1 = parse_hex_color(doc["chara_color_1"].GetString());
+        if (doc.HasMember("chara_color_2") && doc["chara_color_2"].IsString()) result.player_data.chara_color_2 = parse_hex_color(doc["chara_color_2"].GetString());
+        if (doc.HasMember("chara_color_3") && doc["chara_color_3"].IsString()) result.player_data.chara_color_3 = parse_hex_color(doc["chara_color_3"].GetString());
+    } catch (const std::invalid_argument&) {}
+    if (doc.HasMember("chara_head_index") && doc["chara_head_index"].IsInt()) result.player_data.chara_head_index = doc["chara_head_index"].GetInt();
+    if (doc.HasMember("chara_body_index") && doc["chara_body_index"].IsInt()) result.player_data.chara_body_index = doc["chara_body_index"].GetInt();
+    if (doc.HasMember("chara_cos_index") && doc["chara_cos_index"].IsInt()) result.player_data.chara_cos_index = doc["chara_cos_index"].GetInt();
+    if (doc.HasMember("chara_is_costume") && doc["chara_is_costume"].IsBool()) result.player_data.chara_is_costume = doc["chara_is_costume"].GetBool();
+
+    result.ok = true;
+    return result;
+}
+
+void NetworkClient::request_replay(int score_id) {
+    if (!network_enabled()) return;
+    if (pending_replay_fetch.has_value()) return;
+    std::string score_id_str = std::to_string(score_id);
+    pending_replay_fetch = cpr::GetAsync(
+        cpr::Url{network_url("/replay")},
+        signed_headers("GET", "/replay", {{"score_id", score_id_str}}),
+        cpr::Parameters{{"score_id", score_id_str}},
+        cpr::Timeout{10000}
+        NETWORK_CA_OPT
+    );
+}
+
+std::optional<ReplayData> NetworkClient::take_replay_result() {
+    if (!replay_fetch_result.has_value()) return std::nullopt;
+    std::optional<ReplayData> result = std::move(replay_fetch_result);
+    replay_fetch_result.reset();
+    return result;
+}
+
 void NetworkClient::clear_import_flag(const std::string& access_code) {
     if (!network_enabled()) return;
     cpr::Response response = cpr::Post(
@@ -696,6 +751,25 @@ std::optional<std::string> NetworkClient::take_song_jump_result() {
     return result;
 }
 
+void NetworkClient::poll_replay_jump(const std::string& access_code) {
+    if (!network_enabled()) return;
+    if (pending_replay_jump.has_value()) return;
+    pending_replay_jump = cpr::GetAsync(
+        cpr::Url{network_url("/poll_replay_jump")},
+        signed_headers("GET", "/poll_replay_jump", {{"access_code", access_code}}),
+        cpr::Parameters{{"access_code", access_code}},
+        cpr::Timeout{5000}
+        NETWORK_CA_OPT
+    );
+}
+
+std::optional<int> NetworkClient::take_replay_jump_result() {
+    if (!replay_jump_result.has_value()) return std::nullopt;
+    std::optional<int> result = std::move(replay_jump_result);
+    replay_jump_result.reset();
+    return result;
+}
+
 void NetworkClient::update(double current_ms) {
 #if defined(__ANDROID__)
     if (pending_update_checksum.has_value() &&
@@ -798,6 +872,27 @@ void NetworkClient::update(double current_ms) {
         }
     }
 
+    if (pending_replay_jump.has_value() &&
+        pending_replay_jump->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_replay_jump->get();
+        pending_replay_jump.reset();
+
+        if (response.status_code == 200) {
+            rapidjson::Document doc;
+            if (!doc.Parse(response.text.c_str()).HasParseError() &&
+                doc.HasMember("score_id") && doc["score_id"].IsInt()) {
+                replay_jump_result = doc["score_id"].GetInt();
+            }
+        }
+    }
+
+    if (pending_replay_fetch.has_value() &&
+        pending_replay_fetch->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        cpr::Response response = pending_replay_fetch->get();
+        pending_replay_fetch.reset();
+        replay_fetch_result = parse_replay_response(response);
+    }
+
     if (pending_score_submit.has_value() &&
         pending_score_submit->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         cpr::Response response = pending_score_submit->get();
@@ -816,6 +911,14 @@ void NetworkClient::shutdown() {
     if (pending_song_jump.has_value()) {
         pending_song_jump->wait();
         pending_song_jump.reset();
+    }
+    if (pending_replay_jump.has_value()) {
+        pending_replay_jump->wait();
+        pending_replay_jump.reset();
+    }
+    if (pending_replay_fetch.has_value()) {
+        pending_replay_fetch->wait();
+        pending_replay_fetch.reset();
     }
 #if defined(__ANDROID__)
     if (pending_update_checksum.has_value()) {
@@ -866,6 +969,10 @@ void NetworkClient::update_costume(const std::string&, int, int, int, bool) {}
 std::vector<RemoteScore> NetworkClient::fetch_scores(const std::string&) { return {}; }
 void NetworkClient::poll_song_jump(const std::string&) {}
 std::optional<std::string> NetworkClient::take_song_jump_result() { return std::nullopt; }
+void NetworkClient::poll_replay_jump(const std::string&) {}
+std::optional<int> NetworkClient::take_replay_jump_result() { return std::nullopt; }
+void NetworkClient::request_replay(int) {}
+std::optional<ReplayData> NetworkClient::take_replay_result() { return std::nullopt; }
 void NetworkClient::update(double) {}
 void NetworkClient::shutdown() {}
 
