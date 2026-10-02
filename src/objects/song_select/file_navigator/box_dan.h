@@ -37,6 +37,9 @@ protected:
 
 private:
     void draw_exam_box();
+    void draw_yellow_box();
+    bool yb_started = false;
+    bool yb_diff_started = false;
     void draw_exam_grid();
     void draw_digit_counter(const std::string& digits, float margin_x, float y, TextureObject* digit_tex);
 

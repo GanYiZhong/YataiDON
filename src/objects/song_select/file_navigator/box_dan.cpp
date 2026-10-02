@@ -142,10 +142,52 @@ void DanBox::load_text() {
     text_loaded = true;
 }
 
+// The yellow box behind an open dan (YellowBox before the song-select draw moved to Lua): the
+// song select's Lua advances animations 9-18 and draws the frame, but the dan select has no Lua
+// box script, so the DanBox starts / advances them (create_anim, then create_anim_2 once opened)
+// and draws the frame itself.
+static MoveAnimation* yb_move(int id) { return (MoveAnimation*)tex.get_animation(id); }
+
 void DanBox::update(double current_ms) {
+    if (yellow_box_active && !yb_started) {
+        yb_started = true;
+        yb_diff_started = false;
+        for (int id : {9, 10, 11, 14, 16, 17}) tex.get_animation(id)->reset();
+        for (int id : {9, 10, 11}) tex.get_animation(id)->start();
+    } else if (!yellow_box_active) {
+        yb_started = false;
+    }
+    if (yellow_box_active)
+        for (int id = 9; id <= 18; id++) if (id != 12) tex.get_animation(id)->update(current_ms);
     BaseBox::update(current_ms);
     if (yellow_box_active && yellow_box_opened && !is_diff_select)
         is_diff_select = true;
+    if (is_diff_select && !yb_diff_started) {
+        yb_diff_started = true;
+        for (int id : {13, 14, 15, 16, 17, 18}) tex.get_animation(id)->start();
+    }
+}
+
+void DanBox::draw_yellow_box() {
+    const bool d = yb_diff_started;
+    const float right_x = yb_move(d ? 14 : 10)->attribute;
+    const float left_x = yb_move(d ? 13 : 9)->attribute;
+    const float center_w = yb_move(d ? 15 : 11)->attribute;
+    const float top_y = yb_move(16)->attribute;
+    const float center_h = yb_move(17)->attribute;
+    const float bottom_y = tex.skin_config[SC::YELLOW_BOX_BOTTOM].y;
+    TextureObject* br = tex.get_texture("yellow_box/yellow_box_bottom_right");
+    const float eh = br->height;
+    auto T = [](const char* n) { return tex.get_texture(std::string("yellow_box/") + n); };
+    tex.draw_texture(br,                         {.x=right_x,     .y=bottom_y});
+    tex.draw_texture(T("yellow_box_bottom_left"), {.x=left_x,      .y=bottom_y});
+    tex.draw_texture(T("yellow_box_top_right"),  {.x=right_x,     .y=top_y});
+    tex.draw_texture(T("yellow_box_top_left"),   {.x=left_x,      .y=top_y});
+    tex.draw_texture(T("yellow_box_bottom"),     {.x=left_x+eh,   .y=bottom_y,   .x2=center_w});
+    tex.draw_texture(T("yellow_box_right"),      {.x=right_x,     .y=top_y+eh,   .y2=center_h});
+    tex.draw_texture(T("yellow_box_left"),       {.x=left_x,      .y=top_y+eh,   .y2=center_h});
+    tex.draw_texture(T("yellow_box_top"),        {.x=left_x+eh,   .y=top_y,      .x2=center_w});
+    tex.draw_texture(T("yellow_box_center"),     {.x=left_x+eh,   .y=top_y+eh,   .x2=center_w, .y2=center_h});
 }
 
 void DanBox::draw_chip() {
@@ -174,6 +216,7 @@ void DanBox::draw_closed() { draw_chip(); }
 void DanBox::draw_open() {
     if (!yellow_box_active) return;
     draw_chip();
+    draw_yellow_box();
 
     if (!text_loaded) return;
     float f = open_fade->attribute;
