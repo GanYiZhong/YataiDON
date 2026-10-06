@@ -1476,7 +1476,20 @@ void Player::spawn_hit_effects(DrumType drum_type, Side side) {
 void Player::handle_input(double ms_from_start, double current_ms, std::optional<Background>& background) {
     if (modifiers.auto_play) return;
 
+    // Left and right inputs of the same type that land in the same frame count as one hit, like the
+    // arcade: the second one would otherwise be judged against the *next* note of that colour (a
+    // two-handed big note followed by a 16th at >=138 BPM lands in its BAD window). Effects and sounds
+    // still play for both hands; only the judgement is merged.
+    bool judged[2] = {false, false};
+    auto judge_once = [&](double ms, DrumType drum_type) {
+        bool& done = judged[drum_type == DrumType::DON ? 0 : 1];
+        if (done) return;
+        done = true;
+        check_note(ms, drum_type, current_ms, background);
+    };
+
     if (replay_active) {
+        double judged_ms = -1.0;
         while (replay_cursor < replay_log.size() && replay_log[replay_cursor].first <= ms_from_start) {
             auto [log_ms, log_type] = replay_log[replay_cursor];
             DrumType drum_type = (log_type == InputLogType::DON_L || log_type == InputLogType::DON_R)
@@ -1485,7 +1498,8 @@ void Player::handle_input(double ms_from_start, double current_ms, std::optional
                 ? Side::LEFT : Side::RIGHT;
             spawn_hit_effects(drum_type, side);
             audio.play_sound(drum_type == DrumType::DON ? don_hitsound : kat_hitsound, VolumePreset::HITSOUND);
-            check_note(log_ms, drum_type, current_ms, background);
+            if (log_ms != judged_ms) { judged[0] = judged[1] = false; judged_ms = log_ms; }
+            judge_once(log_ms, drum_type);
             ++replay_cursor;
         }
         return;
@@ -1517,7 +1531,7 @@ void Player::handle_input(double ms_from_start, double current_ms, std::optional
                 log_type = input.side == Side::LEFT ? InputLogType::KAT_L : InputLogType::KAT_R;
             }
             input_log.insert({ms_from_start, log_type});
-            check_note(ms_from_start, input.drum_type, current_ms, background);
+            judge_once(ms_from_start, input.drum_type);
         }
     }
 }
