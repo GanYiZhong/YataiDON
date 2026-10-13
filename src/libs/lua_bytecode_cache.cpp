@@ -1,5 +1,10 @@
 #include "lua_bytecode_cache.h"
 
+#include "ray.h"
+#ifdef _WIN32
+#include "../platform/platform_windows.h"
+#endif
+
 #include <lua.hpp>
 #include <spdlog/spdlog.h>
 
@@ -16,6 +21,10 @@ namespace lua_bytecode_cache {
 namespace {
 
 constexpr char kMagic[4] = {'Y', 'D', 'L', 'C'};
+
+// Smaller scripts compile in well under a millisecond, less than the extra seek a cache
+// entry in another folder costs on a hard drive; only big (generated data) chunks are kept.
+constexpr uint64_t kMinSourceBytes = 128 * 1024;
 
 struct Stamp {
     uint64_t size = 0;
@@ -49,14 +58,8 @@ void put(std::string& out, T v) {
     out.append(reinterpret_cast<const char*>(&v), sizeof(v));
 }
 
-template <typename T>
-bool get(const std::string& in, size_t& pos, T& v) {
-    if (pos + sizeof(v) > in.size()) return false;
-    std::memcpy(&v, in.data() + pos, sizeof(v));
-    pos += sizeof(v);
-    return true;
-}
-
+// Entry: magic, Lua release, source size and mtime, path, bytecode size, then the bytecode
+// deflated (it shrinks several times, so an entry is less to read than its source).
 std::string header(const std::string& path, const Stamp& st) {
     std::string h(kMagic, sizeof(kMagic));
     put<uint32_t>(h, LUA_VERSION_RELEASE_NUM);
@@ -67,16 +70,32 @@ std::string header(const std::string& path, const Stamp& st) {
     return h;
 }
 
+// Opens path's entry positioned after its header when the entry is current.
+bool open_current(const std::string& path, const Stamp& st, std::ifstream& in) {
+    in.open(entry_path(path), std::ios::binary);
+    if (!in) return false;
+    const std::string want = header(path, st);
+    std::string got(want.size(), '\0');
+    return in.read(got.data(), static_cast<std::streamsize>(got.size())) && got == want;
+}
+
 // The bytecode stored for path, or empty when there is no current entry.
 std::string read_entry(const std::string& path, const Stamp& st) {
-    std::ifstream in(entry_path(path), std::ios::binary);
-    if (!in) return {};
+    std::ifstream in;
+    if (!open_current(path, st, in)) return {};
+    uint64_t raw_size = 0;
+    if (!in.read(reinterpret_cast<char*>(&raw_size), sizeof(raw_size))) return {};
     std::ostringstream ss;
     ss << in.rdbuf();
-    std::string data = ss.str();
-    const std::string want = header(path, st);
-    if (data.size() <= want.size() || data.compare(0, want.size(), want) != 0) return {};
-    return data.substr(want.size());
+    const std::string packed = ss.str();
+    int out_size = 0;
+    unsigned char* raw = ray::DecompressData(reinterpret_cast<const unsigned char*>(packed.data()),
+                                             static_cast<int>(packed.size()), &out_size);
+    if (!raw) return {};
+    std::string bc;
+    if (static_cast<uint64_t>(out_size) == raw_size) bc.assign(reinterpret_cast<char*>(raw), out_size);
+    ray::MemFree(raw);
+    return bc;
 }
 
 int writer(lua_State*, const void* p, size_t sz, void* ud) {
@@ -88,6 +107,10 @@ int writer(lua_State*, const void* p, size_t sz, void* ud) {
 void write_entry(lua_State* L, const std::string& path, const Stamp& st) {
     std::string bc;
     if (lua_dump(L, writer, &bc, 0) != 0 || bc.empty()) return;
+    int packed_size = 0;
+    unsigned char* packed = ray::CompressData(reinterpret_cast<const unsigned char*>(bc.data()),
+                                              static_cast<int>(bc.size()), &packed_size);
+    if (!packed) return;
     const fs::path file = entry_path(path);
     std::error_code ec;
     fs::create_directories(file.parent_path(), ec);
@@ -95,14 +118,20 @@ void write_entry(lua_State* L, const std::string& path, const Stamp& st) {
     std::ostringstream tmp_name;
     tmp_name << file.string() << "." << std::this_thread::get_id() << ".tmp";
     const fs::path tmp = tmp_name.str();
+    bool ok = false;
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        if (!out) return;
-        out << header(path, st) << bc;
-        if (!out) return;
+        if (out) {
+            const uint64_t raw_size = bc.size();
+            out << header(path, st);
+            out.write(reinterpret_cast<const char*>(&raw_size), sizeof(raw_size));
+            out.write(reinterpret_cast<const char*>(packed), packed_size);
+            ok = static_cast<bool>(out);
+        }
     }
-    fs::rename(tmp, file, ec);
-    if (ec) fs::remove(tmp, ec);
+    ray::MemFree(packed);
+    if (ok) fs::rename(tmp, file, ec);
+    if (!ok || ec) fs::remove(tmp, ec);
 }
 
 int l_loadfile(lua_State* L) {
@@ -150,7 +179,7 @@ struct PrewarmThread {
 
 int load(lua_State* L, const std::string& path) {
     Stamp st;
-    if (!stamp_of(path, st)) return luaL_loadfilex(L, path.c_str(), nullptr);
+    if (!stamp_of(path, st) || st.size < kMinSourceBytes) return luaL_loadfilex(L, path.c_str(), nullptr);
 
     const std::string bc = read_entry(path, st);
     if (!bc.empty()) {
@@ -183,6 +212,9 @@ void prewarm(const std::vector<std::string>& script_dirs) {
     stop_prewarm();
     prewarm_stop = false;
     prewarm_thread.t = std::thread([script_dirs]() {
+#ifdef _WIN32
+        win32_background_mode_thread();   // low CPU and I/O priority, so the game's own reads go first
+#endif
         lua_State* L = luaL_newstate();
         if (!L) return;
         int compiled = 0;
@@ -193,7 +225,9 @@ void prewarm(const std::vector<std::string>& script_dirs) {
                 if (!it->is_regular_file(ec) || it->path().extension() != ".lua") continue;
                 const std::string path = dir + "/" + it->path().lexically_relative(dir).generic_string();
                 Stamp st;
-                if (!stamp_of(path, st) || !read_entry(path, st).empty()) continue;
+                if (!stamp_of(path, st) || st.size < kMinSourceBytes) continue;
+                std::ifstream current;
+                if (open_current(path, st, current)) continue;   // only its header is read
                 if (luaL_loadfilex(L, path.c_str(), nullptr) == LUA_OK) {
                     write_entry(L, path, st);
                     ++compiled;

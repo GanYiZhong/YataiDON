@@ -170,6 +170,10 @@ bool win32_precise_sleep_us(long long us) {
     return true;
 }
 
+void win32_background_mode_thread() {
+    SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+}
+
 void win32_lower_thread_priority() {
     // Not THREAD_MODE_BACKGROUND_BEGIN: its low I/O priority made a full skin check several times slower
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
