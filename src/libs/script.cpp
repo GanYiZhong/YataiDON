@@ -13,6 +13,7 @@
 #include "input.h"
 #include "filesystem.h"
 #include "webcam.h"
+#include "lua_bytecode_cache.h"
 #include "screen.h"
 #include "../objects/song_select/file_navigator/box_lua_bindings.h"
 #include "../objects/enums.h"
@@ -252,6 +253,7 @@ void ScriptManager::init(fs::path script_path) {
     lua = std::make_unique<sol::state>();
     lua->open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
                         sol::lib::math, sol::lib::table);
+    lua_bytecode_cache::install(lua->lua_state());
 #ifdef TRACY_ENABLE
     tracy::LuaRegister(lua->lua_state());   // tracy.ZoneBeginN / ZoneEnd / ZoneText / Message for skins
 #endif
@@ -275,6 +277,7 @@ void ScriptManager::init(fs::path script_path) {
 
     std::vector<std::string> script_dirs{skin_scripts_dir};
     for (const fs::path& dir : ancestor_scripts) script_dirs.push_back(dir.string());
+    lua_bytecode_cache::prewarm(script_dirs);
     sol::function make_require = lua->load(R"(
         local orig, caller_source, dirs = ...
         local searchpath, loaded = package.searchpath, package.loaded
@@ -334,6 +337,7 @@ std::string ScriptManager::get_lua_script_path(const std::string& script_name) {
 }
 
 void ScriptManager::shutdown() {
+    lua_bytecode_cache::stop_prewarm();
     // Don't unload textures here: tex aliases the global ::tex, whose lifetime
     // is managed by load_skin()/unload_skin() and main().
     scripts.clear();
