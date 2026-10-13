@@ -3,6 +3,7 @@
 #include "texture.h"
 #include "audio.h"
 #include "global_data.h"
+#include "readahead.h"
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
@@ -147,6 +148,7 @@ protected:
             try {
                 on_screen_start();
                 spdlog::info("{} initialized", screen_name);
+                readahead::after_screen(screen_name);
             } catch (const std::exception& e) {
                 spdlog::critical("{} failed to initialize: {}", screen_name, e.what());
                 screen_init = false;

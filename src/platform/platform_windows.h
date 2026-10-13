@@ -24,6 +24,8 @@ std::filesystem::path win32_get_executable_dir();
 
 // Runs the calling thread below the game's threads for CPU time.
 void win32_lower_thread_priority();
+// background processing mode for the calling thread: lowest CPU, I/O and memory priority
+void win32_background_mode_thread();
 
 // Initializes Windows-specific crash handlers (SEH exception filter, dbghelp stack traces).
 void win32_install_crash_handlers();
