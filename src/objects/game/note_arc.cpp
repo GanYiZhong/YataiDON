@@ -35,15 +35,15 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
 
     // note_arc_cubic: a cubic Bezier instead of the quadratic one, its two control points given
     // by note_arc_cubic_control as offsets from the start (x, y) and from the end (width,
-    // height); the vertical offsets are mirrored for P2, whose arc runs downward
+    // height); P2, whose arc runs downward, has its own (note_arc_cubic_control_p2)
     arc_cubic = tex.options[SCO::NOTE_ARC_CUBIC];
     if (arc_cubic) {
-        const SkinInfo& c = tex.skin_config[SC::NOTE_ARC_CUBIC_CONTROL];
-        const float flip = player_num == PlayerNum::P2 ? -1.0f : 1.0f;
+        const SkinInfo& c = tex.skin_config[player_num == PlayerNum::P2 ? SC::NOTE_ARC_CUBIC_CONTROL_P2
+                                                                         : SC::NOTE_ARC_CUBIC_CONTROL];
         control1_x = this->start_x + c.x;
-        control1_y = this->start_y + c.y * flip;
+        control1_y = this->start_y + c.y;
         control2_x = end_x + c.width;
-        control2_y = end_y + c.height * flip;
+        control2_y = end_y + c.height;
     }
 
     x_i = this->start_x;
