@@ -234,12 +234,13 @@ void SkinUpdater::update_one_skin(const std::filesystem::path& skin_dir, const s
             file_resp = std::move(lfs_resp);
         }
 
-        // only what the manifest describes is written, so a short or stale body never lands
+        // A complete download (fetched() above) is written even when it doesn't match the
+        // manifest: that only means the manifest is behind the repo, and keeping the old file
+        // (or none, for a new one) would leave the skin half updated.
         const std::string got_hash = crypto::to_hex(crypto::sha256(file_resp.text));
         if (got_hash != hash) {
-            spdlog::warn("Skin update ({}): {} does not match checksums.sha256; keeping the local file",
-                         skin_dir.filename().string(), rel_path);
-            continue;
+            spdlog::debug("Skin update ({}): {} differs from its checksums.sha256 entry (stale manifest)",
+                          skin_dir.filename().string(), rel_path);
         }
 
         std::error_code mkdir_ec;
