@@ -73,7 +73,11 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
         texture_note_type = NoteType::DON_L;
     }
     t_note = tex.get_texture("notes/" + std::to_string((int)texture_note_type));
-    if (big) {
+    // note_arc_firework_cabinet: the cabinet only trails sparks behind a hit big don/ka, not
+    // behind big drumroll hits (which arc as plain DON/KAT with big set)
+    firework_cabinet = tex.options[SCO::NOTE_ARC_FIREWORK_CABINET];
+    const bool big_hit = note_type == NoteType::DON_L || note_type == NoteType::KAT_L;
+    if (big && (!firework_cabinet || big_hit)) {
         t_firework = tex.get_texture("hit_effect/firework");
     }
     t_rainbow_mask = tex.get_texture("balloon/rainbow_mask");
@@ -147,23 +151,44 @@ void NoteArc::draw(float y, ray::Shader mask_shader) {
         }
     } else if (is_big && !is_balloon && t_firework && firework_frames() > 0 &&
                arc_points_cache && !arc_points_cache->empty()) {
+        // note_arc_firework_spawn: the first spark's frame (x), the frames between sparks (y)
+        // and how many (width); note_arc_firework_path: where each sits on the arc, in frames
+        // of the flight (x, then y apart)
         const double frame_ms = 16.67;
         const int frame_count = firework_frames();
-        for (int i = 0; i < 6; ++i) {
-            const double spawn_ms = (6 + 3 * i) * frame_ms;
+        const SkinInfo& spawn = tex.skin_config[SC::NOTE_ARC_FIREWORK_SPAWN];
+        const SkinInfo& path = tex.skin_config[SC::NOTE_ARC_FIREWORK_PATH];
+        const float scale = tex.skin_config[SC::NOTE_ARC_FIREWORK_SCALE].x;
+        const int count = (int)spawn.width;
+        for (int i = 0; i < count; ++i) {
+            const double spawn_ms = (spawn.x + spawn.y * i) * frame_ms;
             const double age_ms = elapsed_ms - spawn_ms;
             const int frame = (int)(age_ms / frame_ms);
             if (age_ms < 0 || frame >= frame_count) continue;
-            const double position_progress = std::min(spawn_ms / ((double)arc_duration * frame_ms), 1.0);
+            const double position_progress = std::clamp((path.x + path.y * i) / (double)arc_duration, 0.0, 1.0);
             const std::size_t point_index = std::min((std::size_t)(position_progress * arc_points),arc_points_cache->size() - 1);
             const float firework_x = (float)((*arc_points_cache)[point_index].first);
             const float firework_y = (float)((*arc_points_cache)[point_index].second);
-            tex.draw_texture(t_firework, {
-                .frame=frame,
-                .scale = 0.8,
-                .x=firework_x - (t_note->width*0.6f) / 2.0f,
-                .y=y + firework_y - (t_note->width*0.6f) / 2.0f
-            });
+            if (firework_cabinet) {
+                // centred on the note as it passed that point, added onto what is below
+                const float dx = t_note->x[0] - t_firework->x[0] + (t_note->x2[0] - t_firework->x2[0]) / 2.0f;
+                const float dy = t_note->y[0] - t_firework->y[0] + (t_note->y2[0] - t_firework->y2[0]) / 2.0f;
+                tex.draw_texture(t_firework, {
+                    .frame=frame,
+                    .scale=scale,
+                    .center=true,
+                    .x=firework_x + dx,
+                    .y=y + firework_y + dy,
+                    .blend=ray::BLEND_ADDITIVE
+                });
+            } else {
+                tex.draw_texture(t_firework, {
+                    .frame=frame,
+                    .scale=scale,
+                    .x=firework_x - (t_note->width*0.6f) / 2.0f,
+                    .y=y + firework_y - (t_note->width*0.6f) / 2.0f
+                });
+            }
         }
     }
     if (!is_note_finished()) {
@@ -174,8 +199,16 @@ void NoteArc::draw(float y, ray::Shader mask_shader) {
 bool NoteArc::is_finished() const {
     double end_ms = (double)arc_duration * 16.67;
     if (is_balloon) end_ms *= 1.5;
-    if (t_firework) end_ms += firework_frames() * 16.67;
+    if (t_firework) end_ms = std::max(end_ms + firework_frames() * 16.67, firework_end_ms());
     return elapsed_ms >= end_ms;
+}
+
+// when the last spark finishes playing
+double NoteArc::firework_end_ms() const {
+    const SkinInfo& spawn = tex.skin_config[SC::NOTE_ARC_FIREWORK_SPAWN];
+    const int count = (int)spawn.width;
+    if (count <= 0) return 0.0;
+    return (spawn.x + spawn.y * (count - 1) + firework_frames()) * 16.67;
 }
 
 bool NoteArc::is_note_finished() const {
