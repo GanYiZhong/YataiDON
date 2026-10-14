@@ -7,7 +7,9 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
     : note_type(note_type), start_ms(current_ms), player_num(player_num), is_big(big), is_balloon(is_balloon)
 {
     arc_points = 100;
-    arc_duration = 31;
+    // note_arc_frames: how many frames the flight takes
+    const float frames = tex.skin_config[SC::NOTE_ARC_FRAMES].x;
+    arc_duration = frames > 0 ? (int)frames : 31;
     current_progress = 0;
     elapsed_ms = 0;
     note_finished_handled = false;
@@ -29,6 +31,19 @@ NoteArc::NoteArc(NoteType note_type, double current_ms, PlayerNum player_num, bo
     } else {
         control_x = (this->start_x + end_x) / 2;
         control_y = std::max(this->start_y, end_y) + curve_height;  // Arc downward
+    }
+
+    // note_arc_cubic: a cubic Bezier instead of the quadratic one, its two control points given
+    // by note_arc_cubic_control as offsets from the start (x, y) and from the end (width,
+    // height); the vertical offsets are mirrored for P2, whose arc runs downward
+    arc_cubic = tex.options[SCO::NOTE_ARC_CUBIC];
+    if (arc_cubic) {
+        const SkinInfo& c = tex.skin_config[SC::NOTE_ARC_CUBIC_CONTROL];
+        const float flip = player_num == PlayerNum::P2 ? -1.0f : 1.0f;
+        control1_x = this->start_x + c.x;
+        control1_y = this->start_y + c.y * flip;
+        control2_x = end_x + c.width;
+        control2_y = end_y + c.height * flip;
     }
 
     x_i = this->start_x;
@@ -90,20 +105,28 @@ int NoteArc::firework_frames() const {
     return n;
 }
 
+// where the note is, progress 0..1 along the flight
+std::pair<float, float> NoteArc::point_at(double progress) const {
+    if (arc_cubic) {
+        const float t = (float)std::clamp(progress, 0.0, 1.0);
+        const float u = 1.0f - t;
+        const float b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
+        return {b0 * start_x + b1 * control1_x + b2 * control2_x + b3 * end_x,
+                b0 * start_y + b1 * control1_y + b2 * control2_y + b3 * end_y};
+    }
+    const std::size_t point_index = std::min((std::size_t)(progress * arc_points), arc_points_cache->size() - 1);
+    return {(float)(*arc_points_cache)[point_index].first, (float)(*arc_points_cache)[point_index].second};
+}
+
 void NoteArc::update(double current_ms) {
     // elapsed_ms keeps running past the arc so trailing fireworks can finish
     elapsed_ms = std::max(0.0, current_ms - start_ms);
     current_progress = std::min(1.0, elapsed_ms / ((double)arc_duration * 16.67));
 
     if (arc_points_cache == nullptr || arc_points_cache->empty()) return;
-    const std::size_t point_index = (std::size_t)(current_progress * arc_points);
-    if (point_index < arc_points_cache->size()) {
-        x_i = (*arc_points_cache)[point_index].first;
-        y_i = (*arc_points_cache)[point_index].second;
-    } else {
-        x_i = arc_points_cache->back().first;
-        y_i = arc_points_cache->back().second;
-    }
+    const auto [x, y] = point_at(current_progress);
+    x_i = x;
+    y_i = y;
 }
 
 void NoteArc::draw(float y, ray::Shader mask_shader) {
@@ -166,9 +189,7 @@ void NoteArc::draw(float y, ray::Shader mask_shader) {
             const int frame = (int)(age_ms / frame_ms);
             if (age_ms < 0 || frame >= frame_count) continue;
             const double position_progress = std::clamp((path.x + path.y * i) / (double)arc_duration, 0.0, 1.0);
-            const std::size_t point_index = std::min((std::size_t)(position_progress * arc_points),arc_points_cache->size() - 1);
-            const float firework_x = (float)((*arc_points_cache)[point_index].first);
-            const float firework_y = (float)((*arc_points_cache)[point_index].second);
+            const auto [firework_x, firework_y] = point_at(position_progress);
             if (firework_cabinet) {
                 // centred on the note as it passed that point, added onto what is below
                 const float dx = t_note->x[0] - t_firework->x[0] + (t_note->x2[0] - t_firework->x2[0]) / 2.0f;

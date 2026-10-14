@@ -61,6 +61,9 @@ private:
     float end_y;
     float control_x;
     float control_y;
+    bool arc_cubic = false;
+    float control1_x = 0, control1_y = 0, control2_x = 0, control2_y = 0;
+    std::pair<float, float> point_at(double progress) const;
     float x_i;
     float y_i;
     int firework_frames() const;
