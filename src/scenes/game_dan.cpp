@@ -392,6 +392,9 @@ void DanGameScreen::save_result_data(bool all_failed) {
             }
             if (i < (int)exams.size()) {
                 const Exam& exam = exams[i];
+                re.value = get_exam_progress(exam);
+                if (!exam.gothrough)
+                    for (int j = 0; j < course_songs; j++) re.song_actual[j] = get_exam_progress_song(exam, j);
                 if (all_failed) {
                     re.tier = 0;
                 } else if (exam.gothrough) {

@@ -1003,13 +1003,55 @@ static void ensure_dan_table(sqlite3* db) {
     sqlite3_exec(db,
         "ALTER TABLE dan_results ADD COLUMN arrival INTEGER NOT NULL DEFAULT 0;",
         nullptr, nullptr, nullptr);
+    sqlite3_exec(db,
+        "ALTER TABLE dan_results ADD COLUMN exam_bests TEXT NOT NULL DEFAULT '';",
+        nullptr, nullptr, nullptr);
+}
+
+// exam_bests column: one "type:value,s1,s2,s3" per exam, joined by ';' (-1 = none)
+static std::string encode_exam_bests(const std::vector<DanExamBest>& bests) {
+    std::string out;
+    for (size_t i = 0; i < bests.size(); i++) {
+        const DanExamBest& b = bests[i];
+        if (i) out += ';';
+        out += b.type + ':' + std::to_string(b.value);
+        for (int v : b.song) out += ',' + std::to_string(v);
+    }
+    return out;
+}
+
+static std::vector<DanExamBest> decode_exam_bests(const std::string& s) {
+    std::vector<DanExamBest> out;
+    size_t start = 0;
+    while (start < s.size()) {
+        size_t end = s.find(';', start);
+        if (end == std::string::npos) end = s.size();
+        const std::string item = s.substr(start, end - start);
+        start = end + 1;
+        DanExamBest b;
+        size_t colon = item.find(':');
+        if (colon == std::string::npos) { out.push_back(b); continue; }
+        b.type = item.substr(0, colon);
+        int vals[4] = {-1, -1, -1, -1};
+        size_t pos = colon + 1;
+        for (int k = 0; k < 4 && pos <= item.size(); k++) {
+            size_t comma = item.find(',', pos);
+            if (comma == std::string::npos) comma = item.size();
+            try { vals[k] = std::stoi(item.substr(pos, comma - pos)); } catch (...) { vals[k] = -1; }
+            pos = comma + 1;
+        }
+        b.value = vals[0];
+        for (int k = 0; k < 3; k++) b.song[k] = vals[k + 1];
+        out.push_back(b);
+    }
+    return out;
 }
 
 std::optional<DanRecord> ScoresManager::get_dan_record(const std::string& player_id, const std::string& course_title) {
     ensure_dan_table(db_fsd);
     sqlite3_stmt* stmt;
     const char* query =
-        "SELECT dan_index, rank, score, arrival FROM dan_results WHERE player_id = ? AND course = ?;";
+        "SELECT dan_index, rank, score, arrival, exam_bests FROM dan_results WHERE player_id = ? AND course = ?;";
     if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
         spdlog::error("get_dan_record: failed to prepare: {}", sqlite3_errmsg(db_fsd));
         return std::nullopt;
@@ -1023,6 +1065,8 @@ std::optional<DanRecord> ScoresManager::get_dan_record(const std::string& player
         r.rank      = sqlite3_column_int(stmt, 1);
         r.score     = sqlite3_column_int(stmt, 2);
         r.arrival   = sqlite3_column_int(stmt, 3);
+        if (const unsigned char* eb = sqlite3_column_text(stmt, 4))
+            r.exam_bests = decode_exam_bests(reinterpret_cast<const char*>(eb));
         out = r;
     }
     sqlite3_finalize(stmt);
@@ -1033,11 +1077,11 @@ void ScoresManager::save_dan_record(const std::string& player_id, const std::str
     ensure_dan_table(db_fsd);
     sqlite3_stmt* stmt;
     const char* query =
-        "INSERT INTO dan_results (player_id, course, dan_index, rank, score, arrival)"
-        " VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO dan_results (player_id, course, dan_index, rank, score, arrival, exam_bests)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(player_id, course) DO UPDATE SET"
         " dan_index = excluded.dan_index, rank = excluded.rank, score = excluded.score,"
-        " arrival = excluded.arrival;";
+        " arrival = excluded.arrival, exam_bests = excluded.exam_bests;";
     if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
         spdlog::error("save_dan_record: failed to prepare: {}", sqlite3_errmsg(db_fsd));
         return;
@@ -1048,6 +1092,8 @@ void ScoresManager::save_dan_record(const std::string& player_id, const std::str
     sqlite3_bind_int (stmt, 4, rec.rank);
     sqlite3_bind_int (stmt, 5, rec.score);
     sqlite3_bind_int (stmt, 6, rec.arrival);
+    const std::string bests = encode_exam_bests(rec.exam_bests);
+    sqlite3_bind_text(stmt, 7, bests.c_str(), -1, SQLITE_TRANSIENT);
     if (sqlite3_step(stmt) != SQLITE_DONE)
         spdlog::error("save_dan_record: failed for {}: {}", course_title, sqlite3_errmsg(db_fsd));
     sqlite3_finalize(stmt);

@@ -166,6 +166,24 @@ void register_song_select_lua_bindings(sol::state& lua) {
         "dan_color",      sol::readonly(&DanBox::dan_color),
         "dan_rank",       sol::readonly(&DanBox::dan_rank),
         "clear_mark",     sol::readonly(&DanBox::clear_mark),
+        "record_rank",    sol::readonly(&DanBox::record_rank),
+        // the recorded best for exam i (course-wide) / for song j of a per-song exam;
+        // nil when there is none, or when it was recorded for a different exam type
+        "exam_best",      [](DanBox& self, double i) -> sol::optional<int> {
+            auto k = static_cast<size_t>(i);
+            if (k >= self.exam_bests.size() || k >= self.exams.size()) return sol::nullopt;
+            const DanExamBest& b = self.exam_bests[k];
+            if (b.type != self.exams[k].type || b.value < 0) return sol::nullopt;
+            return b.value;
+        },
+        "exam_song_best", [](DanBox& self, double i, double j) -> sol::optional<int> {
+            auto k = static_cast<size_t>(i);
+            int s = static_cast<int>(j);
+            if (k >= self.exam_bests.size() || k >= self.exams.size() || s < 0 || s > 2) return sol::nullopt;
+            const DanExamBest& b = self.exam_bests[k];
+            if (b.type != self.exams[k].type || b.song[s] < 0) return sol::nullopt;
+            return b.song[s];
+        },
         "dan_index",      sol::readonly(&DanBox::dan_index),
         "gaiden",         sol::readonly(&DanBox::gaiden),
         "is_back",        sol::readonly(&DanBox::is_back),

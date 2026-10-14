@@ -138,7 +138,9 @@ struct DanResultSong {
 
 struct DanResultExam {
     float progress = 0.0f;
-    int counter_value = 0;
+    int counter_value = 0;      // the counter as shown (for "less" exams: what is left)
+    int value = -1;             // the measured value (count, percent, ...), -1 = not measured
+    int song_actual[3] = {-1, -1, -1};   // per-song exams: each song's measured value
     std::string bar_texture = "exam_red";
     bool failed = false;
     int   song_value[3]    = {0, 0, 0};

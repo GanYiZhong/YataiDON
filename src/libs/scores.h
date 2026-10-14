@@ -39,11 +39,20 @@ struct PlayerData {
     int chara_acce_index     = 0;
 };
 
+// A course exam's best result: the course-wide value and, for per-song exams, each song's.
+// -1 = nothing recorded yet.
+struct DanExamBest {
+    std::string type;
+    int value = -1;
+    int song[3] = {-1, -1, -1};
+};
+
 struct DanRecord {
     int dan_index = -1;
     int rank      = 0;
     int score     = 0;
     int arrival   = 0;
+    std::vector<DanExamBest> exam_bests;   // by exam index
 };
 
 struct Score {

@@ -95,6 +95,39 @@ void DanResultScreen::on_screen_start() {
                       gauge_exam, gauge_value, gauge_border);
 }
 
+// This run's exam results folded into the recorded bests: "more" exams keep the highest
+// value, "less" exams the lowest. A song the run never reached has no value of its own, and a
+// course-wide "less" value only counts when every song was reached (a cut-short run would
+// otherwise read as a low count). A recorded best for a different exam type is replaced.
+static std::vector<DanExamBest> merge_exam_bests(const std::vector<DanExamBest>& prev,
+                                                 const DanResultData& rd) {
+    std::vector<DanExamBest> out;
+    bool all_reached = true;
+    for (const auto& s : rd.songs) all_reached &= !s.unreached;
+    for (size_t i = 0; i < rd.exams.size(); i++) {
+        const Exam& exam = rd.exams[i];
+        DanExamBest b;
+        if (i < prev.size() && prev[i].type == exam.type) b = prev[i];
+        b.type = exam.type;
+        if (i >= rd.exam_data.size()) { out.push_back(b); continue; }
+        const DanResultExam& re = rd.exam_data[i];
+        const bool less = exam.range == "less";
+        auto better = [less](int cur, int v) {
+            if (cur < 0) return v;
+            return less ? std::min(cur, v) : std::max(cur, v);
+        };
+        if (re.value >= 0 && (!less || all_reached)) b.value = better(b.value, re.value);
+        if (exam.gothrough) { out.push_back(b); continue; }   // course-wide: no per-song values
+        for (int j = 0; j < 3; j++) {
+            if (re.song_actual[j] < 0) continue;
+            if (j < (int)rd.songs.size() && rd.songs[j].unreached) continue;
+            b.song[j] = better(b.song[j], re.song_actual[j]);
+        }
+        out.push_back(b);
+    }
+    return out;
+}
+
 void DanResultScreen::apply_reward() {
     const SessionData& sd = global_data.session_data[(int)global_data.player_num];
     const DanResultData& rd = sd.dan_result_data;
@@ -142,6 +175,7 @@ void DanResultScreen::apply_reward() {
     rec.rank      = std::max(prev_best, new_rank);
     rec.score     = std::max(prev_best_score, rd.score);
     rec.arrival   = std::max(prev ? prev->arrival : 0, arrival);
+    rec.exam_bests = merge_exam_bests(prev ? prev->exam_bests : std::vector<DanExamBest>{}, rd);
     scores_manager.save_dan_record(pid, rd.dan_title, rec);
 }
 
