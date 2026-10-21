@@ -1,6 +1,8 @@
 #include "platform_windows.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <filesystem>
@@ -10,6 +12,7 @@
 // clang-format off
 #include <windows.h>
 #include <dbghelp.h> // must follow windows.h
+#include <dwmapi.h>  // must follow windows.h
 
 #include "../libs/sdl_compat.h"
 // clang-format on
@@ -206,6 +209,76 @@ bool win32_precise_sleep_us(long long us) {
     }
     WaitForSingleObject(timer, INFINITE);
     return true;
+}
+
+namespace {
+
+    using DwmGetCompositionTimingInfoFn = HRESULT(WINAPI*)(HWND, DWM_TIMING_INFO*);
+
+    // DWM's timing is for the composition (the primary display): only pace a window on a display
+    // with the same refresh rate
+    bool display_refresh_matches(HWND hwnd, double period_ms) {
+        MONITORINFOEXW mi{};
+        mi.cbSize = sizeof(mi);
+        DEVMODEW dm{};
+        dm.dmSize = sizeof(dm);
+        if (!GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi) ||
+            !EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm) || dm.dmDisplayFrequency <= 1) {
+            return false;
+        }
+        return std::abs(dm.dmDisplayFrequency - (1000.0 / period_ms)) < 1.5;
+    }
+
+} // namespace
+
+void win32_sleep_until_vblank(void* hwnd, double work_ms) {
+    // the next frame starts its expected work plus this before the vblank: covers the timer waking
+    // up late (up to ~0.6 ms) and frames that take a bit longer than the last ones
+    constexpr double kMarginMs = 1.5;
+    constexpr double kLeadDecayMs = 0.01; // per frame: after a slow frame the lead comes back slowly
+    static const auto dwm_timing = [] {
+        HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
+        return dwm ? reinterpret_cast<DwmGetCompositionTimingInfoFn>(
+                         reinterpret_cast<void*>(GetProcAddress(dwm, "DwmGetCompositionTimingInfo")))
+                   : nullptr;
+    }();
+    static double lead_ms = 3.0;
+    static bool paced = false; // the frame that just ended started at its paced time
+    static bool rate_matches = false;
+    static double rate_checked_ms = -1e9;
+
+    DWM_TIMING_INFO ti{};
+    ti.cbSize = sizeof(ti);
+    if (!dwm_timing || FAILED(dwm_timing(nullptr, &ti)) || ti.qpcRefreshPeriod == 0) {
+        paced = false;
+        return;
+    }
+    LARGE_INTEGER freq;
+    LARGE_INTEGER now;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&now);
+    const double ms_per_tick = 1000.0 / static_cast<double>(freq.QuadPart);
+    const double period_ms = static_cast<double>(ti.qpcRefreshPeriod) * ms_per_tick;
+    const double now_ms = static_cast<double>(now.QuadPart) * ms_per_tick;
+    if (now_ms - rate_checked_ms > 1000.0) {
+        rate_checked_ms = now_ms;
+        rate_matches = display_refresh_matches(static_cast<HWND>(hwnd), period_ms);
+    }
+
+    // Only a paced frame's time is its work: one that started right after the previous swap also
+    // includes the wait for that frame's flip.
+    lead_ms = paced ? std::max(work_ms + kMarginMs, lead_ms - kLeadDecayMs) : lead_ms - kLeadDecayMs;
+    lead_ms = std::clamp(lead_ms, kMarginMs, period_ms);
+    paced = false;
+    if (!rate_matches || lead_ms >= period_ms) {
+        return; // no time to spare: start the next frame now, as without pacing
+    }
+    // until the next moment lead_ms before a vblank (DWM's vblank time may be the last or the next one)
+    double phase = std::fmod(now_ms + lead_ms - (static_cast<double>(ti.qpcVBlank) * ms_per_tick), period_ms);
+    if (phase < 0.0) {
+        phase += period_ms;
+    }
+    paced = win32_precise_sleep_us(static_cast<long long>((period_ms - phase) * 1000.0));
 }
 
 void win32_lower_thread_priority() {

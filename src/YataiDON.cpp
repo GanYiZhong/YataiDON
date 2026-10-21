@@ -268,6 +268,7 @@ struct LoopState {
     FPSCounter fps_counter;
     Color last_color = Color::BLACK;
     double screen_fade_start = 0.0;
+    bool sleep_until_vblank = false; // vsync without a frame cap (Windows)
 };
 
 static bool screen_fade_applies(Screens from, Screens to) {
@@ -520,9 +521,17 @@ static void run_frame() {
     {
         PROFILE_SCOPE_N("present");
         end_drawing();
+#ifdef _WIN32
+        const double work_ms = get_current_ms() - g_frame_ms; // the frame's time up to its swap
+#endif
 
         if (!next_screen.has_value()) {
             swap_screen_buffer();
+#ifdef _WIN32
+            if (L.sleep_until_vblank) {
+                win32_sleep_until_vblank(ray::GetWindowHandle(), work_ms);
+            }
+#endif
         }
     }
 
@@ -638,6 +647,7 @@ int main(int argc, char* argv[]) {
     L.target_duration = (target_fps > 0.0) ? std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                  std::chrono::duration<double>(1.0 / target_fps))
                                            : std::chrono::steady_clock::duration::zero();
+    L.sleep_until_vblank = global_data.config->video.vsync && L.target_duration.count() == 0;
 
     populate_screens(L.screens);
 

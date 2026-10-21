@@ -33,6 +33,14 @@ void win32_install_crash_handlers();
 // Returns false when that timer is unavailable; the caller then falls back to a normal sleep.
 bool win32_precise_sleep_us(long long us);
 
+// For vsync without a frame cap; call after each present. Sleeps until shortly before the display's
+// next vblank (from DWM), so that the next frame does not start right away and then wait for the
+// flip in the driver (NVIDIA's OpenGL driver waits by spinning, a whole core at high refresh rates).
+// `hwnd` is the game window; `work_ms` is how long the presented frame took up to its swap.
+// Returns at once when DWM timing or a high-resolution timer is unavailable, or the window is on a
+// display with another refresh rate.
+void win32_sleep_until_vblank(void* hwnd, double work_ms);
+
 // Checks if a key is currently down using GetAsyncKeyState.
 // scancode: SDL_Scancode (SDL_SCANCODE_A, SDL_SCANCODE_SPACE, etc.)
 // Returns true if the key is currently pressed.
