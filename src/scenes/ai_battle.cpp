@@ -272,6 +272,8 @@ void AIGameScreen::apply_overlay_layout() {
     ai()->hide_score_counter = true;
     ai()->hide_lane_badges();
     ai()->use_ai_lane();
+    human()->place_drumroll_counter(tex.get_skin_config(SC::AI_GAME_DRUMROLL_COUNTER));
+    ai()->place_drumroll_counter(tex.get_skin_config(SC::AI_GAME_DRUMROLL_COUNTER_AI));
 }
 
 void AIGameScreen::on_screen_start() {
